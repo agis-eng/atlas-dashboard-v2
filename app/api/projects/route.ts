@@ -20,22 +20,23 @@ interface YamlProject {
   tags?: string[];
 }
 
-const PROJECTS_YAML_PATH = join(
-  process.env.PROJECTS_YAML_PATH ||
-    "/Users/eriklaine/.openclaw/workspace/atlas-dashboard/data/projects.yaml"
-);
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const owner = searchParams.get("owner"); // filter by owner
-    const stage = searchParams.get("stage"); // filter by stage
+    const owner = searchParams.get("owner");
+    const stage = searchParams.get("stage");
 
-    const fileContents = await readFile(PROJECTS_YAML_PATH, "utf8");
+    // Read from data directory (bundled with deployment)
+    const projectsPath = join(process.cwd(), "data", "projects.yaml");
+    const fileContents = await readFile(projectsPath, "utf8");
     const data = yaml.load(fileContents) as { projects: YamlProject[] };
 
-    let projects = (data.projects || []).filter((p) => !p.archived);
+    let projects = data.projects || [];
 
+    // Filter out archived
+    projects = projects.filter((p) => !p.archived);
+
+    // Apply filters
     if (owner) {
       projects = projects.filter(
         (p) => p.owner?.toLowerCase() === owner.toLowerCase()
@@ -47,19 +48,21 @@ export async function GET(request: Request) {
       );
     }
 
-    // Sort: ranked projects first (ascending rank), then alphabetically
+    // Sort by rank (lower first), then alphabetically
     projects.sort((a, b) => {
-      if (a.rank && b.rank) return a.rank - b.rank;
-      if (a.rank) return -1;
-      if (b.rank) return 1;
+      if (a.rank !== undefined && b.rank !== undefined) {
+        return a.rank - b.rank;
+      }
+      if (a.rank !== undefined) return -1;
+      if (b.rank !== undefined) return 1;
       return (a.name || "").localeCompare(b.name || "");
     });
 
-    return Response.json({ projects, total: projects.length });
-  } catch (error) {
-    console.error("Failed to load projects:", error);
+    return Response.json({ projects });
+  } catch (error: any) {
+    console.error("Projects API error:", error);
     return Response.json(
-      { error: "Failed to load projects", projects: [] },
+      { error: "Failed to load projects", projects: [], details: error.message },
       { status: 500 }
     );
   }
