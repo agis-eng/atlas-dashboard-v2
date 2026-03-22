@@ -23,18 +23,11 @@ export const REDIS_KEYS = {
   // Profile
   currentProfile: "profile:current",
 
-  // Screenshots
-  screenshots: (profile: string) => `screenshots:${profile}`,
-  screenshotData: (id: string) => `screenshot:${id}`,
-
   // Tasks
   tasks: (profile: string) => `tasks:${profile}`,
 
   // Activity
   recentActivity: (profile: string) => `activity:recent:${profile}`,
-
-  // Project screenshot previews (cached 24h)
-  projectPreview: (url: string) => `project-preview:${encodeURIComponent(url)}`,
 } as const;
 
 // Types
@@ -65,15 +58,6 @@ export interface Project {
   status: "active" | "paused" | "completed";
   createdAt: number;
   updatedAt: number;
-}
-
-export interface Screenshot {
-  id: string;
-  url: string;
-  imageData: string; // base64
-  profile: string;
-  createdAt: number;
-  title?: string;
 }
 
 export type Profile = "erik" | "anton" | "all";

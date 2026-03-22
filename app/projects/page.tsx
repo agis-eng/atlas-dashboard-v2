@@ -8,18 +8,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import {
-  Camera,
   ExternalLink,
   Globe,
-  Loader2,
   FolderOpen,
   Search,
   Filter,
-  ImageOff,
 } from "lucide-react";
 
 interface ProjectItem {
@@ -38,13 +34,6 @@ interface ProjectItem {
   priority?: string;
 }
 
-interface ScreenshotItem {
-  id: string;
-  url: string;
-  title: string;
-  createdAt: number;
-}
-
 const stageColors: Record<string, string> = {
   Client: "bg-green-500/10 text-green-500 border-green-500/20",
   Internal: "bg-blue-500/10 text-blue-500 border-blue-500/20",
@@ -57,30 +46,40 @@ const stageColors: Record<string, string> = {
   Active: "bg-green-500/10 text-green-500 border-green-500/20",
 };
 
-function ProjectPreview({ url }: { url: string }) {
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
-  const previewUrl = `/api/project-preview?url=${encodeURIComponent(url)}`;
+function SitePreview({ url, projectId }: { url: string; projectId: string }) {
+  const [hasScreenshot, setHasScreenshot] = useState(true);
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    hostname = url;
+  }
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+  const screenshotUrl = `/screenshots/${projectId}.png`;
 
   return (
-    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
-      {status === "loading" && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        </div>
-      )}
-      {status === "error" && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <ImageOff className="h-5 w-5 text-muted-foreground" />
-        </div>
-      )}
-      {status !== "error" && (
+    <div className="relative aspect-video bg-muted/20 overflow-hidden">
+      {hasScreenshot ? (
         <img
-          src={previewUrl}
-          alt="Site preview"
-          className={`w-full h-full object-cover object-top transition-opacity ${status === "loaded" ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setStatus("loaded")}
-          onError={() => setStatus("error")}
+          src={screenshotUrl}
+          alt={`Screenshot of ${hostname}`}
+          className="w-full h-full object-cover object-top"
+          onError={() => setHasScreenshot(false)}
         />
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full gap-2 px-4">
+          <img
+            src={faviconUrl}
+            alt=""
+            className="h-8 w-8 opacity-50"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+          <span className="text-xs text-muted-foreground text-center truncate w-full">
+            {hostname}
+          </span>
+        </div>
       )}
     </div>
   );
@@ -92,16 +91,9 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
-  const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
-  const [screenshotUrl, setScreenshotUrl] = useState("");
-  const [capturing, setCapturing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"projects" | "screenshots">(
-    "projects"
-  );
 
   useEffect(() => {
     loadProjects();
-    loadScreenshots();
   }, []);
 
   async function loadProjects() {
@@ -113,39 +105,6 @@ export default function ProjectsPage() {
       console.error("Failed to load projects");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadScreenshots() {
-    try {
-      const res = await fetch("/api/screenshot?profile=erik");
-      const data = await res.json();
-      setScreenshots(data.screenshots || []);
-    } catch {
-      // Redis not configured
-    }
-  }
-
-  async function captureScreenshot(e: React.FormEvent) {
-    e.preventDefault();
-    if (!screenshotUrl.trim() || capturing) return;
-
-    setCapturing(true);
-    try {
-      const res = await fetch("/api/screenshot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: screenshotUrl, profile: "erik" }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setScreenshots((prev) => [data.screenshot, ...prev]);
-        setScreenshotUrl("");
-      }
-    } catch (error) {
-      console.error("Screenshot capture failed:", error);
-    } finally {
-      setCapturing(false);
     }
   }
 
@@ -183,32 +142,7 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-muted/50 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setActiveTab("projects")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "projects"
-              ? "bg-background shadow-sm text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Projects
-        </button>
-        <button
-          onClick={() => setActiveTab("screenshots")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "screenshots"
-              ? "bg-background shadow-sm text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Screenshots
-        </button>
-      </div>
-
-      {activeTab === "projects" ? (
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Search & Filters */}
           <div className="flex flex-wrap gap-3">
             <div className="relative flex-1 min-w-[200px]">
@@ -288,7 +222,7 @@ export default function ProjectsPage() {
                   className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                 >
                   {(project.liveUrl || project.previewUrl) && (
-                    <ProjectPreview url={(project.liveUrl || project.previewUrl)!} />
+                    <SitePreview url={(project.liveUrl || project.previewUrl)!} projectId={project.id} />
                   )}
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -366,75 +300,6 @@ export default function ProjectsPage() {
             </div>
           )}
         </div>
-      ) : (
-        /* Screenshots */
-        <div className="space-y-6">
-          {/* Capture Form */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Capture Screenshot</CardTitle>
-              <CardDescription>
-                Enter a URL to capture a screenshot using Puppeteer
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={captureScreenshot} className="flex gap-2">
-                <Input
-                  value={screenshotUrl}
-                  onChange={(e) => setScreenshotUrl(e.target.value)}
-                  placeholder="https://example.com"
-                  disabled={capturing}
-                  className="flex-1"
-                  type="url"
-                />
-                <Button
-                  type="submit"
-                  disabled={!screenshotUrl.trim() || capturing}
-                  className="bg-orange-600 hover:bg-orange-700 text-white gap-2"
-                >
-                  {capturing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Camera className="h-4 w-4" />
-                  )}
-                  Capture
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Screenshots Grid */}
-          {screenshots.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-                <Camera className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <p className="text-muted-foreground">
-                No screenshots captured yet. Enter a URL above to get started.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {screenshots.map((ss) => (
-                <Card key={ss.id} className="overflow-hidden">
-                  <div className="aspect-video bg-muted flex items-center justify-center">
-                    <Globe className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <CardContent className="p-3">
-                    <p className="text-sm font-medium truncate">{ss.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {ss.url}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(ss.createdAt).toLocaleString()}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

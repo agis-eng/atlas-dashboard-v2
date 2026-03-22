@@ -1,0 +1,1 @@
+Replace the ProjectPreview component with a simple img tag that loads from /screenshots/{project.id}.png
