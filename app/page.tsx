@@ -1,65 +1,191 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  MessageSquare,
+  ListChecks,
+  FolderOpen,
+  Activity,
+  ArrowUpRight,
+} from "lucide-react";
+import Link from "next/link";
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+const quickStats = [
+  {
+    title: "Active Projects",
+    value: "4",
+    description: "2 updated today",
+    icon: FolderOpen,
+    accent: true,
+  },
+  {
+    title: "Open Tasks",
+    value: "12",
+    description: "3 due this week",
+    icon: ListChecks,
+  },
+  {
+    title: "Messages",
+    value: "8",
+    description: "Unread conversations",
+    icon: MessageSquare,
+  },
+  {
+    title: "System Health",
+    value: "98%",
+    description: "All services running",
+    icon: Activity,
+  },
+];
+
+const recentActivity = [
+  {
+    title: "Dashboard v2 scaffolding",
+    project: "Atlas",
+    time: "Just now",
+  },
+  {
+    title: "eBay listing automation",
+    project: "AutomateIQ",
+    time: "2h ago",
+  },
+  {
+    title: "Contract analysis pipeline",
+    project: "OpenClaw",
+    time: "Yesterday",
+  },
+];
 
 export default function Home() {
+  const [greeting, setGreeting] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setGreeting(getGreeting());
+    setMounted(true);
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+      {/* Greeting */}
+      <div
+        className={`transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+      >
+        <h1 className="text-3xl font-semibold tracking-tight">
+          {greeting}, <span className="text-orange-600">Erik</span>
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Here&apos;s what&apos;s happening across your projects.
+        </p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {quickStats.map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <Card
+              key={stat.title}
+              className={`group cursor-pointer transition-all duration-300 hover:shadow-md ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+              style={{ transitionDelay: `${(i + 1) * 100}ms` }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {stat.title}
+                </CardTitle>
+                <Icon
+                  className={`h-4 w-4 ${stat.accent ? "text-orange-600" : "text-muted-foreground"}`}
+                />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stat.description}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Bottom Section */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Recent Activity */}
+        <Card
+          className={`transition-all duration-500 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          style={{ transitionDelay: "500ms" }}
+        >
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <CardDescription>Your latest work across projects</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {recentActivity.map((item) => (
+              <div
+                key={item.title}
+                className="flex items-center justify-between group cursor-pointer rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
+              >
+                <div>
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.project}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {item.time}
+                  </span>
+                  <ArrowUpRight className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card
+          className={`transition-all duration-500 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          style={{ transitionDelay: "600ms" }}
+        >
+          <CardHeader>
+            <CardTitle className="text-lg">Quick Actions</CardTitle>
+            <CardDescription>Jump into something</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {[
+              { label: "New Chat", icon: MessageSquare, color: "text-orange-600", href: "/chat" },
+              { label: "View Tasks", icon: ListChecks, color: "text-blue-500", href: "/tasks" },
+              { label: "Browse Projects", icon: FolderOpen, color: "text-green-500", href: "/projects" },
+            ].map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-all hover:bg-muted/50 hover:shadow-sm"
+                >
+                  <Icon className={`h-5 w-5 ${action.color}`} />
+                  <span className="text-sm font-medium">{action.label}</span>
+                </Link>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
