@@ -1374,6 +1374,16 @@ export default function ProjectDetailPage({
         </Card>
       </div>
 
+      {/* Brain section - always show in edit mode, or when brain has content */}
+      {(hasBrain || editing) && (
+        <BrainSection
+          brain={(editing && draft ? draft.brain : project.brain) || {}}
+          editing={editing}
+          onChange={(brain) => updateDraft("brain", brain)}
+          projectId={id}
+        />
+      )}
+
       {/* Affiliate section */}
       {(hasAffiliate || editing) && (
         <AffiliateSection
@@ -1382,16 +1392,6 @@ export default function ProjectDetailPage({
           }
           editing={editing}
           onChange={(aff) => updateDraft("affiliate", aff)}
-        />
-      )}
-
-      {/* Brain section - always show in edit mode, or when brain has content */}
-      {(hasBrain || editing) && (
-        <BrainSection
-          brain={(editing && draft ? draft.brain : project.brain) || {}}
-          editing={editing}
-          onChange={(brain) => updateDraft("brain", brain)}
-          projectId={id}
         />
       )}
     </div>
