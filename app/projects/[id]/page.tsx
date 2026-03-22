@@ -37,6 +37,7 @@ import {
   Upload,
   FileText,
   Download,
+  Camera,
 } from "lucide-react";
 
 // ── Types ──
@@ -834,6 +835,9 @@ export default function ProjectDetailPage({
   } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [capturingScreenshot, setCapturingScreenshot] = useState(false);
+  const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const screenshotInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -1264,6 +1268,103 @@ export default function ProjectDetailPage({
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </a>
             )}
+            <div className="flex gap-2 mt-2">
+              {(p.liveUrl || p.previewUrl) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={capturingScreenshot}
+                  onClick={async () => {
+                    setCapturingScreenshot(true);
+                    try {
+                      const url = p.liveUrl || p.previewUrl;
+                      const res = await fetch(
+                        `/api/projects/${encodeURIComponent(id)}/screenshot`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ url }),
+                        }
+                      );
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data.error || "Failed to capture screenshot");
+                      }
+                      setToast({ message: "Screenshot captured!", type: "success" });
+                      router.refresh();
+                    } catch (err: any) {
+                      setToast({
+                        message: err.message || "Failed to capture screenshot",
+                        type: "error",
+                      });
+                    } finally {
+                      setCapturingScreenshot(false);
+                    }
+                  }}
+                >
+                  {capturingScreenshot ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 mr-2" />
+                  )}
+                  Capture
+                </Button>
+              )}
+              <input
+                ref={screenshotInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    setToast({ message: "File too large. Max 5MB.", type: "error" });
+                    return;
+                  }
+                  setUploadingScreenshot(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    const res = await fetch(
+                      `/api/projects/${encodeURIComponent(id)}/screenshot/upload`,
+                      { method: "POST", body: formData }
+                    );
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      throw new Error(data.error || "Failed to upload screenshot");
+                    }
+                    setToast({ message: "Screenshot uploaded!", type: "success" });
+                    router.refresh();
+                  } catch (err: any) {
+                    setToast({
+                      message: err.message || "Failed to upload screenshot",
+                      type: "error",
+                    });
+                  } finally {
+                    setUploadingScreenshot(false);
+                    if (screenshotInputRef.current) {
+                      screenshotInputRef.current.value = "";
+                    }
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className={p.liveUrl || p.previewUrl ? "" : "flex-1"}
+                disabled={uploadingScreenshot}
+                onClick={() => screenshotInputRef.current?.click()}
+              >
+                {uploadingScreenshot ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                Upload
+              </Button>
+            </div>
             {!p.liveUrl && !p.previewUrl && !p.repoUrl && (
               <p className="text-sm text-muted-foreground py-2">
                 No links available
