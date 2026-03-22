@@ -272,7 +272,7 @@ export async function POST(request: Request) {
             continueLoop = false;
 
             const response = await client.messages.create({
-              model: "claude-sonnet-4-6-20250514",
+              model: "claude-haiku-4-6-20250514",
               max_tokens: 4096,
               system: SYSTEM_PROMPT,
               tools: TOOLS,
