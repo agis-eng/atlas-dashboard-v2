@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 import {
   Camera,
   ExternalLink,
@@ -248,9 +249,13 @@ export default function ProjectsPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((project) => (
-                <Card
+                <Link
                   key={project.id}
-                  className="group hover:shadow-md transition-shadow"
+                  href={`/projects/${project.id}`}
+                  className="block"
+                >
+                <Card
+                  className="group hover:shadow-md transition-shadow cursor-pointer"
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -286,6 +291,7 @@ export default function ProjectsPage() {
                           href={project.liveUrl || project.previewUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -322,6 +328,7 @@ export default function ProjectsPage() {
                     </div>
                   </CardContent>
                 </Card>
+                </Link>
               ))}
             </div>
           )}

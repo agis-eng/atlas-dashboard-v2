@@ -164,7 +164,7 @@ export default function ChatPage() {
       const errorMsg: ChatMessage = {
         id: `msg_${Date.now()}_error`,
         role: "assistant",
-        content: "Failed to get response. Check that Redis is configured.",
+        content: "Failed to connect to chat. Please check the server is running and try again.",
         timestamp: Date.now(),
         sessionId,
       };
