@@ -76,6 +76,42 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const data = await loadProjectsData();
+    const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
+
+    if (projectIndex === -1) {
+      return Response.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    // Soft delete: mark as archived
+    data.projects[projectIndex].archived = true;
+    data.projects[projectIndex].lastUpdate = new Date().toISOString().split("T")[0];
+
+    // Write back to YAML
+    const yamlStr = yaml.dump(data, {
+      lineWidth: -1,
+      noRefs: true,
+      quotingType: '"',
+      forceQuotes: false,
+    });
+    await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+
+    return Response.json({ success: true });
+  } catch (error: any) {
+    console.error("Project delete API error:", error);
+    return Response.json(
+      { error: "Failed to delete project", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 const EDITABLE_FIELDS = [
   "name",
   "owner",

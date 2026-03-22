@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -831,6 +832,9 @@ export default function ProjectDetailPage({
     message: string;
     type: "success" | "error";
   } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     async function load() {
@@ -862,6 +866,24 @@ export default function ProjectDetailPage({
     setDraft(null);
     setEditing(false);
   }, []);
+
+  const deleteProject = useCallback(async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Delete failed");
+      }
+      router.push("/projects");
+    } catch (e: any) {
+      setToast({ message: e.message || "Failed to delete project", type: "error" });
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [id, router]);
 
   const saveChanges = useCallback(async () => {
     if (!draft) return;
@@ -965,6 +987,41 @@ export default function ProjectDetailPage({
         />
       )}
 
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background border rounded-lg shadow-lg p-6 max-w-sm mx-4 space-y-4">
+            <h3 className="font-semibold text-lg">Delete Project</h3>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete <strong>{project.name}</strong>? This will archive the project and remove it from the projects list.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={deleteProject}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                )}
+                {deleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Back link */}
       <Link
         href="/projects"
@@ -1055,6 +1112,16 @@ export default function ProjectDetailPage({
         <div className="flex items-center gap-2">
           {editing ? (
             <>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving || deleting}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Delete
+              </Button>
+              <div className="flex-1" />
               <Button
                 variant="outline"
                 size="sm"
