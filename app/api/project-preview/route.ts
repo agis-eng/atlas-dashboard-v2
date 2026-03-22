@@ -1,6 +1,23 @@
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
 
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
+
+async function launchBrowser() {
+  if (process.env.VERCEL) {
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  }
+  const localPuppeteer = await import("puppeteer");
+  return localPuppeteer.default.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+}
 
 export async function GET(request: Request) {
   try {
@@ -26,12 +43,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // Capture screenshot
-    const puppeteer = await import("puppeteer");
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    const browser = await launchBrowser();
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });

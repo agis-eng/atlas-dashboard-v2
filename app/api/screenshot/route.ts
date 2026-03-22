@@ -1,4 +1,22 @@
 import { getRedis, REDIS_KEYS, type Screenshot } from "@/lib/redis";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
+
+async function launchBrowser() {
+  if (process.env.VERCEL) {
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  }
+  // Local dev: use regular puppeteer
+  const localPuppeteer = await import("puppeteer");
+  return localPuppeteer.default.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+}
 
 export async function POST(request: Request) {
   try {
@@ -8,12 +26,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Missing URL" }, { status: 400 });
     }
 
-    // Dynamic import to avoid bundling puppeteer on client
-    const puppeteer = await import("puppeteer");
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    const browser = await launchBrowser();
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
