@@ -2,6 +2,16 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
 
+export interface BrainLink {
+  url: string;
+  label: string;
+}
+
+export interface ProjectBrain {
+  links?: BrainLink[];
+  notes?: string[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -32,6 +42,7 @@ export interface Project {
     affiliate_url?: string;
     signup_url?: string;
   };
+  brain?: ProjectBrain;
 }
 
 export interface Task {
