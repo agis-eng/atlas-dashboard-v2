@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
+import { captureProjectScreenshot } from "@/lib/screenshot";
 
 interface BrainLink {
   url: string;
@@ -169,6 +170,15 @@ export async function PUT(
       forceQuotes: false,
     });
     await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+
+    // Auto-capture screenshot if URL was added/changed
+    const url = project.liveUrl || project.previewUrl;
+    if (url && (updates.liveUrl || updates.previewUrl)) {
+      // Run in background, don't wait for it
+      captureProjectScreenshot(project.id, url).catch((err) =>
+        console.error("Screenshot capture failed:", err)
+      );
+    }
 
     return Response.json({ project });
   } catch (error: any) {
