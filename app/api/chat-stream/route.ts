@@ -46,7 +46,12 @@ export async function POST(request: Request) {
     tryStoreMessage(sessionId, userMsg);
     tryUpdateSession(sessionId, profile, message.slice(0, 50));
 
-    // Call OpenClaw API (or fallback to echo)
+    // OpenClaw chat integration:
+    // OpenClaw runs on localhost (Mac mini). For chat to work from Vercel:
+    //   a) Expose OpenClaw gateway API publicly (e.g. via Cloudflare Tunnel or ngrok)
+    //   b) Set up a webhook-based integration (OpenClaw calls back to Atlas)
+    //   c) Keep disabled for now — falls back to echo mode gracefully
+    // Set OPENCLAW_API_URL and OPENCLAW_API_KEY env vars when ready.
     const openclawUrl = process.env.OPENCLAW_API_URL;
     const openclawKey = process.env.OPENCLAW_API_KEY;
 
