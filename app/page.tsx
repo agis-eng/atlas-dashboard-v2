@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  MessageSquare,
   ListChecks,
   FolderOpen,
   Activity,
@@ -24,60 +23,110 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-const quickStats = [
-  {
-    title: "Active Projects",
-    value: "4",
-    description: "2 updated today",
-    icon: FolderOpen,
-    accent: true,
-  },
-  {
-    title: "Open Tasks",
-    value: "12",
-    description: "3 due this week",
-    icon: ListChecks,
-  },
-  {
-    title: "Messages",
-    value: "8",
-    description: "Unread conversations",
-    icon: MessageSquare,
-  },
-  {
-    title: "System Health",
-    value: "98%",
-    description: "All services running",
-    icon: Activity,
-  },
-];
-
-const recentActivity = [
-  {
-    title: "Dashboard v2 scaffolding",
-    project: "Atlas",
-    time: "Just now",
-  },
-  {
-    title: "eBay listing automation",
-    project: "AutomateIQ",
-    time: "2h ago",
-  },
-  {
-    title: "Contract analysis pipeline",
-    project: "OpenClaw",
-    time: "Yesterday",
-  },
-];
+interface StatsData {
+  activeProjects: number;
+  openTasks: number;
+  dueThisWeek: number;
+  completionPct: number;
+}
 
 export default function Home() {
   const [greeting, setGreeting] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [stats, setStats] = useState<StatsData | null>(null);
 
   useEffect(() => {
     setGreeting(getGreeting());
     setMounted(true);
+    loadStats();
   }, []);
+
+  async function loadStats() {
+    try {
+      const [projectsRes, tasksRes] = await Promise.all([
+        fetch("/api/projects"),
+        fetch("/api/tasks"),
+      ]);
+      const projectsData = await projectsRes.json();
+      const tasksData = await tasksRes.json();
+
+      const projects = projectsData.projects || [];
+      const tasks = tasksData.tasks || [];
+
+      const openTasks = tasks.filter(
+        (t: any) => t.status !== "completed"
+      ).length;
+      const completedTasks = tasks.filter(
+        (t: any) => t.status === "completed"
+      ).length;
+
+      const now = new Date();
+      const endOfWeek = new Date(now);
+      endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
+      const dueThisWeek = tasks.filter((t: any) => {
+        if (!t.due_date || t.status === "completed") return false;
+        const due = new Date(t.due_date);
+        return due >= now && due <= endOfWeek;
+      }).length;
+
+      const completionPct =
+        tasks.length > 0
+          ? Math.round((completedTasks / tasks.length) * 100)
+          : 0;
+
+      setStats({
+        activeProjects: projects.length,
+        openTasks,
+        dueThisWeek,
+        completionPct,
+      });
+    } catch {
+      console.error("Failed to load stats");
+    }
+  }
+
+  const quickStats = [
+    {
+      title: "Active Projects",
+      value: stats ? String(stats.activeProjects) : "–",
+      description: "Non-archived projects",
+      icon: FolderOpen,
+      accent: true,
+      href: "/projects",
+    },
+    {
+      title: "Open Tasks",
+      value: stats ? String(stats.openTasks) : "–",
+      description: stats ? `${stats.dueThisWeek} due this week` : "Loading...",
+      icon: ListChecks,
+      href: "/tasks",
+    },
+    {
+      title: "Completion Rate",
+      value: stats ? `${stats.completionPct}%` : "–",
+      description: "Tasks completed",
+      icon: Activity,
+      href: "/tasks",
+    },
+  ];
+
+  const recentActivity = [
+    {
+      title: "Dashboard v2 scaffolding",
+      project: "Atlas",
+      time: "Just now",
+    },
+    {
+      title: "eBay listing automation",
+      project: "AutomateIQ",
+      time: "2h ago",
+    },
+    {
+      title: "Contract analysis pipeline",
+      project: "OpenClaw",
+      time: "Yesterday",
+    },
+  ];
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
@@ -94,30 +143,31 @@ export default function Home() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {quickStats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <Card
-              key={stat.title}
-              className={`group cursor-pointer transition-all duration-300 hover:shadow-md ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-              style={{ transitionDelay: `${(i + 1) * 100}ms` }}
-            >
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
-                <Icon
-                  className={`h-4 w-4 ${stat.accent ? "text-orange-600" : "text-muted-foreground"}`}
-                />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stat.description}
-                </p>
-              </CardContent>
-            </Card>
+            <Link key={stat.title} href={stat.href}>
+              <Card
+                className={`group cursor-pointer transition-all duration-300 hover:shadow-md ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+                style={{ transitionDelay: `${(i + 1) * 100}ms` }}
+              >
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon
+                    className={`h-4 w-4 ${stat.accent ? "text-orange-600" : "text-muted-foreground"}`}
+                  />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>
@@ -167,7 +217,6 @@ export default function Home() {
           </CardHeader>
           <CardContent className="grid gap-3">
             {[
-              { label: "New Chat", icon: MessageSquare, color: "text-orange-600", href: "/chat" },
               { label: "View Tasks", icon: ListChecks, color: "text-blue-500", href: "/tasks" },
               { label: "Browse Projects", icon: FolderOpen, color: "text-green-500", href: "/projects" },
             ].map((action) => {

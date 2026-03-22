@@ -1,13 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Search,
@@ -38,31 +31,12 @@ interface TaskItem {
   updated_at?: string;
 }
 
-const statusConfig: Record<
-  string,
-  { label: string; color: string; icon: typeof Circle }
-> = {
-  "in-progress": {
-    label: "In Progress",
-    color: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    icon: Clock,
-  },
-  backlog: {
-    label: "Backlog",
-    color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-    icon: Circle,
-  },
-  recurring: {
-    label: "Recurring",
-    color: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-    icon: RefreshCw,
-  },
-  completed: {
-    label: "Done",
-    color: "bg-green-500/10 text-green-500 border-green-500/20",
-    icon: CheckCircle2,
-  },
-};
+const COLUMNS = [
+  { key: "backlog", label: "Backlog", dotColor: "bg-zinc-400", icon: Circle },
+  { key: "in-progress", label: "In Progress", dotColor: "bg-blue-500", icon: Clock },
+  { key: "recurring", label: "Review", dotColor: "bg-purple-500", icon: RefreshCw },
+  { key: "completed", label: "Done", dotColor: "bg-green-500", icon: CheckCircle2 },
+] as const;
 
 const typeColors: Record<string, string> = {
   marketing: "bg-pink-500/10 text-pink-500 border-pink-500/20",
@@ -78,9 +52,9 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   useEffect(() => {
     loadTasks();
@@ -98,10 +72,6 @@ export default function TasksPage() {
     }
   }
 
-  const statuses = [
-    "all",
-    ...Array.from(new Set(tasks.map((t) => t.status).filter(Boolean))).sort(),
-  ];
   const assignees = [
     "all",
     ...Array.from(new Set(tasks.map((t) => t.assignee).filter(Boolean))).sort(),
@@ -118,19 +88,15 @@ export default function TasksPage() {
       t.notes?.toLowerCase().includes(search.toLowerCase()) ||
       t.project?.toLowerCase().includes(search.toLowerCase()) ||
       t.client?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all" || t.status === statusFilter;
     const matchesAssignee =
       assigneeFilter === "all" || t.assignee === assigneeFilter;
     const matchesType = typeFilter === "all" || t.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesAssignee && matchesType;
+    return matchesSearch && matchesAssignee && matchesType;
   });
 
-  const statusCounts = tasks.reduce<Record<string, number>>((acc, t) => {
-    const s = t.status || "backlog";
-    acc[s] = (acc[s] || 0) + 1;
-    return acc;
-  }, {});
+  function getColumnTasks(columnKey: string) {
+    return filtered.filter((t) => (t.status || "backlog") === columnKey);
+  }
 
   function formatDate(dateStr?: string | null) {
     if (!dateStr) return null;
@@ -143,8 +109,34 @@ export default function TasksPage() {
     return new Date(dateStr) < new Date();
   }
 
+  async function handleDrop(taskId: string, newStatus: string) {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === newStatus) return;
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    );
+
+    try {
+      const res = await fetch("/api/update-task-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, newStatus }),
+      });
+      if (!res.ok) throw new Error("Failed");
+    } catch {
+      // Revert on failure
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, status: task.status } : t
+        )
+      );
+    }
+  }
+
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 md:p-10 max-w-full mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -157,40 +149,9 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Status summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {(["in-progress", "backlog", "recurring", "completed"] as const).map(
-          (s) => {
-            const cfg = statusConfig[s];
-            const StatusIcon = cfg.icon;
-            return (
-              <button
-                key={s}
-                onClick={() =>
-                  setStatusFilter(statusFilter === s ? "all" : s)
-                }
-                className={`rounded-lg border p-3 text-left transition-colors ${
-                  statusFilter === s
-                    ? "border-orange-600/50 bg-orange-600/5"
-                    : "border-border hover:border-border/80 bg-card/50"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <StatusIcon className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{cfg.label}</span>
-                </div>
-                <span className="text-2xl font-semibold">
-                  {statusCounts[s] || 0}
-                </span>
-              </button>
-            );
-          }
-        )}
-      </div>
-
       {/* Search & Filters */}
       <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
@@ -201,19 +162,6 @@ export default function TasksPage() {
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-background border border-input rounded-md px-3 py-2 text-sm"
-          >
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                {s === "all"
-                  ? "All Status"
-                  : (s && statusConfig[s as keyof typeof statusConfig]?.label) || s}
-              </option>
-            ))}
-          </select>
           <select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value)}
@@ -239,152 +187,150 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Task List */}
+      {/* Kanban Board */}
       {loading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-                    <div className="h-3 bg-muted rounded animate-pulse w-1/3" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="grid grid-cols-4 gap-4">
+          {COLUMNS.map((col) => (
+            <div key={col.key} className="space-y-3">
+              <div className="h-8 bg-muted rounded animate-pulse" />
+              <div className="h-24 bg-muted rounded animate-pulse" />
+              <div className="h-24 bg-muted rounded animate-pulse" />
+            </div>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-            <ListTodo className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <p className="text-muted-foreground">
-            No tasks match your filters.
-          </p>
-        </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((task) => {
-            const cfg = statusConfig[task.status || "backlog"] || statusConfig.backlog;
-            const StatusIcon = cfg.icon;
-            const overdue = isOverdue(task.due_date);
-
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
+          {COLUMNS.map((col) => {
+            const colTasks = getColumnTasks(col.key);
+            const ColIcon = col.icon;
             return (
-              <Card
-                key={task.id}
-                className="group hover:shadow-md transition-shadow"
+              <div
+                key={col.key}
+                className={`rounded-lg border bg-muted/30 min-h-[300px] flex flex-col transition-colors ${
+                  dragOverCol === col.key ? "border-orange-500/50 bg-orange-500/5" : "border-border"
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(col.key);
+                }}
+                onDragLeave={(e) => {
+                  if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+                    setDragOverCol(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(null);
+                  const taskId = e.dataTransfer.getData("text/plain");
+                  if (taskId) handleDrop(taskId, col.key);
+                }}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    {/* Status icon */}
-                    <div className="pt-0.5">
-                      <StatusIcon className={`h-5 w-5 ${
-                        task.status === "in-progress"
-                          ? "text-blue-500"
-                          : task.status === "completed"
-                            ? "text-green-500"
-                            : task.status === "recurring"
-                              ? "text-purple-500"
-                              : "text-muted-foreground"
-                      }`} />
-                    </div>
+                {/* Column Header */}
+                <div className="flex items-center gap-2 px-3 py-3 border-b border-border">
+                  <span className={`h-2.5 w-2.5 rounded-full ${col.dotColor}`} />
+                  <h3 className="text-sm font-semibold flex-1">{col.label}</h3>
+                  <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                    {colTasks.length}
+                  </span>
+                </div>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h3 className="font-medium text-sm leading-snug">
-                            {task.title}
-                          </h3>
+                {/* Column Body */}
+                <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+                  {colTasks.length === 0 ? (
+                    <div className="flex items-center justify-center h-20">
+                      <p className="text-xs text-muted-foreground">No tasks</p>
+                    </div>
+                  ) : (
+                    colTasks.map((task) => {
+                      const overdue = isOverdue(task.due_date);
+                      return (
+                        <div
+                          key={task.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", task.id);
+                          }}
+                          className="group rounded-md border border-border bg-card p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+                        >
+                          {/* Title row */}
+                          <div className="flex items-start justify-between gap-1">
+                            <h4 className="text-sm font-medium leading-snug">
+                              {task.title}
+                            </h4>
+                            {task.notion_url && (
+                              <a
+                                href={task.notion_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-muted-foreground hover:text-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+
+                          {/* Notes */}
                           {task.notes && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {task.notes}
                             </p>
                           )}
+
+                          {/* Tags row */}
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            {task.priority === "high" && (
+                              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-red-500/10 text-red-500">
+                                HIGH
+                              </span>
+                            )}
+                            {task.type && (
+                              <span
+                                className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                  typeColors[task.type] ||
+                                  "bg-muted text-muted-foreground border-border"
+                                }`}
+                              >
+                                {task.type}
+                              </span>
+                            )}
+                            {task.client && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.client}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Footer */}
+                          <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/50">
+                            {task.assignee ? (
+                              <span className="text-[11px] text-muted-foreground font-medium">
+                                {task.assignee}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground/50">
+                                Unassigned
+                              </span>
+                            )}
+                            {task.due_date && (
+                              <span
+                                className={`inline-flex items-center gap-0.5 text-[11px] ${
+                                  overdue
+                                    ? "text-red-500"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                <CalendarDays className="h-3 w-3" />
+                                {formatDate(task.due_date)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {task.notion_url && (
-                          <a
-                            href={task.notion_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-
-                      {/* Meta row */}
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        {/* Status badge */}
-                        <span
-                          className={`inline-block text-[10px] px-2 py-0.5 rounded-full border font-medium uppercase ${cfg.color}`}
-                        >
-                          {cfg.label}
-                        </span>
-
-                        {/* Priority */}
-                        {task.priority && (
-                          <span
-                            className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${
-                              task.priority === "high"
-                                ? "bg-red-500/10 text-red-500"
-                                : task.priority === "medium"
-                                  ? "bg-yellow-500/10 text-yellow-500"
-                                  : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {task.priority}
-                          </span>
-                        )}
-
-                        {/* Type badge */}
-                        {task.type && (
-                          <span
-                            className={`inline-block text-[10px] px-2 py-0.5 rounded-full border ${
-                              typeColors[task.type] ||
-                              "bg-muted text-muted-foreground border-border"
-                            }`}
-                          >
-                            {task.type}
-                          </span>
-                        )}
-
-                        {/* Assignee */}
-                        {task.assignee && (
-                          <span className="text-xs text-muted-foreground">
-                            {task.assignee}
-                          </span>
-                        )}
-
-                        {/* Due date */}
-                        {task.due_date && (
-                          <span
-                            className={`inline-flex items-center gap-1 text-xs ${
-                              overdue
-                                ? "text-red-500"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            <CalendarDays className="h-3 w-3" />
-                            {formatDate(task.due_date)}
-                          </span>
-                        )}
-
-                        {/* Project */}
-                        {task.project && (
-                          <span className="text-xs text-muted-foreground">
-                            {task.project}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
