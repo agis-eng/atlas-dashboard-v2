@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -33,6 +33,9 @@ import {
   LinkIcon,
   StickyNote,
   Loader2,
+  Upload,
+  FileText,
+  Download,
 } from "lucide-react";
 
 // ── Types ──
@@ -42,9 +45,18 @@ interface BrainLink {
   label: string;
 }
 
+interface BrainFile {
+  name: string;
+  path: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+}
+
 interface ProjectBrain {
   links?: BrainLink[];
   notes?: string[];
+  files?: BrainFile[];
 }
 
 interface Affiliate {
@@ -312,13 +324,68 @@ function BrainSection({
   brain,
   editing,
   onChange,
+  projectId,
 }: {
   brain: ProjectBrain;
   editing: boolean;
   onChange: (brain: ProjectBrain) => void;
+  projectId: string;
 }) {
   const links = brain.links || [];
   const notes = brain.notes || [];
+  const files = brain.files || [];
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles?.length) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("projectId", projectId);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        formData.append("files", selectedFiles[i]);
+      }
+
+      const res = await fetch("/api/projects/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        onChange({ ...brain, files: [...files, ...data.files] });
+      }
+    } catch (err) {
+      console.error("Upload failed:", err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const deleteFile = async (filePath: string) => {
+    try {
+      const res = await fetch("/api/projects/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, filePath }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onChange({ ...brain, files: files.filter((f) => f.path !== filePath) });
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   const addLink = () => {
     onChange({ ...brain, links: [...links, { url: "", label: "" }] });
@@ -343,7 +410,7 @@ function BrainSection({
     onChange({ ...brain, notes: notes.filter((_, i) => i !== idx) });
   };
 
-  const totalItems = links.length + notes.length;
+  const totalItems = links.length + notes.length + files.length;
 
   return (
     <Card>
@@ -478,6 +545,79 @@ function BrainSection({
               <Plus className="h-3 w-3 mr-1" />
               Add Note
             </Button>
+          )}
+        </div>
+
+        {/* Files */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Files
+            </p>
+          </div>
+          {files.length === 0 && !editing && (
+            <p className="text-sm text-muted-foreground">No files uploaded</p>
+          )}
+          <div className="space-y-1.5">
+            {files.map((file, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm group"
+              >
+                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(file.size)} &middot; {file.uploadedAt}
+                  </p>
+                </div>
+                <a
+                  href={file.path}
+                  download
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+                {editing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteFile(file.path)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          {editing && (
+            <div className="mt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.csv,.zip"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Upload className="h-3 w-3 mr-1" />
+                )}
+                {uploading ? "Uploading..." : "Upload Files"}
+              </Button>
+            </div>
           )}
         </div>
       </CardContent>
@@ -1083,6 +1223,7 @@ export default function ProjectDetailPage({
           brain={(editing && draft ? draft.brain : project.brain) || {}}
           editing={editing}
           onChange={(brain) => updateDraft("brain", brain)}
+          projectId={id}
         />
       )}
     </div>

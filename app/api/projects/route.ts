@@ -48,8 +48,13 @@ export async function GET(request: Request) {
       );
     }
 
-    // Sort by rank (lower first), then alphabetically
+    // Sort by priority (high → medium → low → none), then rank, then alphabetically
+    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
     projects.sort((a, b) => {
+      const pa = a.priority ? (priorityOrder[a.priority] ?? 3) : 3;
+      const pb = b.priority ? (priorityOrder[b.priority] ?? 3) : 3;
+      if (pa !== pb) return pa - pb;
+
       if (a.rank !== undefined && b.rank !== undefined) {
         return a.rank - b.rank;
       }

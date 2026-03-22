@@ -19,6 +19,7 @@ import {
   FolderOpen,
   Search,
   Filter,
+  ImageOff,
 } from "lucide-react";
 
 interface ProjectItem {
@@ -55,6 +56,35 @@ const stageColors: Record<string, string> = {
   Partner: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
   Active: "bg-green-500/10 text-green-500 border-green-500/20",
 };
+
+function ProjectPreview({ url }: { url: string }) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const previewUrl = `/api/project-preview?url=${encodeURIComponent(url)}`;
+
+  return (
+    <div className="aspect-video bg-muted relative overflow-hidden rounded-t-lg">
+      {status === "loading" && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      {status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ImageOff className="h-5 w-5 text-muted-foreground" />
+        </div>
+      )}
+      {status !== "error" && (
+        <img
+          src={previewUrl}
+          alt="Site preview"
+          className={`w-full h-full object-cover object-top transition-opacity ${status === "loaded" ? "opacity-100" : "opacity-0"}`}
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("error")}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -255,8 +285,11 @@ export default function ProjectsPage() {
                   className="block"
                 >
                 <Card
-                  className="group hover:shadow-md transition-shadow cursor-pointer"
+                  className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                 >
+                  {(project.liveUrl || project.previewUrl) && (
+                    <ProjectPreview url={(project.liveUrl || project.previewUrl)!} />
+                  )}
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">

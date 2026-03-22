@@ -32,6 +32,9 @@ export const REDIS_KEYS = {
 
   // Activity
   recentActivity: (profile: string) => `activity:recent:${profile}`,
+
+  // Project screenshot previews (cached 24h)
+  projectPreview: (url: string) => `project-preview:${encodeURIComponent(url)}`,
 } as const;
 
 // Types
