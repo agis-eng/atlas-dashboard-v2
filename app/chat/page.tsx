@@ -12,8 +12,17 @@ import {
   User,
   Bot,
   Loader2,
+  Search,
 } from "lucide-react";
 import type { ChatMessage, ChatSession } from "@/lib/redis";
+
+const TOOL_LABELS: Record<string, string> = {
+  search_projects: "Searching projects",
+  get_project_details: "Loading project details",
+  get_tasks: "Searching tasks",
+  search_data: "Searching dashboard data",
+  analyze_workload: "Analyzing workload",
+};
 
 function generateSessionId() {
   return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -26,6 +35,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [activeTool, setActiveTool] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -137,8 +147,14 @@ export default function ChatPage() {
             if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
-              fullContent += parsed.content;
-              setStreamingContent(fullContent);
+              if (parsed.type === "tool_start") {
+                setActiveTool(parsed.tool);
+              } else if (parsed.type === "tool_done") {
+                setActiveTool(null);
+              } else if (parsed.content) {
+                fullContent += parsed.content;
+                setStreamingContent(fullContent);
+              }
             } catch {
               // skip malformed chunks
             }
@@ -171,6 +187,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsStreaming(false);
+      setActiveTool(null);
     }
   }
 
@@ -229,10 +246,11 @@ export default function ChatPage() {
               <div className="h-16 w-16 rounded-2xl bg-orange-600/10 flex items-center justify-center mb-4">
                 <MessageSquare className="h-8 w-8 text-orange-600" />
               </div>
-              <h2 className="text-xl font-semibold mb-2">Start a conversation</h2>
+              <h2 className="text-xl font-semibold mb-2">Ask Atlas anything</h2>
               <p className="text-muted-foreground text-sm max-w-md">
-                Send a message to begin. Your conversations are saved and can be
-                resumed from the sidebar.
+                I can search your projects and tasks, analyze workload, and
+                answer questions about your dashboard data. Try &quot;What are my
+                active projects?&quot; or &quot;Show overdue tasks&quot;.
               </p>
             </div>
           ) : (
@@ -280,7 +298,18 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {isStreaming && !streamingContent && (
+              {isStreaming && activeTool && (
+                <div className="flex gap-3 justify-start items-center">
+                  <div className="h-8 w-8 rounded-full bg-orange-600/10 flex items-center justify-center shrink-0">
+                    <Search className="h-4 w-4 text-orange-600 animate-pulse" />
+                  </div>
+                  <span className="text-sm text-muted-foreground animate-pulse">
+                    {TOOL_LABELS[activeTool] || activeTool}...
+                  </span>
+                </div>
+              )}
+
+              {isStreaming && !streamingContent && !activeTool && (
                 <div className="flex gap-3 justify-start">
                   <div className="h-8 w-8 rounded-full bg-orange-600/10 flex items-center justify-center shrink-0">
                     <Loader2 className="h-4 w-4 text-orange-600 animate-spin" />
