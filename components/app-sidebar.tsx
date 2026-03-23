@@ -15,6 +15,7 @@ import {
   User,
   Users,
   LogOut,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ const navItems = [
   { icon: ListChecks, label: "Tasks", href: "/tasks" },
   { icon: Inbox, label: "Inbox", href: "/inbox" },
   { icon: Mail, label: "Email Digest", href: "/email" },
+  { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];

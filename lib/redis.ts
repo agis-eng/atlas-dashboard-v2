@@ -40,6 +40,13 @@ export const REDIS_KEYS = {
   user: (userId: string) => `user:${userId}`,
   userByEmail: (email: string) => `user:email:${email.toLowerCase()}`,
   session: (sessionId: string) => `session:${sessionId}`,
+
+  // Memory / Daily Logs
+  memoryEntries: (date: string) => `memory:entries:${date}`,
+  memoryEntry: (id: string) => `memory:entry:${id}`,
+  memoryDates: (profile: string) => `memory:dates:${profile}`,
+  memoryByProject: (projectId: string) => `memory:project:${projectId}`,
+  memoryTags: (profile: string) => `memory:tags:${profile}`,
 } as const;
 
 // Types
@@ -88,4 +95,17 @@ export interface Session {
   userId: string;
   createdAt: number;
   expiresAt: number;
+}
+
+export interface MemoryEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  timestamp: string; // ISO 8601
+  title: string;
+  content: string;
+  author: string; // Erik or Anton
+  profile: "erik" | "anton";
+  projectIds: string[];
+  tags: string[];
+  type: "discussion" | "decision" | "update" | "note";
 }
