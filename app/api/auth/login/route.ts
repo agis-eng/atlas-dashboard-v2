@@ -39,7 +39,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("[auth/login]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[auth/login] Full error:", err);
+    console.error("[auth/login] Error stack:", err instanceof Error ? err.stack : "no stack");
+    console.error("[auth/login] Error message:", err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ 
+      error: "Internal server error",
+      debug: process.env.NODE_ENV === "development" ? String(err) : undefined
+    }, { status: 500 });
   }
 }
