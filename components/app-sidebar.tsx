@@ -5,6 +5,7 @@ import {
   MessageSquare,
   FolderOpen,
   ListChecks,
+  Mail,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,7 @@ const navItems = [
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: FolderOpen, label: "Projects", href: "/projects" },
   { icon: ListChecks, label: "Tasks", href: "/tasks" },
+  { icon: Mail, label: "Email", href: "/email" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
