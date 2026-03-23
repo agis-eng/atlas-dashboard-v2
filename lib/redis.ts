@@ -35,6 +35,11 @@ export const REDIS_KEYS = {
   emailState: (msgId: string) => `email:state:${msgId}`,
   emailSnooze: (userId: string) => `email:snooze:${userId}`,
   emailTemplates: (userId: string) => `email:templates:${userId}`,
+
+  // Auth
+  user: (userId: string) => `user:${userId}`,
+  userByEmail: (email: string) => `user:email:${email.toLowerCase()}`,
+  session: (sessionId: string) => `session:${sessionId}`,
 } as const;
 
 // Types
@@ -68,3 +73,19 @@ export interface Project {
 }
 
 export type Profile = "erik" | "anton" | "all";
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  profile: "erik" | "anton";
+  createdAt: number;
+}
+
+export interface Session {
+  id: string;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+}

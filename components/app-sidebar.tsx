@@ -14,6 +14,7 @@ import {
   ChevronDown,
   User,
   Users,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Profile } from "@/lib/redis";
 
 const navItems = [
@@ -45,11 +46,43 @@ const profiles: { value: Profile; label: string; icon: typeof User }[] = [
   { value: "all", label: "All", icon: Users },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  currentUser: {
+    id: string;
+    name: string;
+    email: string;
+    profile: "erik" | "anton";
+  } | null;
+}
+
+export function AppSidebar({ currentUser }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(true);
-  const [currentProfile, setCurrentProfile] = useState<Profile>("erik");
+  const [currentProfile, setCurrentProfile] = useState<Profile>(
+    currentUser?.profile ?? "erik"
+  );
   const [profileOpen, setProfileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLoggingOut(false);
+    }
+  }
+
+  const userInitial = currentUser
+    ? currentUser.name[0].toUpperCase()
+    : currentProfile === "all"
+    ? "A"
+    : currentProfile[0].toUpperCase();
+
+  const userLabel = currentUser?.name ?? profiles.find((p) => p.value === currentProfile)?.label ?? "User";
 
   return (
     <TooltipProvider delay={0}>
@@ -66,7 +99,7 @@ export function AppSidebar() {
           </div>
         </div>
 
-        {/* Profile Switcher */}
+        {/* Profile / User Switcher */}
         <div className="border-b border-border p-2">
           {collapsed ? (
             <Tooltip>
@@ -82,13 +115,16 @@ export function AppSidebar() {
                     className="w-full flex items-center justify-center h-9 rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <div className="h-7 w-7 rounded-full bg-orange-600/10 flex items-center justify-center text-xs font-semibold text-orange-600">
-                      {currentProfile === "all" ? "A" : currentProfile[0].toUpperCase()}
+                      {userInitial}
                     </div>
                   </button>
                 )}
               />
               <TooltipContent side="right" sideOffset={8}>
-                Profile: {profiles.find((p) => p.value === currentProfile)?.label}
+                {userLabel}
+                {currentUser && (
+                  <span className="block text-xs text-muted-foreground">{currentUser.email}</span>
+                )}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -97,21 +133,27 @@ export function AppSidebar() {
                 onClick={() => setProfileOpen(!profileOpen)}
                 className="w-full flex items-center gap-2 rounded-lg p-2 hover:bg-muted/50 transition-colors"
               >
-                <div className="h-7 w-7 rounded-full bg-orange-600/10 flex items-center justify-center text-xs font-semibold text-orange-600">
-                  {currentProfile === "all" ? "A" : currentProfile[0].toUpperCase()}
+                <div className="h-7 w-7 rounded-full bg-orange-600/10 flex items-center justify-center text-xs font-semibold text-orange-600 shrink-0">
+                  {userInitial}
                 </div>
-                <span className="text-sm font-medium flex-1 text-left">
-                  {profiles.find((p) => p.value === currentProfile)?.label}
-                </span>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium truncate">{userLabel}</p>
+                  {currentUser && (
+                    <p className="text-xs text-muted-foreground truncate">{currentUser.email}</p>
+                  )}
+                </div>
                 <ChevronDown
                   className={cn(
-                    "h-3.5 w-3.5 text-muted-foreground transition-transform",
+                    "h-3.5 w-3.5 text-muted-foreground transition-transform shrink-0",
                     profileOpen && "rotate-180"
                   )}
                 />
               </button>
               {profileOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg z-50 p-1">
+                  <p className="px-2 py-1 text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                    View as
+                  </p>
                   {profiles.map((profile) => (
                     <button
                       key={profile.value}
@@ -193,8 +235,40 @@ export function AppSidebar() {
           })}
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="border-t border-border p-2">
+        {/* Bottom: Logout + Collapse toggle */}
+        <div className="border-t border-border p-2 space-y-1">
+          {/* Logout */}
+          {currentUser && (
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    size={collapsed ? "icon" : "default"}
+                    className={cn(
+                      "w-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors",
+                      collapsed ? "justify-center px-0" : "justify-start gap-3 px-3"
+                    )}
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    {!collapsed && (
+                      <span className="truncate">{loggingOut ? "Signing out…" : "Sign out"}</span>
+                    )}
+                  </Button>
+                )}
+              />
+              {collapsed && (
+                <TooltipContent side="right" sideOffset={8}>
+                  Sign out
+                </TooltipContent>
+              )}
+            </Tooltip>
+          )}
+
+          {/* Collapse toggle */}
           <Button
             variant="ghost"
             size="icon"
