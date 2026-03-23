@@ -77,6 +77,12 @@ interface Affiliate {
   signup_url?: string;
 }
 
+interface CustomLink {
+  label: string;
+  url: string;
+  icon?: string;
+}
+
 interface ProjectDetail {
   id: string;
   name: string;
@@ -89,6 +95,7 @@ interface ProjectDetail {
   previewUrl?: string;
   liveUrl?: string;
   repoUrl?: string;
+  customLinks?: CustomLink[];
   rank?: number;
   priority?: string;
   tags?: string[];
@@ -825,6 +832,11 @@ export default function ProjectDetailPage({
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clientContact, setClientContact] = useState<{
+    name?: string;
+    email?: string;
+    phone?: string;
+  } | null>(null);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -851,6 +863,23 @@ export default function ProjectDetailPage({
         }
         const data = await res.json();
         setProject(data.project);
+        
+        // Load client contact info if clientId exists
+        if (data.project?.clientId) {
+          try {
+            const clientRes = await fetch(`/api/clients/${encodeURIComponent(data.project.clientId)}`);
+            if (clientRes.ok) {
+              const clientData = await clientRes.json();
+              setClientContact({
+                name: clientData.name,
+                email: clientData.contact || clientData.email,
+                phone: clientData.phone,
+              });
+            }
+          } catch (err) {
+            console.error('Failed to load client contact:', err);
+          }
+        }
       } catch {
         setError("Failed to load project");
       } finally {
@@ -1194,6 +1223,36 @@ export default function ProjectDetailPage({
                 onChange={(v) => updateDraft("clientId", v)}
                 icon={<Tag className="h-3.5 w-3.5 text-muted-foreground" />}
               />
+            </div>
+            {/* Client Contact Info */}
+            {!editing && clientContact && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 border">
+                <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">Client Contact</p>
+                  {clientContact.name && (
+                    <p className="text-sm font-medium mb-1">{clientContact.name}</p>
+                  )}
+                  {clientContact.email && (
+                    <a
+                      href={`mailto:${clientContact.email}`}
+                      className="text-sm text-blue-600 hover:underline block truncate"
+                    >
+                      {clientContact.email}
+                    </a>
+                  )}
+                  {clientContact.phone && (
+                    <a
+                      href={`tel:${clientContact.phone}`}
+                      className="text-sm text-muted-foreground hover:underline block"
+                    >
+                      {clientContact.phone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
               {!editing && p.lastUpdate && (
                 <div className="flex items-center gap-2">
                   <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
