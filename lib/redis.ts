@@ -31,6 +31,10 @@ export const REDIS_KEYS = {
 
   // Email
   emailSettings: (userId: string) => `email:settings:${userId}`,
+  emailCache: (userId: string, account: string) => `email:inbox:${userId}:${account}`,
+  emailState: (msgId: string) => `email:state:${msgId}`,
+  emailSnooze: (userId: string) => `email:snooze:${userId}`,
+  emailTemplates: (userId: string) => `email:templates:${userId}`,
 } as const;
 
 // Types

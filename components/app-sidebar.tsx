@@ -6,6 +6,7 @@ import {
   FolderOpen,
   ListChecks,
   Mail,
+  Inbox,
   ShoppingBag,
   Settings,
   ChevronLeft,
@@ -32,7 +33,8 @@ const navItems = [
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: FolderOpen, label: "Projects", href: "/projects" },
   { icon: ListChecks, label: "Tasks", href: "/tasks" },
-  { icon: Mail, label: "Email", href: "/email" },
+  { icon: Inbox, label: "Inbox", href: "/inbox" },
+  { icon: Mail, label: "Email Digest", href: "/email" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
