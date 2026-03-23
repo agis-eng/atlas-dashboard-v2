@@ -1,0 +1,50 @@
+accounts:
+  - id: "acct-001"
+    name: "Erik Personal"
+    email: "erik@rcmn.com"
+    type: "google"
+    connected: false
+    created_at: "2026-03-22T00:00:00Z"
+  - id: "acct-002"
+    name: "TED Sales"
+    email: "sales@ted-associates.com"
+    type: "smtp"
+    smtp:
+      host: ""
+      port: 587
+      username: ""
+      password: ""
+      secure: true
+    connected: false
+    created_at: "2026-03-22T00:00:00Z"
+
+digest:
+  enabled: true
+  times:
+    - "6am"
+    - "9am"
+  delivery_method: "dashboard"
+  categorization_rules:
+    - id: "rule-001"
+      name: "Urgent keywords"
+      description: "Emails containing URGENT, ACTION REQUIRED, or ASAP in subject"
+      pattern: "URGENT|ACTION REQUIRED|ASAP"
+      match_field: "subject"
+      category: "topOfMind"
+      enabled: true
+    - id: "rule-002"
+      name: "Newsletter senders"
+      description: "Known newsletter domains go to low priority"
+      pattern: "newsletter@|digest@|noreply@"
+      match_field: "from"
+      category: "newsletters"
+      enabled: true
+    - id: "rule-003"
+      name: "Team emails"
+      description: "Emails from ted-associates.com team members"
+      pattern: "@ted-associates.com"
+      match_field: "from"
+      category: "topOfMind"
+      enabled: true
+
+updated_at: "2026-03-22T00:00:00Z"

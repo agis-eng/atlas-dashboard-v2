@@ -18,6 +18,7 @@ import {
   Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmailSettingsSheet } from "@/components/email-settings";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -540,18 +541,21 @@ export default function EmailPage() {
       <div
         className={`transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-600/10">
-            <Mail className="h-5 w-5 text-orange-600" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-600/10">
+              <Mail className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Email Digests
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {totalEmails} emails across {MOCK_DIGESTS.length} digests
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Email Digests
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {totalEmails} emails across {MOCK_DIGESTS.length} digests
-            </p>
-          </div>
+          <EmailSettingsSheet />
         </div>
       </div>
 
