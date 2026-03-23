@@ -97,9 +97,21 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get("account");
+    const forceRefresh = searchParams.get("refresh") === "true";
 
     // Get email settings from Redis
     const redis = getRedis();
+    
+    // Check cache first (unless force refresh)
+    const cacheKey = `email:inbox:default:${accountId || "all"}`;
+    if (!forceRefresh) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        const emails = typeof cached === "string" ? JSON.parse(cached) : cached;
+        return Response.json({ emails, count: emails.length, cached: true });
+      }
+    }
+    
     const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
     
     if (!settings || typeof settings !== "object") {
@@ -142,10 +154,9 @@ export async function GET(request: NextRequest) {
     allEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Cache in Redis for 5 minutes
-    const cacheKey = `email:inbox:erik:${accountId || "all"}`;
-    await redis.set(cacheKey, JSON.stringify(allEmails), { ex: 300 });
+    await redis.set(cacheKey, allEmails, { ex: 300 });
 
-    return Response.json({ emails: allEmails, count: allEmails.length });
+    return Response.json({ emails: allEmails, count: allEmails.length, cached: false });
   } catch (error: any) {
     console.error("Email fetch error:", error);
     return Response.json(

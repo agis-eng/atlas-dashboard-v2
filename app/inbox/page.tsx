@@ -41,10 +41,11 @@ export default function InboxPage() {
     loadEmails();
   }, []);
 
-  async function loadEmails() {
+  async function loadEmails(forceRefresh = false) {
     setLoading(true);
     try {
-      const res = await fetch("/api/email-fetch");
+      const url = forceRefresh ? "/api/email-fetch?refresh=true" : "/api/email-fetch";
+      const res = await fetch(url);
       const data = await res.json();
       setEmails(data.emails || []);
     } catch (err) {
@@ -102,7 +103,7 @@ export default function InboxPage() {
               <Inbox className="h-6 w-6" />
               Inbox
             </h1>
-            <Button size="sm" variant="ghost" onClick={loadEmails}>
+            <Button size="sm" variant="ghost" onClick={() => loadEmails(true)}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
