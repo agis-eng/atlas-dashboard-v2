@@ -39,6 +39,7 @@ import {
   Download,
   Camera,
 } from "lucide-react";
+import { ProjectChat } from "@/components/project-chat";
 
 // ── Types ──
 
@@ -1394,6 +1395,9 @@ export default function ProjectDetailPage({
           onChange={(aff) => updateDraft("affiliate", aff)}
         />
       )}
+
+      {/* AI Chat */}
+      <ProjectChat projectId={id} projectName={project.name} />
     </div>
   );
 }
