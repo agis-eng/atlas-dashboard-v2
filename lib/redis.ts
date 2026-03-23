@@ -28,6 +28,9 @@ export const REDIS_KEYS = {
 
   // Activity
   recentActivity: (profile: string) => `activity:recent:${profile}`,
+
+  // Email
+  emailSettings: (userId: string) => `email:settings:${userId}`,
 } as const;
 
 // Types

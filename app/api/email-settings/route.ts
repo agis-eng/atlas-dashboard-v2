@@ -1,8 +1,10 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
+import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
 const SETTINGS_PATH = join(process.cwd(), "data", "email-settings.yaml");
+const DEFAULT_USER_ID = "default";
 
 interface SmtpConfig {
   host: string;
@@ -45,14 +47,27 @@ interface EmailSettings {
   updated_at: string;
 }
 
-async function loadSettings(): Promise<EmailSettings> {
+async function loadDefaults(): Promise<EmailSettings> {
   const fileContents = await readFile(SETTINGS_PATH, "utf8");
   return yaml.load(fileContents) as EmailSettings;
 }
 
+async function loadSettings(): Promise<EmailSettings> {
+  const redis = getRedis();
+  const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+  const data = await redis.get<EmailSettings>(key);
+  if (data) return data;
+
+  // Seed from YAML defaults on first load
+  const defaults = await loadDefaults();
+  await redis.set(key, defaults);
+  return defaults;
+}
+
 async function saveSettings(data: EmailSettings): Promise<void> {
-  const yamlStr = yaml.dump(data, { lineWidth: -1, noRefs: true });
-  await writeFile(SETTINGS_PATH, yamlStr, "utf8");
+  const redis = getRedis();
+  const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+  await redis.set(key, data);
 }
 
 export async function GET() {
