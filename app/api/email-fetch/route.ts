@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     // Get email settings from Redis
     const redis = getRedis();
-    const settings = await redis.get(REDIS_KEYS.emailSettings("erik"));
+    const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
     
     if (!settings || typeof settings !== "object") {
       return Response.json({ error: "No email accounts configured" }, { status: 400 });
@@ -128,8 +128,8 @@ export async function GET(request: NextRequest) {
           user: account.email,
           password: account.smtp?.password || "",
           host: account.smtp?.host || "mail.privateemail.com",
-          port: parseInt(account.smtp?.port) || 993,
-          tls: account.smtp?.secure !== false,
+          port: 993, // IMAP always uses 993, not SMTP port
+          tls: true, // IMAP always uses TLS
         });
 
         allEmails.push(...emails);
