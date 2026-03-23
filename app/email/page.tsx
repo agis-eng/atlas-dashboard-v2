@@ -20,8 +20,12 @@ import {
   BookOpen,
   FileText,
   Settings,
+  Reply,
+  Forward,
+  Plus,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
+import { EmailCompose } from "@/components/email-compose";
 import { cn } from "@/lib/utils";
 
 interface Email {
@@ -46,6 +50,7 @@ export default function EmailPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<ViewTab>("digest");
+  const [composing, setComposing] = useState(false);
 
   useEffect(() => {
     loadEmails();
@@ -186,6 +191,10 @@ export default function EmailPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button size="sm" onClick={() => setComposing(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Compose
+          </Button>
           <Button size="sm" variant="outline" onClick={() => loadEmails(true)} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
             Refresh
@@ -435,15 +444,92 @@ export default function EmailPage() {
                   ✕
                 </Button>
               </div>
-              <div className="space-y-1 text-sm text-muted-foreground">
+              <div className="space-y-1 text-sm text-muted-foreground mb-4">
                 <p><strong>From:</strong> {selectedEmail.from}</p>
                 <p><strong>To:</strong> {selectedEmail.to}</p>
                 <p><strong>Date:</strong> {new Date(selectedEmail.date).toLocaleString()}</p>
+              </div>
+              {/* Action Buttons */}
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => {
+                  // Reply - open compose with prefilled data
+                  setComposing(true);
+                  setSelectedEmail(null);
+                }}>
+                  <Reply className="h-4 w-4 mr-2" />
+                  Reply
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => {
+                  // Forward
+                  setComposing(true);
+                  setSelectedEmail(null);
+                }}>
+                  <Forward className="h-4 w-4 mr-2" />
+                  Forward
+                </Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  try {
+                    await fetch("/api/email-action", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: "archive" }),
+                    });
+                    setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                    setSelectedEmail(null);
+                  } catch (err) {
+                    alert("Failed to archive");
+                  }
+                }}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  if (!confirm("Delete this email?")) return;
+                  try {
+                    await fetch("/api/email-action", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: "delete" }),
+                    });
+                    setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                    setSelectedEmail(null);
+                  } catch (err) {
+                    alert("Failed to delete");
+                  }
+                }}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  try {
+                    await fetch("/api/email-action", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: selectedEmail.read ? "mark-unread" : "mark-read" }),
+                    });
+                    setEmails(emails.map(e => e.id === selectedEmail.id ? { ...e, read: !e.read } : e));
+                    setSelectedEmail({ ...selectedEmail, read: !selectedEmail.read });
+                  } catch (err) {
+                    alert("Failed to update");
+                  }
+                }}>
+                  <Check className="h-4 w-4 mr-2" />
+                  Mark {selectedEmail.read ? "Unread" : "Read"}
+                </Button>
               </div>
             </div>
             <div className="p-6">
               <div className="whitespace-pre-wrap">{selectedEmail.body}</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compose Modal */}
+      {composing && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background rounded-lg max-w-3xl w-full max-h-[90vh] overflow-auto">
+            <EmailCompose onClose={() => setComposing(false)} />
           </div>
         </div>
       )}
