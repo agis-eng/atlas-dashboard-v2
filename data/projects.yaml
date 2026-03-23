@@ -861,3 +861,96 @@ projects:
       - name: Anton
       - name: AGIS
     brain: {}
+  - id: epic-health-center
+    name: EPIC Health Center
+    clientId: erik-laine
+    owner: Erik
+    stage: Planning
+    status: Active
+    lastUpdate: 2026-03-23
+    summary: Multi-disciplinary behavioral health, sports psychology, and physiotherapy clinic in Georgia (gym-based)
+    previewUrl: ""
+    liveUrl: ""
+    repoUrl: ""
+    rank: 1
+    priority: high
+    tags:
+      - Healthcare
+      - Behavioral Health
+      - Sports Psychology
+      - Physiotherapy
+      - Georgia
+      - DBHDD
+      - Medicare/Medicaid
+    contacts:
+      - name: Erik Laine
+    brain:
+      naming_research: |
+        ## EPIC: Echo Performance & Integrated Counseling
+        
+        **Selected: March 23, 2026**
+        
+        ### Name Structure
+        - **Legal Name:** EPIC Health Center (Echo Performance & Integrated Counseling)
+        - **DBA/Marketing:** EPIC by Echo
+        - **Tagline:** "Mind. Body. Peak Performance."
+        - **Subtitle:** "Behavioral Health, Sports Psychology & Physiotherapy"
+        
+        ### Target Populations
+        - Athletes (gym-based clinic)
+        - Kids & families
+        - First responders
+        - General population
+        
+        ### Regulatory Requirements
+        - **GA DBHDD compliant:** "Counseling" provides clearest behavioral health signal
+        - **Medicare/Medicaid:** Most reimbursement-friendly terminology
+        - **Multi-disciplinary:** Covers behavioral health + sports psych + physiotherapy
+        
+        ### Name Rationale
+        
+        **Why "Echo":**
+        - Brand continuity
+        - Memorable, distinctive
+        
+        **Why "Performance":**
+        - Athlete appeal without stigma
+        - First responder resonance
+        - Less clinical than "therapy"
+        
+        **Why "Integrated Counseling":**
+        - "Counseling" = clearest DBHDD/Medicare/Medicaid signal
+        - "Integrated" = multi-disciplinary approach (behavioral + physical)
+        - Best for insurance reimbursement
+        
+        **Why "EPIC" Acronym:**
+        - Memorable buzzword with legitimacy
+        - Aspirational, powerful brand
+        - Works as standalone (people remember "EPIC")
+        
+        ### Scoring (out of 10)
+        - DBHDD Compliance: 10/10
+        - Medicare/Medicaid: 10/10
+        - Athlete Appeal: 7/10
+        - Family Appeal: 9/10
+        - First Responder Appeal: 9/10
+        - Service Clarity: 8/10
+        - Buzzword Strength: 8/10
+        - **Overall: 8.7/10**
+        
+        ### Trade-offs Accepted
+        - "Counseling" slightly less athlete-sexy than "Integrated Care"
+        - Physiotherapy requires clarification in marketing (solved by subtitle)
+        
+        ### Research Sources
+        - GA DBHDD provider manuals
+        - Medicare/Medicaid behavioral health requirements
+        - Stanford Sports Psychiatry & Psychology Program model
+        - Integrated behavioral health + physical therapy best practices
+        
+        ### Alternative Names Considered
+        1. **EPIC: Echo Performance & Integrated Care** (close second, less reimbursement-explicit)
+        2. **EPIC: Echo Psychology & Integrated Care** (broader psych coverage)
+        3. **Echo Mind & Performance** (less regulatory-clear)
+        4. **Echo Behavioral Health & Performance** (too clinical)
+        5. **Echo Performance & Wellness Center** (too vague for insurance)
