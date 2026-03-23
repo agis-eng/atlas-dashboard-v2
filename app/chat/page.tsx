@@ -48,7 +48,14 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
-  // Load sessions on mount
+  // Save current session to localStorage
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem("atlas-chat-last-session", currentSessionId);
+    }
+  }, [currentSessionId]);
+
+  // Load sessions on mount and restore last session
   useEffect(() => {
     loadSessions();
   }, []);
@@ -57,7 +64,19 @@ export default function ChatPage() {
     try {
       const res = await fetch("/api/chat-history?profile=erik");
       const data = await res.json();
-      setSessions(data.sessions || []);
+      const loaded: ChatSession[] = data.sessions || [];
+      setSessions(loaded);
+
+      // Auto-select last session if none is active
+      if (loaded.length > 0) {
+        const lastId = localStorage.getItem("atlas-chat-last-session");
+        const target = loaded.find((s) => s.id === lastId) ? lastId! : loaded[0].id;
+        setCurrentSessionId(target);
+        // Load messages for the restored session
+        const msgRes = await fetch(`/api/chat-history?sessionId=${target}`);
+        const msgData = await msgRes.json();
+        setMessages(msgData.messages || []);
+      }
     } catch {
       // Redis not configured yet — that's ok
     } finally {
