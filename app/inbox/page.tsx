@@ -65,25 +65,60 @@ export default function InboxPage() {
     setSelected(newSelected);
   }
 
-  function archiveSelected() {
-    // Archive emails (remove from list for now)
-    setEmails(emails.filter((e) => !selected.has(e.id)));
-    setSelected(new Set());
+  async function archiveSelected() {
+    const ids = Array.from(selected);
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "archive" }),
+      });
+      // Remove from UI
+      setEmails(emails.filter((e) => !selected.has(e.id)));
+      setSelected(new Set());
+    } catch (err) {
+      console.error("Archive failed:", err);
+      alert("Failed to archive emails");
+    }
   }
 
-  function deleteSelected() {
+  async function deleteSelected() {
     if (!confirm(`Delete ${selected.size} email(s)?`)) return;
-    setEmails(emails.filter((e) => !selected.has(e.id)));
-    setSelected(new Set());
+    const ids = Array.from(selected);
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "delete" }),
+      });
+      // Remove from UI
+      setEmails(emails.filter((e) => !selected.has(e.id)));
+      setSelected(new Set());
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete emails");
+    }
   }
 
-  function markAsRead() {
-    setEmails(
-      emails.map((e) =>
-        selected.has(e.id) ? { ...e, read: true } : e
-      )
-    );
-    setSelected(new Set());
+  async function markAsRead() {
+    const ids = Array.from(selected);
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "mark-read" }),
+      });
+      // Update UI
+      setEmails(
+        emails.map((e) =>
+          selected.has(e.id) ? { ...e, read: true } : e
+        )
+      );
+      setSelected(new Set());
+    } catch (err) {
+      console.error("Mark read failed:", err);
+      alert("Failed to mark as read");
+    }
   }
 
   const filtered = emails.filter(

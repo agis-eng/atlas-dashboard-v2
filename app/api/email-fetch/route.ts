@@ -56,13 +56,19 @@ async function fetchEmailsViaIMAP(config: {
         });
 
         fetch.on("message", (msg, seqno) => {
+          let msgUid = seqno;
+          
+          msg.once("attributes", (attrs) => {
+            msgUid = attrs.uid;
+          });
+          
           msg.on("body", (stream) => {
             simpleParser(stream, (err, parsed) => {
               if (err) return;
 
               emails.push({
-                id: parsed.messageId || `${seqno}`,
-                uid: seqno,
+                id: `${msgUid}`, // Use UID as ID for easy IMAP operations
+                uid: msgUid,
                 from: parsed.from?.text || "",
                 to: parsed.to?.text || "",
                 subject: parsed.subject || "(no subject)",
