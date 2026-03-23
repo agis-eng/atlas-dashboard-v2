@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
     // Store in Redis
     await redis.set(REDIS_KEYS.memoryEntry(entry.id), entry);
     
-    // Update date index
-    const dateKey = REDIS_KEYS.memoryDates();
+    // Update date index (for all profiles)
+    const dateKey = REDIS_KEYS.memoryDates("all");
     await redis.sadd(dateKey, date);
 
     // Update entries for this date
