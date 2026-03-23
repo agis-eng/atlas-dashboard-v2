@@ -16,6 +16,7 @@ import {
   Users,
   LogOut,
   BookOpen,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const navItems = [
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: FolderOpen, label: "Projects", href: "/projects" },
   { icon: ListChecks, label: "Tasks", href: "/tasks" },
+  { icon: TrendingUp, label: "Trends", href: "/trends" },
   { icon: Inbox, label: "Inbox", href: "/inbox" },
   { icon: Mail, label: "Email Digest", href: "/email" },
   { icon: BookOpen, label: "Memory", href: "/memory" },

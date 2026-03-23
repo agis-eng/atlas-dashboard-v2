@@ -1,0 +1,50 @@
+topics:
+  - id: topic_1
+    name: AI & Machine Learning
+    keywords:
+      - artificial intelligence
+      - machine learning
+      - LLM
+      - GPT
+      - Claude
+    platforms:
+      - x
+      - reddit
+      - youtube
+    active: true
+  - id: topic_2
+    name: Startup & Entrepreneurship
+    keywords:
+      - startup
+      - founder
+      - SaaS
+      - venture capital
+      - bootstrapping
+    platforms:
+      - x
+      - reddit
+    active: true
+  - id: topic_3
+    name: eCommerce & eBay
+    keywords:
+      - ecommerce
+      - dropshipping
+      - eBay
+      - reselling
+      - marketplace
+    platforms:
+      - reddit
+      - youtube
+    active: true
+  - id: topic_4
+    name: Web Development
+    keywords:
+      - nextjs
+      - react
+      - typescript
+      - tailwindcss
+      - web development
+    platforms:
+      - x
+      - reddit
+    active: true
