@@ -529,7 +529,7 @@ export default function EmailPage() {
       {composing && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-background rounded-lg max-w-3xl w-full max-h-[90vh] overflow-auto">
-            <EmailCompose onClose={() => setComposing(false)} />
+            <EmailCompose mode="new" onClose={() => setComposing(false)} />
           </div>
         </div>
       )}
