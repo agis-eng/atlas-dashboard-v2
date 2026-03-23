@@ -426,6 +426,7 @@ export function EmailSettingsSheet() {
   const [saving, setSaving] = useState(false);
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [saveError, setSaveError] = useState("");
 
   // Add account form
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -459,6 +460,10 @@ export function EmailSettingsSheet() {
 
   const saveFullSettings = async (updated: EmailSettings) => {
     setSaving(true);
+    setSaveError("");
+    // Optimistic update — show change immediately
+    const previous = settings;
+    setSettings(updated);
     try {
       const res = await fetch("/api/email-settings", {
         method: "PUT",
@@ -467,9 +472,17 @@ export function EmailSettingsSheet() {
       });
       if (res.ok) {
         setSettings(await res.json());
+      } else {
+        // Revert on failure
+        const errData = await res.json().catch(() => ({}));
+        console.error("Email settings save failed:", res.status, errData);
+        setSaveError(errData.details || errData.error || `Save failed (${res.status})`);
+        setSettings(previous);
       }
     } catch (err) {
       console.error("Failed to save settings", err);
+      setSaveError("Network error — could not save settings");
+      setSettings(previous);
     } finally {
       setSaving(false);
     }
@@ -477,6 +490,7 @@ export function EmailSettingsSheet() {
 
   const handleAddAccount = async () => {
     setSaving(true);
+    setSaveError("");
     try {
       const res = await fetch("/api/email-settings", {
         method: "POST",
@@ -487,9 +501,13 @@ export function EmailSettingsSheet() {
         setShowAddAccount(false);
         setAddAccountForm(newAccount());
         await fetchSettings();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setSaveError(errData.details || errData.error || "Failed to add account");
       }
     } catch (err) {
       console.error("Failed to add account", err);
+      setSaveError("Network error — could not add account");
     } finally {
       setSaving(false);
     }
@@ -944,6 +962,22 @@ export function EmailSettingsSheet() {
                 )}
               </div>
             </SettingsSection>
+
+            {/* Save error */}
+            {saveError && (
+              <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-600 flex items-center gap-2">
+                <X className="h-3 w-3 shrink-0" />
+                {saveError}
+              </div>
+            )}
+
+            {/* Saving indicator */}
+            {saving && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground py-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving...
+              </div>
+            )}
 
             {/* Last updated */}
             {settings.updated_at && (

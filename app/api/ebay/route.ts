@@ -8,12 +8,26 @@ function getBaseUrl(env: string) {
   return env === "production" ? PRODUCTION_API : SANDBOX_API;
 }
 
-function ebayHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
+function isClassicToken(token: string): boolean {
+  // Auth'n'Auth (classic/IAF) tokens start with "v^" prefix
+  return token.startsWith("v^");
+}
+
+function ebayHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
+
+  if (isClassicToken(token)) {
+    // Auth'n'Auth (classic) tokens use X-EBAY-API-IAF-TOKEN header
+    headers["X-EBAY-API-IAF-TOKEN"] = token;
+  } else {
+    // OAuth tokens use standard Bearer auth
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  return headers;
 }
 
 // GET - Proxy eBay API reads (listings, orders, inventory)
@@ -31,17 +45,34 @@ export async function GET(request: NextRequest) {
   try {
     switch (action) {
       case "test-connection": {
-        // Test token validity by fetching a small set of items
+        const tokenType = isClassicToken(token) ? "Auth'n'Auth (classic)" : "OAuth Bearer";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=1`,
           { headers: ebayHeaders(token) }
         );
         if (res.ok) {
-          return Response.json({ connected: true, environment: env });
+          return Response.json({
+            connected: true,
+            environment: env,
+            tokenType,
+          });
         }
-        const err = await res.json().catch(() => ({}));
+        const errText = await res.text().catch(() => "");
+        let errBody: any = null;
+        try { errBody = JSON.parse(errText); } catch { /* not JSON */ }
+        const errorDetail = errBody?.errors?.[0]?.message
+          || errBody?.error_description
+          || errBody?.error
+          || errText
+          || res.statusText;
         return Response.json(
-          { connected: false, error: err.errors?.[0]?.message || res.statusText },
+          {
+            connected: false,
+            error: errorDetail,
+            tokenType,
+            httpStatus: res.status,
+            apiResponse: errBody || errText || null,
+          },
           { status: res.status }
         );
       }

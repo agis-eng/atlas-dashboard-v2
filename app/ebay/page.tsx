@@ -239,21 +239,30 @@ export default function EbayPage() {
 
   // ─── Settings ──────────────────────────────────────────────────────────
 
+  const [tokenType, setTokenType] = useState("");
+
   async function testConnection() {
     if (!token) return;
     setConnectionStatus("testing");
     setConnectionError("");
+    setTokenType("");
     try {
       const data = await apiGet("test-connection");
+      if (data.tokenType) setTokenType(data.tokenType);
       if (data.connected) {
         setConnectionStatus("connected");
       } else {
         setConnectionStatus("failed");
-        setConnectionError(data.error || "Connection failed");
+        const errorMsg = data.error || "Connection failed";
+        const statusInfo = data.httpStatus ? ` (HTTP ${data.httpStatus})` : "";
+        setConnectionError(`${errorMsg}${statusInfo}`);
+        if (data.apiResponse) {
+          console.error("eBay API response:", data.apiResponse);
+        }
       }
     } catch {
       setConnectionStatus("failed");
-      setConnectionError("Network error");
+      setConnectionError("Network error — check console");
     }
   }
 
@@ -585,10 +594,15 @@ export default function EbayPage() {
                   {connectionStatus === "testing" && "Testing..."}
                   {connectionStatus === "untested" && "Not Connected"}
                 </span>
-                {connectionError && (
-                  <span className="text-xs text-red-500">{connectionError}</span>
+                {tokenType && (
+                  <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    {tokenType}
+                  </span>
                 )}
               </div>
+              {connectionError && (
+                <p className="text-xs text-red-500 mt-1">{connectionError}</p>
+              )}
             </div>
 
             {/* Environment */}
