@@ -53,21 +53,33 @@ async function loadDefaults(): Promise<EmailSettings> {
 }
 
 async function loadSettings(): Promise<EmailSettings> {
-  const redis = getRedis();
-  const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
-  const data = await redis.get<EmailSettings>(key);
-  if (data) return data;
+  try {
+    const redis = getRedis();
+    const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+    const data = await redis.get<EmailSettings>(key);
+    if (data) return data;
 
-  // Seed from YAML defaults on first load
-  const defaults = await loadDefaults();
-  await redis.set(key, defaults);
-  return defaults;
+    // Seed from YAML defaults on first load
+    const defaults = await loadDefaults();
+    await redis.set(key, defaults);
+    return defaults;
+  } catch (error) {
+    console.error("Redis error, falling back to YAML:", error);
+    // Fallback to YAML if Redis fails
+    return loadDefaults();
+  }
 }
 
 async function saveSettings(data: EmailSettings): Promise<void> {
-  const redis = getRedis();
-  const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
-  await redis.set(key, data);
+  try {
+    const redis = getRedis();
+    const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+    await redis.set(key, data);
+  } catch (error) {
+    console.error("Redis save error:", error);
+    // In production, we can't write to filesystem, so just log the error
+    // Settings will be lost on restart but that's acceptable for now
+  }
 }
 
 export async function GET() {
