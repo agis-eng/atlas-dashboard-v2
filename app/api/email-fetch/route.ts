@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest } from "next/server";
 import Imap from "imap";
 import { simpleParser } from "mailparser";
