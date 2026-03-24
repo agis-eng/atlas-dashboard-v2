@@ -129,14 +129,22 @@ export async function GET(request: NextRequest) {
     const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
     
     if (!settings || typeof settings !== "object") {
-      return Response.json({ error: "No email accounts configured" }, { status: 400 });
+      return Response.json({ 
+        error: "No email accounts configured. Please add an email account in Settings.",
+        emails: [],
+        count: 0
+      }, { status: 200 }); // Return 200 with empty array instead of 400
     }
 
     const emailSettings = settings as any;
     const accounts = emailSettings.accounts || [];
 
     if (accounts.length === 0) {
-      return Response.json({ error: "No email accounts found" }, { status: 400 });
+      return Response.json({ 
+        error: "No email accounts found. Please add an email account in Settings.",
+        emails: [],
+        count: 0
+      }, { status: 200 }); // Return 200 with empty array instead of 400
     }
 
     // Fetch from specific account or all accounts
