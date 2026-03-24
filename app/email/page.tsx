@@ -90,6 +90,16 @@ export default function EmailPage() {
         setEmails(data.emails);
         setLoading(false);
         
+        // Check quiet hours (9pm - 5am EST)
+        const now = new Date();
+        const estHour = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" })).getHours();
+        const isQuietHours = estHour < 5 || estHour >= 21; // Before 5am or after 9pm
+        
+        if (isQuietHours) {
+          console.log(`Quiet hours (9pm-5am EST). Using cached emails. Manual refresh available.`);
+          return;
+        }
+        
         // Only auto-refresh if cache is older than 1 hour
         if (cacheAge < oneHour) {
           console.log(`Using cached emails (${Math.floor(cacheAge / 60000)} min old). Auto-refresh in ${Math.floor((oneHour - cacheAge) / 60000)} min.`);
