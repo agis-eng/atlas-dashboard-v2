@@ -101,15 +101,23 @@ async function fetchEmailsViaIMAP(config: {
 
 export async function GET(request: NextRequest) {
   try {
+    // Get logged-in user
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get("account");
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    // Get email settings from Redis
+    // Get email settings from Redis (filtered by user profile)
     const redis = getRedis();
     
     // Check cache first (unless force refresh)
-    const cacheKey = `email:inbox:default:${accountId || "all"}`;
+    const cacheKey = `email:inbox:${user.profile}:${accountId || "all"}`;
     if (!forceRefresh) {
       const cached = await redis.get(cacheKey);
       if (cached) {
@@ -118,7 +126,7 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
+    const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
     
     if (!settings || typeof settings !== "object") {
       return Response.json({ error: "No email accounts configured" }, { status: 400 });

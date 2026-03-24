@@ -4,7 +4,7 @@ import yaml from "js-yaml";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
 const SETTINGS_PATH = join(process.cwd(), "data", "email-settings.yaml");
-const DEFAULT_USER_ID = "default";
+// User ID will be determined from session
 
 interface SmtpConfig {
   host: string;
@@ -52,10 +52,10 @@ async function loadDefaults(): Promise<EmailSettings> {
   return yaml.load(fileContents) as EmailSettings;
 }
 
-async function loadSettings(): Promise<EmailSettings> {
+async function loadSettings(userId: string): Promise<EmailSettings> {
   try {
     const redis = getRedis();
-    const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+    const key = REDIS_KEYS.emailSettings(userId);
     const data = await redis.get<EmailSettings>(key);
     if (data) return data;
 
@@ -70,10 +70,10 @@ async function loadSettings(): Promise<EmailSettings> {
   }
 }
 
-async function saveSettings(data: EmailSettings): Promise<void> {
+async function saveSettings(userId: string, data: EmailSettings): Promise<void> {
   try {
     const redis = getRedis();
-    const key = REDIS_KEYS.emailSettings(DEFAULT_USER_ID);
+    const key = REDIS_KEYS.emailSettings(userId);
     await redis.set(key, data);
   } catch (error) {
     console.error("Redis save error:", error);
@@ -82,9 +82,16 @@ async function saveSettings(data: EmailSettings): Promise<void> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const settings = await loadSettings();
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const settings = await loadSettings(user.profile);
     return Response.json(settings);
   } catch (error: any) {
     console.error("Email settings GET error:", error);
@@ -97,8 +104,15 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const settings = await loadSettings();
+    const settings = await loadSettings(user.profile);
 
     // Update accounts if provided
     if (body.accounts !== undefined) {
@@ -111,7 +125,7 @@ export async function PUT(request: Request) {
     }
 
     settings.updated_at = new Date().toISOString();
-    await saveSettings(settings);
+    await saveSettings(user.profile, settings);
     return Response.json(settings);
   } catch (error: any) {
     console.error("Email settings PUT error:", error);
@@ -125,6 +139,13 @@ export async function PUT(request: Request) {
 // POST — add a new account
 export async function POST(request: Request) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     if (!body.name?.trim() || !body.email?.trim()) {
       return Response.json(
@@ -133,7 +154,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const settings = await loadSettings();
+    const settings = await loadSettings(user.profile);
     const newAccount: EmailAccount = {
       id: `acct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: body.name.trim(),
@@ -155,7 +176,7 @@ export async function POST(request: Request) {
 
     settings.accounts.push(newAccount);
     settings.updated_at = new Date().toISOString();
-    await saveSettings(settings);
+    await saveSettings(user.profile, settings);
     return Response.json({ account: newAccount }, { status: 201 });
   } catch (error: any) {
     console.error("Email settings POST error:", error);
@@ -169,6 +190,13 @@ export async function POST(request: Request) {
 // DELETE — remove an account by id
 export async function DELETE(request: Request) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) {
@@ -178,7 +206,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const settings = await loadSettings();
+    const settings = await loadSettings(user.profile);
     const idx = settings.accounts.findIndex((a) => a.id === id);
     if (idx === -1) {
       return Response.json({ error: "Account not found" }, { status: 404 });
@@ -186,7 +214,7 @@ export async function DELETE(request: Request) {
 
     settings.accounts.splice(idx, 1);
     settings.updated_at = new Date().toISOString();
-    await saveSettings(settings);
+    await saveSettings(user.profile, settings);
     return Response.json({ success: true });
   } catch (error: any) {
     console.error("Email settings DELETE error:", error);
