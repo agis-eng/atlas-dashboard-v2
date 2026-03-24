@@ -23,6 +23,7 @@ import {
   Reply,
   Forward,
   Plus,
+  Brain,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
@@ -59,10 +60,13 @@ export default function EmailPage() {
     newsletter: [],
     spam: []
   });
+  const [brains, setBrains] = useState<any[]>([]);
+  const [showBrainSelector, setShowBrainSelector] = useState(false);
 
   useEffect(() => {
-    // Load categorization rules
+    // Load categorization rules and brains
     loadCategorizationRules();
+    loadBrains();
     
     // Try to load from sessionStorage first
     const cached = sessionStorage.getItem('emails-cache');
@@ -89,6 +93,39 @@ export default function EmailPage() {
       setCategorizationRules(data.categorization);
     } catch (err) {
       console.error("Failed to load categorization rules:", err);
+    }
+  }
+
+  async function loadBrains() {
+    try {
+      const res = await fetch("/api/brain");
+      const data = await res.json();
+      setBrains(data.brains || []);
+    } catch (err) {
+      console.error("Failed to load brains:", err);
+    }
+  }
+
+  async function addToBrain(brainId: string) {
+    if (!selectedEmail) return;
+    
+    try {
+      await fetch(`/api/brain/${brainId}/sources`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          type: "email",
+          sender: selectedEmail.from 
+        }),
+      });
+      
+      setShowBrainSelector(false);
+      await loadBrains();
+      
+      alert(`Added ${selectedEmail.from} to brain sources`);
+    } catch (err) {
+      console.error("Failed to add to brain:", err);
+      alert("Failed to add to brain");
     }
   }
 
@@ -592,6 +629,15 @@ export default function EmailPage() {
 
               {/* Action Buttons */}
               <div className="flex gap-2 flex-wrap">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-600 border-purple-600/20"
+                  onClick={() => setShowBrainSelector(!showBrainSelector)}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  Add to Brain
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => {
                   // Reply - open compose with prefilled data
                   setComposing(true);
@@ -658,6 +704,35 @@ export default function EmailPage() {
                   Mark {selectedEmail.read ? "Unread" : "Read"}
                 </Button>
               </div>
+
+              {/* Brain Selector Dropdown */}
+              {showBrainSelector && (
+                <div className="px-6 pb-4">
+                  <div className="bg-purple-600/5 border border-purple-600/20 rounded-lg p-4">
+                    <p className="text-sm font-medium mb-3">Add sender to Brain sources:</p>
+                    {brains.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No Brains yet. <a href="/brain" className="text-purple-600 underline">Create one first</a>
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {brains.map(brain => (
+                          <Button
+                            key={brain.id}
+                            size="sm"
+                            variant="outline"
+                            className="justify-start"
+                            onClick={() => addToBrain(brain.id)}
+                          >
+                            <span className="mr-2">{brain.icon}</span>
+                            {brain.name}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-6">
               {selectedEmail.htmlBody ? (
