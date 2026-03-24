@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
-import dav from "dav";
-import ical from "ical.js";
+
+export const runtime = 'nodejs'; // Force Node.js runtime for CalDAV libraries
+
+// Dynamic imports to avoid edge runtime issues
+let dav: any;
+let ical: any;
+
+async function loadLibraries() {
+  if (!dav) {
+    dav = (await import('dav')).default;
+  }
+  if (!ical) {
+    ical = (await import('ical.js')).default;
+  }
+}
 
 const CALENDARS_KEY = (userId: string) => `calendars:${userId}`;
 const EVENTS_CACHE_KEY = (userId: string) => `calendar:events:${userId}`;
@@ -19,6 +32,8 @@ interface CalendarEvent {
 }
 
 async function fetchCalDAVEvents(caldavConfig: any): Promise<CalendarEvent[]> {
+  await loadLibraries();
+  
   try {
     const xhr = new dav.transport.Basic(
       new dav.Credentials({
@@ -78,6 +93,8 @@ async function fetchCalDAVEvents(caldavConfig: any): Promise<CalendarEvent[]> {
 }
 
 export async function GET(request: NextRequest) {
+  await loadLibraries();
+  
   try {
     const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
@@ -146,6 +163,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await loadLibraries();
+  
   try {
     const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
