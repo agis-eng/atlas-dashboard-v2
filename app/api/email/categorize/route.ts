@@ -3,6 +3,14 @@ import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
 export async function POST(request: NextRequest) {
   try {
+    // Get logged-in user
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { sender, category } = await request.json();
     
     if (!sender || !category) {
@@ -14,8 +22,8 @@ export async function POST(request: NextRequest) {
 
     const redis = getRedis();
     
-    // Get current email settings
-    const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
+    // Get current email settings (filtered by user profile)
+    const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
     const emailSettings: any = settings && typeof settings === "object" ? settings : {};
     
     // Initialize categorization rules if not exists
@@ -42,10 +50,10 @@ export async function POST(request: NextRequest) {
     emailSettings.categorization[category].push(sender);
     
     // Save updated settings
-    await redis.set(REDIS_KEYS.emailSettings("default"), emailSettings);
+    await redis.set(REDIS_KEYS.emailSettings(user.profile), emailSettings);
     
     // Clear email cache to force refresh
-    await redis.del("email:inbox:default:all");
+    await redis.del(`email:inbox:${user.profile}:all`);
     
     return NextResponse.json({ 
       success: true, 
@@ -64,8 +72,16 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    // Get logged-in user
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const redis = getRedis();
-    const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
+    const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
     const emailSettings: any = settings && typeof settings === "object" ? settings : {};
     
     return NextResponse.json({

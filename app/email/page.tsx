@@ -356,6 +356,33 @@ export default function EmailPage() {
         body: JSON.stringify({ sender, category }),
       });
       
+      // Show toast notification
+      const categoryNames: Record<string, string> = {
+        topOfMind: 'Top of Mind',
+        fyi: 'FYI',
+        newsletter: 'Newsletter',
+        spam: 'Spam'
+      };
+      
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg z-50';
+      toast.innerHTML = `
+        <div class="flex items-start gap-2">
+          <span class="text-lg">✓</span>
+          <div>
+            <div class="font-medium">Categorized as ${categoryNames[category]}</div>
+            <div class="text-sm opacity-90 mt-1">Future emails from ${sender.split('<')[0].trim()} will be automatically categorized</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 4000);
+      
       // Clear cache to force refresh with new categorization
       sessionStorage.removeItem('emails-cache');
       
