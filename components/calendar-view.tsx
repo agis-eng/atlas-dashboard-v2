@@ -43,7 +43,9 @@ export function CalendarView({
   // Filter to visible calendars only
   const visibleEvents = useMemo(() => {
     const visibleCalIds = new Set(calendars.filter(c => c.visible).map(c => c.id));
-    return events.filter(e => visibleCalIds.has(e.calendarId));
+    const filtered = events.filter(e => visibleCalIds.has(e.calendarId));
+    console.log('[CalendarView] Total events:', events.length, 'Visible:', filtered.length, 'Calendars:', calendars.length);
+    return filtered;
   }, [events, calendars]);
 
   if (view === "month") {

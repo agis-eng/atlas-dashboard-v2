@@ -53,7 +53,7 @@ export function CalendarAI({ onClose, onEventCreated }: CalendarAIProps) {
   ];
 
   return (
-    <Card className="fixed right-6 top-20 w-96 shadow-2xl z-50">
+    <Card className="fixed right-6 bottom-6 w-96 shadow-2xl z-50 max-h-[600px] overflow-y-auto">
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-purple-500" />

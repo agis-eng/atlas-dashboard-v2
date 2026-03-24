@@ -47,13 +47,20 @@ export default function CalendarPage() {
   async function loadEvents() {
     setLoading(true);
     try {
+      console.log('[Calendar] Fetching events...');
       const res = await fetch('/api/calendar/events');
+      console.log('[Calendar] Response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('[Calendar] Events loaded:', data.events?.length || 0);
         setEvents(data.events || []);
+      } else {
+        const error = await res.text();
+        console.error('[Calendar] Failed to load events:', error);
       }
     } catch (err) {
-      console.error('Failed to load events:', err);
+      console.error('[Calendar] Error loading events:', err);
     } finally {
       setLoading(false);
     }
