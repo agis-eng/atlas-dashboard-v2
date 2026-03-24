@@ -83,8 +83,8 @@ export default function EmailPage() {
     if (cached) {
       try {
         const data = JSON.parse(cached);
-        // Check if cache is less than 5 minutes old
-        if (Date.now() - data.timestamp < 5 * 60 * 1000) {
+        // Check if cache is less than 15 minutes old (increased from 5 to reduce server load)
+        if (Date.now() - data.timestamp < 15 * 60 * 1000) {
           setEmails(data.emails);
           setLoading(false);
           return;

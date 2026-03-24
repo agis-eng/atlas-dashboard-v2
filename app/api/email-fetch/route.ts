@@ -208,15 +208,46 @@ export async function GET(request: NextRequest) {
     // Sort by date (newest first)
     allEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Cache in Redis for 5 minutes
-    await redis.set(cacheKey, allEmails, { ex: 300 });
+    // Cache in Redis for 15 minutes (increased from 5 to reduce IMAP load)
+    await redis.set(cacheKey, allEmails, { ex: 900 });
 
     return Response.json({ emails: allEmails, count: allEmails.length, cached: false });
   } catch (error: any) {
     console.error("Email fetch error:", error);
+    
+    // Check if it's a quota/rate limit error
+    const isQuotaError = error.message?.toLowerCase().includes('quota') || 
+                         error.message?.toLowerCase().includes('rate limit') ||
+                         error.message?.toLowerCase().includes('too many');
+    
+    if (isQuotaError) {
+      // Return cached data if available, even if stale
+      const redis = getRedis();
+      const user = await getSessionUserFromRequest(request);
+      if (user) {
+        const cacheKey = `email:inbox:${user.profile}:all`;
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          const emails = typeof cached === "string" ? JSON.parse(cached) : cached;
+          return Response.json({ 
+            emails, 
+            count: emails.length, 
+            cached: true,
+            warning: "Using cached emails due to server rate limit. Try refreshing in a few minutes."
+          });
+        }
+      }
+    }
+    
     return Response.json(
-      { error: error.message || "Failed to fetch emails" },
-      { status: 500 }
+      { 
+        error: isQuotaError 
+          ? "Email server rate limit exceeded. Please try again in a few minutes." 
+          : error.message || "Failed to fetch emails",
+        emails: [],
+        count: 0
+      },
+      { status: isQuotaError ? 429 : 500 }
     );
   }
 }
