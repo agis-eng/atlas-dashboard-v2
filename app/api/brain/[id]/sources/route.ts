@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import yaml from "yaml";
+import { getRedis } from "@/lib/redis";
 
-const BRAINS_FILE = path.join(process.cwd(), "data", "brains.yaml");
+const BRAINS_KEY = "brains:data";
 
-function readBrains() {
-  if (!fs.existsSync(BRAINS_FILE)) {
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { brains: [] };
   }
-  const content = fs.readFileSync(BRAINS_FILE, "utf-8");
-  return yaml.parse(content) || { brains: [] };
+  
+  return data as { brains: any[] };
 }
 
-function writeBrains(data: any) {
-  fs.writeFileSync(BRAINS_FILE, yaml.stringify(data));
+async function writeBrains(data: any) {
+  const redis = getRedis();
+  await redis.set(BRAINS_KEY, data);
 }
 
 export async function POST(
@@ -25,7 +27,7 @@ export async function POST(
     const { id } = await params;
     const { type, sender } = await request.json();
 
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {
@@ -44,7 +46,7 @@ export async function POST(
       if (!brain.email_sources.includes(sender)) {
         brain.email_sources.push(sender);
         brain.lastUpdated = new Date().toISOString().split('T')[0];
-        writeBrains(data);
+        await writeBrains(data);
       }
     }
 
@@ -66,7 +68,7 @@ export async function DELETE(
     const { id } = await params;
     const { sender } = await request.json();
 
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {
@@ -79,7 +81,7 @@ export async function DELETE(
     if (brain.email_sources) {
       brain.email_sources = brain.email_sources.filter((s: string) => s !== sender);
       brain.lastUpdated = new Date().toISOString().split('T')[0];
-      writeBrains(data);
+      await writeBrains(data);
     }
 
     return NextResponse.json(brain);
@@ -98,7 +100,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {

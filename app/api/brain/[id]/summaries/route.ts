@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { getRedis } from "@/lib/redis";
+
+const BRAINS_KEY = "brains:data";
+
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
+    return { brains: [] };
+  }
+  
+  return data as { brains: any[] };
+}
 
 export async function GET(
   request: NextRequest,
@@ -8,38 +20,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const summariesDir = path.join(
-      process.cwd(),
-      "data",
-      "brains",
-      id,
-      "summaries"
-    );
+    const data = await readBrains();
+    const brain = data.brains.find((b: any) => b.id === id);
 
-    if (!fs.existsSync(summariesDir)) {
+    if (!brain) {
       return NextResponse.json({ summaries: [] });
     }
 
-    const files = fs.readdirSync(summariesDir)
-      .filter(f => f.endsWith('.md'))
-      .sort()
-      .reverse(); // Most recent first
-
-    const summaries = files.map(file => {
-      const content = fs.readFileSync(path.join(summariesDir, file), 'utf-8');
-      const date = file.replace('.md', '');
-      
-      // Extract first few lines as preview
-      const lines = content.split('\n');
-      const preview = lines.slice(0, 5).join('\n');
-      
-      return {
-        date,
-        file,
-        preview,
-        content
-      };
-    });
+    // Summaries are now stored in the brain object in Redis
+    const summaries = (brain.summaries || []).map((summary: any) => ({
+      date: summary.date,
+      preview: summary.content.substring(0, 200) + '...',
+      content: summary.content
+    }));
 
     return NextResponse.json({ summaries });
   } catch (error) {

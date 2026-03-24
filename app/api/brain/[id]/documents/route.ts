@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import yaml from "yaml";
+import { getRedis } from "@/lib/redis";
 
-const BRAINS_FILE = path.join(process.cwd(), "data", "brains.yaml");
+const BRAINS_KEY = "brains:data";
 
-function readBrains() {
-  if (!fs.existsSync(BRAINS_FILE)) {
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { brains: [] };
   }
-  const content = fs.readFileSync(BRAINS_FILE, "utf-8");
-  return yaml.parse(content) || { brains: [] };
+  
+  return data as { brains: any[] };
 }
 
-function writeBrains(data: any) {
-  fs.writeFileSync(BRAINS_FILE, yaml.stringify(data));
+async function writeBrains(data: any) {
+  const redis = getRedis();
+  await redis.set(BRAINS_KEY, data);
 }
 
 export async function POST(
@@ -33,7 +35,7 @@ export async function POST(
       );
     }
 
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {
@@ -43,17 +45,16 @@ export async function POST(
       );
     }
 
-    // Create documents directory
-    const docsDir = path.join(process.cwd(), "data", "brains", id, "documents");
-    if (!fs.existsSync(docsDir)) {
-      fs.mkdirSync(docsDir, { recursive: true });
-    }
-
-    // Save file
+    // For now, store document content in Redis (small files only)
+    // TODO: Use S3 or similar for production
     const buffer = Buffer.from(await file.arrayBuffer());
     const filename = file.name;
-    const filepath = path.join(docsDir, filename);
-    fs.writeFileSync(filepath, buffer);
+    
+    let content = null;
+    // Only store text content for small files
+    if ((file.name.endsWith('.txt') || file.name.endsWith('.md')) && file.size < 100000) {
+      content = buffer.toString('utf-8');
+    }
 
     // Update brain metadata
     if (!brain.documents) {
@@ -62,14 +63,14 @@ export async function POST(
 
     brain.documents.push({
       name: filename,
-      path: `documents/${filename}`,
       size: file.size,
       type: file.type,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
+      content: content // Store inline for small text files
     });
 
     brain.lastUpdated = new Date().toISOString().split('T')[0];
-    writeBrains(data);
+    await writeBrains(data);
 
     return NextResponse.json({ 
       success: true, 
@@ -90,7 +91,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {

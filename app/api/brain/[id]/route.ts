@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import yaml from "yaml";
+import { getRedis } from "@/lib/redis";
 
-const BRAINS_FILE = path.join(process.cwd(), "data", "brains.yaml");
+const BRAINS_KEY = "brains:data";
 
-function readBrains() {
-  if (!fs.existsSync(BRAINS_FILE)) {
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { brains: [] };
   }
-  const content = fs.readFileSync(BRAINS_FILE, "utf-8");
-  return yaml.parse(content) || { brains: [] };
+  
+  return data as { brains: any[] };
 }
 
 export async function GET(
@@ -19,7 +20,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {

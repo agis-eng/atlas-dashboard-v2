@@ -1,21 +1,22 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import fs from "fs";
-import path from "path";
-import yaml from "yaml";
+import { getRedis } from "@/lib/redis";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || "",
 });
 
-const BRAINS_FILE = path.join(process.cwd(), "data", "brains.yaml");
+const BRAINS_KEY = "brains:data";
 
-function readBrains() {
-  if (!fs.existsSync(BRAINS_FILE)) {
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { brains: [] };
   }
-  const content = fs.readFileSync(BRAINS_FILE, "utf-8");
-  return yaml.parse(content) || { brains: [] };
+  
+  return data as { brains: any[] };
 }
 
 function loadBrainContext(brainId: string, brain: any) {
@@ -28,34 +29,24 @@ You have access to the following information:
 
   // Load email sources
   if (brain.email_sources && brain.email_sources.length > 0) {
-    context += `## Email Sources:\n`;
+    context += `## Email Sources (${brain.email_sources.length}):\n`;
     brain.email_sources.forEach((source: string) => {
       context += `- ${source}\n`;
     });
     context += '\n';
   }
 
-  // Load summaries
-  const summariesDir = path.join(process.cwd(), "data", "brains", brainId, "summaries");
-  if (fs.existsSync(summariesDir)) {
-    const summaryFiles = fs.readdirSync(summariesDir)
-      .filter(f => f.endsWith('.md'))
-      .sort()
-      .reverse()
-      .slice(0, 5); // Last 5 summaries
-
-    if (summaryFiles.length > 0) {
-      context += `## Recent Summaries:\n\n`;
-      summaryFiles.forEach(file => {
-        const content = fs.readFileSync(path.join(summariesDir, file), 'utf-8');
-        context += content + '\n\n';
-      });
-    }
+  // Load summaries from brain data (stored in Redis)
+  if (brain.summaries && brain.summaries.length > 0) {
+    context += `## Recent Summaries:\n\n`;
+    brain.summaries.slice(0, 5).forEach((summary: any) => {
+      context += `### ${summary.date}:\n${summary.content}\n\n`;
+    });
   }
 
   // Load links
   if (brain.links && brain.links.length > 0) {
-    context += `## Saved Links:\n`;
+    context += `## Saved Links (${brain.links.length}):\n`;
     brain.links.forEach((link: any) => {
       context += `- ${link.title}: ${link.url}\n`;
     });
@@ -64,38 +55,21 @@ You have access to the following information:
 
   // Load notes
   if (brain.notes && brain.notes.length > 0) {
-    context += `## Manual Notes:\n`;
+    context += `## Manual Notes (${brain.notes.length}):\n`;
     brain.notes.forEach((note: any) => {
       context += `${note.content}\n\n`;
     });
   }
 
-  // Load documents
+  // Load documents metadata
   if (brain.documents && brain.documents.length > 0) {
-    context += `## Uploaded Documents:\n`;
+    context += `## Uploaded Documents (${brain.documents.length}):\n`;
     brain.documents.forEach((doc: any) => {
-      const docPath = path.join(process.cwd(), "data", "brains", brainId, doc.path);
-      
-      // Only read text-based files
-      if (doc.name.endsWith('.txt') || doc.name.endsWith('.md')) {
-        try {
-          const docContent = fs.readFileSync(docPath, 'utf-8');
-          context += `### ${doc.name}:\n${docContent}\n\n`;
-        } catch (err) {
-          // Skip unreadable files
-        }
-      } else {
-        // Just mention the document exists
-        context += `- ${doc.name} (${doc.type})\n`;
+      context += `- ${doc.name} (${doc.type}, uploaded ${doc.uploadedAt})\n`;
+      if (doc.content) {
+        context += `Content: ${doc.content}\n\n`;
       }
     });
-  }
-
-  // Load knowledge base file
-  const knowledgeBaseFile = path.join(process.cwd(), "data", "brains", brainId, "knowledge-base.md");
-  if (fs.existsSync(knowledgeBaseFile)) {
-    const kb = fs.readFileSync(knowledgeBaseFile, 'utf-8');
-    context += `## Knowledge Base:\n${kb}\n\n`;
   }
 
   context += `\nAnswer questions based on this knowledge. If you don't know something from the context, say so. Be concise and helpful.`;
@@ -119,7 +93,7 @@ export async function POST(
     }
 
     // Load brain
-    const data = readBrains();
+    const data = await readBrains();
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {
