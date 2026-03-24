@@ -52,8 +52,17 @@ export default function EmailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<ViewTab>("digest");
   const [composing, setComposing] = useState(false);
+  const [categorizationRules, setCategorizationRules] = useState<any>({
+    topOfMind: [],
+    fyi: [],
+    newsletter: [],
+    spam: []
+  });
 
   useEffect(() => {
+    // Load categorization rules
+    loadCategorizationRules();
+    
     // Try to load from sessionStorage first
     const cached = sessionStorage.getItem('emails-cache');
     if (cached) {
@@ -71,6 +80,16 @@ export default function EmailPage() {
     }
     loadEmails();
   }, []);
+
+  async function loadCategorizationRules() {
+    try {
+      const res = await fetch("/api/email/categorize");
+      const data = await res.json();
+      setCategorizationRules(data.categorization);
+    } catch (err) {
+      console.error("Failed to load categorization rules:", err);
+    }
+  }
 
   async function loadEmails(forceRefresh = false) {
     // Only show loading spinner if we don't have emails yet
@@ -169,6 +188,24 @@ export default function EmailPage() {
     }));
   }
 
+  async function handleCategorize(sender: string, category: string) {
+    try {
+      await fetch("/api/email/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender, category }),
+      });
+      
+      // Clear cache to force refresh with new categorization
+      sessionStorage.removeItem('emails-cache');
+      
+      alert(`All emails from ${sender} will now be categorized as ${category}`);
+    } catch (err) {
+      console.error("Categorize failed:", err);
+      alert("Failed to save categorization rule");
+    }
+  }
+
   async function markAsRead() {
     const ids = Array.from(selected);
     try {
@@ -195,34 +232,43 @@ export default function EmailPage() {
       e.from.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Helper to check if email sender matches any rule
+  const matchesSender = (email: Email, senders: string[]) => {
+    return senders.some(sender => email.from.includes(sender));
+  };
+
   // Categorize emails for digest view
   const categorized = {
     topOfMind: filtered.filter(e => 
+      matchesSender(e, categorizationRules.topOfMind || []) ||
       e.subject.toLowerCase().includes("urgent") ||
-      e.subject.toLowerCase().includes("action required") ||
-      e.from.includes("@ted-associates.com") ||
-      e.from.includes("@agis-eng.com")
+      e.subject.toLowerCase().includes("action required")
     ),
-    fyi: filtered.filter(e => 
-      !e.subject.toLowerCase().includes("urgent") &&
-      !e.subject.toLowerCase().includes("newsletter") &&
-      !e.subject.toLowerCase().includes("spam") &&
-      !e.from.includes("@ted-associates.com") &&
-      !e.from.includes("@agis-eng.com") &&
-      !e.from.includes("newsletter@") &&
-      !e.from.includes("noreply@") &&
-      !e.from.includes("no-reply@")
-    ),
+    fyi: filtered.filter(e => {
+      // Skip if already categorized elsewhere
+      if (matchesSender(e, categorizationRules.topOfMind || [])) return false;
+      if (matchesSender(e, categorizationRules.newsletter || [])) return false;
+      if (matchesSender(e, categorizationRules.spam || [])) return false;
+      
+      // Check if explicitly marked as FYI
+      if (matchesSender(e, categorizationRules.fyi || [])) return true;
+      
+      // Default FYI criteria
+      return !e.subject.toLowerCase().includes("urgent") &&
+             !e.subject.toLowerCase().includes("newsletter") &&
+             !e.from.includes("newsletter@") &&
+             !e.from.includes("noreply@");
+    }),
     newsletters: filtered.filter(e =>
+      matchesSender(e, categorizationRules.newsletter || []) ||
       e.subject.toLowerCase().includes("newsletter") ||
       e.from.includes("newsletter@") ||
       e.from.includes("noreply@")
     ),
     spam: filtered.filter(e =>
+      matchesSender(e, categorizationRules.spam || []) ||
       e.subject.toLowerCase().includes("spam") ||
-      e.subject.toLowerCase().includes("unsubscribe") ||
-      e.from.includes("spam@") ||
-      e.from.includes("marketing@")
+      e.from.includes("spam@")
     ),
   };
 
@@ -490,6 +536,59 @@ export default function EmailPage() {
                 <p><strong>To:</strong> {selectedEmail.to}</p>
                 <p><strong>Date:</strong> {new Date(selectedEmail.date).toLocaleString()}</p>
               </div>
+              {/* Quick Categorize */}
+              <div className="flex gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
+                <span className="text-xs font-medium text-muted-foreground self-center mr-2">Quick Categorize:</span>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-7 text-xs"
+                  onClick={async () => {
+                    await handleCategorize(selectedEmail.from, 'topOfMind');
+                    await loadEmails(true);
+                  }}
+                >
+                  <Star className="h-3 w-3 mr-1" />
+                  Top of Mind
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={async () => {
+                    await handleCategorize(selectedEmail.from, 'fyi');
+                    await loadEmails(true);
+                  }}
+                >
+                  <Inbox className="h-3 w-3 mr-1" />
+                  FYI
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={async () => {
+                    await handleCategorize(selectedEmail.from, 'newsletter');
+                    await loadEmails(true);
+                  }}
+                >
+                  <FileText className="h-3 w-3 mr-1" />
+                  Newsletter
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="h-7 text-xs text-destructive"
+                  onClick={async () => {
+                    await handleCategorize(selectedEmail.from, 'spam');
+                    await loadEmails(true);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Spam
+                </Button>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => {
