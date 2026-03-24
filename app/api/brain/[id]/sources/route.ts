@@ -58,6 +58,40 @@ export async function POST(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { sender } = await request.json();
+
+    const data = readBrains();
+    const brain = data.brains.find((b: any) => b.id === id);
+
+    if (!brain) {
+      return NextResponse.json(
+        { error: "Brain not found" },
+        { status: 404 }
+      );
+    }
+
+    if (brain.email_sources) {
+      brain.email_sources = brain.email_sources.filter((s: string) => s !== sender);
+      brain.lastUpdated = new Date().toISOString().split('T')[0];
+      writeBrains(data);
+    }
+
+    return NextResponse.json(brain);
+  } catch (error) {
+    console.error("Error removing source:", error);
+    return NextResponse.json(
+      { error: "Failed to remove source" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
