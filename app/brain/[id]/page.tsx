@@ -49,9 +49,12 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
   const [newNote, setNewNote] = useState("");
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [showNoteForm, setShowNoteForm] = useState(false);
+  const [summaries, setSummaries] = useState<any[]>([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(true);
 
   useEffect(() => {
     loadBrain();
+    loadSummaries();
   }, [id]);
 
   async function loadBrain() {
@@ -65,6 +68,20 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
       console.error("Failed to load brain:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSummaries() {
+    try {
+      const res = await fetch(`/api/brain/${id}/summaries`);
+      if (res.ok) {
+        const data = await res.json();
+        setSummaries(data.summaries || []);
+      }
+    } catch (err) {
+      console.error("Failed to load summaries:", err);
+    } finally {
+      setLoadingSummaries(false);
     }
   }
 
@@ -242,18 +259,40 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
             <CardHeader>
               <CardTitle className="text-base flex items-center justify-between">
                 Latest Summary
-                <Button size="sm" variant="ghost">
+                <Button size="sm" variant="ghost" onClick={loadSummaries}>
                   <RefreshCw className="h-3.5 w-3.5" />
                 </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                No summaries yet. Summaries will be generated {brain.schedule} based on your email sources.
-              </p>
-              <Button size="sm" variant="outline" className="mt-4">
-                Generate Now
-              </Button>
+              {loadingSummaries ? (
+                <div className="animate-pulse space-y-2">
+                  <div className="h-4 bg-muted rounded w-3/4"></div>
+                  <div className="h-4 bg-muted rounded w-full"></div>
+                  <div className="h-4 bg-muted rounded w-2/3"></div>
+                </div>
+              ) : summaries.length === 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    No summaries yet. Summaries will be generated {brain.schedule} based on your email sources.
+                  </p>
+                  <Button size="sm" variant="outline" className="mt-4">
+                    Generate Now
+                  </Button>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-sm">
+                    <p className="text-xs text-muted-foreground mb-2">{summaries[0].date}</p>
+                    <div className="whitespace-pre-wrap text-sm border-l-2 border-purple-600/30 pl-3">
+                      {summaries[0].preview}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setActiveTab("sources")}>
+                    View All Summaries
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
