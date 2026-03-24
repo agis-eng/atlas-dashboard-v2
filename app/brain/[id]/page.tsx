@@ -51,6 +51,11 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [summaries, setSummaries] = useState<any[]>([]);
   const [loadingSummaries, setLoadingSummaries] = useState(true);
+  
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<Array<{role: string, content: string}>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
     loadBrain();
@@ -136,6 +141,74 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
     } catch (err) {
       console.error("Failed to remove source:", err);
       alert("Failed to remove source");
+    }
+  }
+
+  async function sendChatMessage() {
+    if (!chatInput.trim() || chatLoading) return;
+    
+    const userMessage = chatInput.trim();
+    setChatInput("");
+    setChatLoading(true);
+    
+    // Add user message
+    const newMessages = [...chatMessages, { role: "user", content: userMessage }];
+    setChatMessages(newMessages);
+    
+    try {
+      const res = await fetch(`/api/brain/${id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: userMessage,
+          history: chatMessages
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Chat request failed");
+      }
+      
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+      
+      let assistantMessage = "";
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.text) {
+                assistantMessage += parsed.text;
+                // Update UI with partial response
+                setChatMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+      
+    } catch (err) {
+      console.error("Chat error:", err);
+      setChatMessages([...newMessages, { 
+        role: "assistant", 
+        content: "Sorry, I encountered an error. Please try again." 
+      }]);
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -435,14 +508,73 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Chat Tab */}
       {activeTab === "chat" && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <MessageSquare className="h-16 w-16 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium mb-2">AI Chat Coming Soon</p>
-            <p className="text-sm text-muted-foreground text-center max-w-md">
-              Chat with AI that has full context of all your sources, documents, links, and notes
-            </p>
+        <Card className="h-[600px] flex flex-col">
+          <CardHeader className="border-b">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-purple-600" />
+              AI Chat
+              <Badge variant="outline" className="ml-auto">
+                {brain.email_sources.length} sources • {summaries.length} summaries
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          
+          {/* Chat Messages */}
+          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+            {chatMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Brain className="h-12 w-12 text-purple-600 mb-3" />
+                <p className="font-medium mb-1">Ask me anything about {brain.name}</p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  I have access to all summaries, links, notes, and knowledge from this Brain
+                </p>
+              </div>
+            ) : (
+              chatMessages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg p-3 ${
+                      msg.role === "user"
+                        ? "bg-purple-600 text-white"
+                        : "bg-muted"
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))
+            )}
+            {chatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-lg p-3">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
+          
+          {/* Chat Input */}
+          <div className="border-t p-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ask a question..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
+                disabled={chatLoading}
+              />
+              <Button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()}>
+                Send
+              </Button>
+            </div>
+          </div>
         </Card>
       )}
     </div>
