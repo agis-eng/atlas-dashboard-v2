@@ -19,6 +19,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const data = await readBrains(user.profile);
     const brain = data.brains.find((b: any) => b.id === id);
