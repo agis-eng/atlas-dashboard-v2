@@ -66,12 +66,10 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
         onClick={() => onOpen(email)}
       >
         <div className="flex items-center gap-2 mb-1">
-          <p className="font-medium text-sm truncate">{email.subject}</p>
-          {!email.read && <Badge variant="default" className="text-xs">New</Badge>}
-          {/* Debug: Show read status on ALL emails */}
-          <Badge variant="outline" className="text-[10px] opacity-50">
-            {email.read ? 'Read' : 'Unread'}
-          </Badge>
+          <p className={cn("font-medium text-sm truncate", !email.read && "font-bold")}>
+            {email.subject}
+          </p>
+          {!email.read && <Badge variant="default" className="text-xs bg-blue-600">New</Badge>}
         </div>
         <p className="text-xs text-muted-foreground truncate">{email.from}</p>
         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
