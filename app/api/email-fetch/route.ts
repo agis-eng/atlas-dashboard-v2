@@ -94,6 +94,13 @@ async function fetchEmailsViaIMAP(config: {
               console.log(`Email UID ${uid}: flags=${JSON.stringify(flags)}, isRead=${isRead}`);
             }
 
+            // Extract attachments
+            const attachments = data.parsed.attachments?.map((att: any) => ({
+              filename: att.filename || 'untitled',
+              contentType: att.contentType || 'application/octet-stream',
+              size: att.size || 0,
+            })) || [];
+
             emails.push({
               id: `${uid}`,
               uid: uid,
@@ -108,6 +115,7 @@ async function fetchEmailsViaIMAP(config: {
               starred: isStarred,
               labels: [],
               account: config.user,
+              attachments: attachments.length > 0 ? attachments : undefined,
             });
           });
           

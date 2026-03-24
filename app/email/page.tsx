@@ -45,6 +45,11 @@ interface Email {
   read: boolean;
   starred: boolean;
   account: string;
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+  }>;
 }
 
 type ViewTab = "digest" | "all";
@@ -790,10 +795,26 @@ export default function EmailPage() {
                   ✕
                 </Button>
               </div>
-              <div className="space-y-1 text-sm text-muted-foreground mb-4">
-                <p><strong>From:</strong> {selectedEmail.from}</p>
-                <p><strong>To:</strong> {selectedEmail.to}</p>
-                <p><strong>Date:</strong> {new Date(selectedEmail.date).toLocaleString()}</p>
+              <div className="space-y-1 text-sm mb-4">
+                <p className="text-foreground"><strong>From:</strong> <span className="text-foreground">{selectedEmail.from}</span></p>
+                <p className="text-muted-foreground"><strong>To:</strong> {selectedEmail.to}</p>
+                <p className="text-muted-foreground"><strong>Date:</strong> {new Date(selectedEmail.date).toLocaleString()}</p>
+                {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="text-foreground font-medium mb-2">📎 Attachments ({selectedEmail.attachments.length})</p>
+                    <div className="space-y-1">
+                      {selectedEmail.attachments.map((att, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-foreground flex-1">{att.filename}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {(att.size / 1024).toFixed(1)} KB
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Quick Categorize */}
               <div className="flex gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
