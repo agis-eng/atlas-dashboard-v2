@@ -1,8 +1,7 @@
-import { readFile, writeFile } from "fs/promises";
-import { join } from "path";
-import yaml from "js-yaml";
+import { NextResponse } from "next/server";
+import { getRedis } from "@/lib/redis";
 
-const TOPICS_PATH = join(process.cwd(), "data", "trends-topics.yaml");
+const TOPICS_KEY = "trends:topics";
 
 interface Topic {
   id: string;
@@ -13,22 +12,24 @@ interface Topic {
 }
 
 async function loadTopics(): Promise<{ topics: Topic[] }> {
-  try {
-    const contents = await readFile(TOPICS_PATH, "utf8");
-    return (yaml.load(contents) as { topics: Topic[] }) || { topics: [] };
-  } catch {
+  const redis = getRedis();
+  const data = await redis.get(TOPICS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { topics: [] };
   }
+  
+  return data as { topics: Topic[] };
 }
 
 async function saveTopics(data: { topics: Topic[] }) {
-  const yamlStr = yaml.dump(data, { lineWidth: -1, noRefs: true });
-  await writeFile(TOPICS_PATH, yamlStr, "utf8");
+  const redis = getRedis();
+  await redis.set(TOPICS_KEY, data);
 }
 
 export async function GET() {
   const data = await loadTopics();
-  return Response.json({ topics: data.topics || [] });
+  return NextResponse.json({ topics: data.topics || [] });
 }
 
 export async function POST(request: Request) {
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
   const { name, keywords, platforms } = body;
 
   if (!name || !keywords?.length || !platforms?.length) {
-    return Response.json({ error: "name, keywords, and platforms are required" }, { status: 400 });
+    return NextResponse.json({ error: "name, keywords, and platforms are required" }, { status: 400 });
   }
 
   const data = await loadTopics();
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   };
   data.topics.push(newTopic);
   await saveTopics(data);
-  return Response.json({ topic: newTopic });
+  return NextResponse.json({ topic: newTopic });
 }
 
 export async function PUT(request: Request) {
@@ -57,18 +58,18 @@ export async function PUT(request: Request) {
   const { id, ...updates } = body;
 
   if (!id) {
-    return Response.json({ error: "id is required" }, { status: 400 });
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
   const data = await loadTopics();
   const idx = data.topics.findIndex((t) => t.id === id);
   if (idx === -1) {
-    return Response.json({ error: "Topic not found" }, { status: 404 });
+    return NextResponse.json({ error: "Topic not found" }, { status: 404 });
   }
 
   data.topics[idx] = { ...data.topics[idx], ...updates };
   await saveTopics(data);
-  return Response.json({ topic: data.topics[idx] });
+  return NextResponse.json({ topic: data.topics[idx] });
 }
 
 export async function DELETE(request: Request) {
@@ -76,11 +77,11 @@ export async function DELETE(request: Request) {
   const id = searchParams.get("id");
 
   if (!id) {
-    return Response.json({ error: "id is required" }, { status: 400 });
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
   const data = await loadTopics();
   data.topics = data.topics.filter((t) => t.id !== id);
   await saveTopics(data);
-  return Response.json({ success: true });
+  return NextResponse.json({ success: true });
 }

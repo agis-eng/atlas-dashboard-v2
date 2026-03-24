@@ -1,8 +1,7 @@
-import { readFile, writeFile } from "fs/promises";
-import { join } from "path";
-import yaml from "js-yaml";
+import { NextResponse } from "next/server";
+import { getRedis } from "@/lib/redis";
 
-const BOOKMARKS_PATH = join(process.cwd(), "data", "trends-bookmarks.yaml");
+const BOOKMARKS_KEY = "trends:bookmarks";
 
 interface Bookmark {
   id: string;
@@ -11,22 +10,24 @@ interface Bookmark {
 }
 
 async function loadBookmarks(): Promise<{ bookmarks: Bookmark[] }> {
-  try {
-    const contents = await readFile(BOOKMARKS_PATH, "utf8");
-    return (yaml.load(contents) as { bookmarks: Bookmark[] }) || { bookmarks: [] };
-  } catch {
+  const redis = getRedis();
+  const data = await redis.get(BOOKMARKS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { bookmarks: [] };
   }
+  
+  return data as { bookmarks: Bookmark[] };
 }
 
 async function saveBookmarks(data: { bookmarks: Bookmark[] }) {
-  const yamlStr = yaml.dump(data, { lineWidth: -1, noRefs: true });
-  await writeFile(BOOKMARKS_PATH, yamlStr, "utf8");
+  const redis = getRedis();
+  await redis.set(BOOKMARKS_KEY, data);
 }
 
 export async function GET() {
   const data = await loadBookmarks();
-  return Response.json({ bookmarks: data.bookmarks || [] });
+  return NextResponse.json({ bookmarks: data.bookmarks || [] });
 }
 
 export async function POST(request: Request) {
@@ -34,12 +35,12 @@ export async function POST(request: Request) {
   const { itemId } = body;
 
   if (!itemId) {
-    return Response.json({ error: "itemId is required" }, { status: 400 });
+    return NextResponse.json({ error: "itemId is required" }, { status: 400 });
   }
 
   const data = await loadBookmarks();
   if (data.bookmarks.some((b) => b.itemId === itemId)) {
-    return Response.json({ error: "Already bookmarked" }, { status: 409 });
+    return NextResponse.json({ error: "Already bookmarked" }, { status: 409 });
   }
 
   const bookmark: Bookmark = {
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   };
   data.bookmarks.push(bookmark);
   await saveBookmarks(data);
-  return Response.json({ bookmark });
+  return NextResponse.json({ bookmark });
 }
 
 export async function DELETE(request: Request) {
@@ -57,11 +58,11 @@ export async function DELETE(request: Request) {
   const itemId = searchParams.get("itemId");
 
   if (!itemId) {
-    return Response.json({ error: "itemId is required" }, { status: 400 });
+    return NextResponse.json({ error: "itemId is required" }, { status: 400 });
   }
 
   const data = await loadBookmarks();
   data.bookmarks = data.bookmarks.filter((b) => b.itemId !== itemId);
   await saveBookmarks(data);
-  return Response.json({ success: true });
+  return NextResponse.json({ success: true });
 }
