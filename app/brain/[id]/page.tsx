@@ -406,6 +406,77 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
+          {/* Documents */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Documents ({brain.documents?.length || 0})
+                </span>
+                <Button size="sm" onClick={() => document.getElementById('doc-upload')?.click()}>
+                  <Upload className="h-3.5 w-3.5 mr-1" />
+                  Upload
+                </Button>
+                <input
+                  id="doc-upload"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.md"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    try {
+                      const res = await fetch(`/api/brain/${id}/documents`, {
+                        method: 'POST',
+                        body: formData,
+                      });
+                      
+                      if (res.ok) {
+                        await loadBrain();
+                        alert('Document uploaded successfully');
+                      } else {
+                        alert('Failed to upload document');
+                      }
+                    } catch (err) {
+                      console.error('Upload failed:', err);
+                      alert('Upload failed');
+                    }
+                    
+                    e.target.value = '';
+                  }}
+                />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {brain.documents && brain.documents.length > 0 ? (
+                <div className="space-y-2">
+                  {brain.documents.map((doc: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between p-2 rounded border">
+                      <div className="flex items-center gap-2 flex-1">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(doc.size / 1024).toFixed(1)} KB • {new Date(doc.uploadedAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No documents yet. Upload PDFs, Word docs, or text files.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Links */}
           <Card>
             <CardHeader>
