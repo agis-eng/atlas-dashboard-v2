@@ -292,16 +292,55 @@ function AccountForm({
         )}
 
         {account.type === "google" && (
-          <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-center">
-            <p className="text-xs text-muted-foreground mb-2">
-              Connect via Google OAuth to access this inbox
+          <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Gmail App Password</p>
+            <p className="text-[10px] text-muted-foreground/80 mb-2">
+              Generate an App Password at: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">myaccount.google.com/apppasswords</a>
             </p>
-            <Button variant="outline" size="sm" disabled>
-              <Mail className="h-3.5 w-3.5 mr-1.5" />
-              Connect Google Account
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground">Gmail Address</label>
+                <Input
+                  placeholder="you@gmail.com"
+                  value={account.smtp?.username || account.email || ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...account,
+                      email: e.target.value,
+                      smtp: { 
+                        host: "imap.gmail.com",
+                        port: 993,
+                        username: e.target.value,
+                        password: account.smtp?.password || "",
+                        secure: true
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">App Password</label>
+                <Input
+                  type="password"
+                  placeholder="16-character code"
+                  value={account.smtp?.password || ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...account,
+                      smtp: { 
+                        host: "imap.gmail.com",
+                        port: 993,
+                        username: account.smtp?.username || account.email || "",
+                        password: e.target.value,
+                        secure: true
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
             <p className="text-[10px] text-muted-foreground/60 mt-1.5">
-              OAuth integration coming soon
+              Uses Gmail IMAP (imap.gmail.com:993). No OAuth setup required.
             </p>
           </div>
         )}
