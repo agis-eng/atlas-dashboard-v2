@@ -292,11 +292,61 @@ function AccountForm({
         )}
 
         {account.type === "google" && (
-          <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground">Gmail App Password</p>
-            <p className="text-[10px] text-muted-foreground/80 mb-2">
-              Generate an App Password at: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">myaccount.google.com/apppasswords</a>
-            </p>
+          <div className="space-y-3 rounded-lg border border-border/50 bg-muted/30 p-3">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Gmail App Password</p>
+              
+              {/* Collapsible How-To Guide */}
+              <details className="mb-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-2.5">
+                <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1.5">
+                  <span>📖 How to get your App Password (click to expand)</span>
+                </summary>
+                <div className="mt-2 space-y-2 text-[11px] text-muted-foreground pl-5">
+                  <ol className="list-decimal space-y-1.5">
+                    <li>
+                      Go to{" "}
+                      <a 
+                        href="https://myaccount.google.com/apppasswords" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-500 underline hover:text-blue-600"
+                      >
+                        myaccount.google.com/apppasswords
+                      </a>
+                    </li>
+                    <li>Sign in to your Google account if prompted</li>
+                    <li>
+                      <strong>Name your app:</strong> Enter "Atlas Dashboard" or any name you'll remember
+                    </li>
+                    <li>
+                      <strong>Click "Create"</strong> - Google will generate a 16-character password
+                    </li>
+                    <li>
+                      <strong>Copy the password</strong> (it looks like: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">abcd efgh ijkl mnop</code>)
+                    </li>
+                    <li>Paste it into the "App Password" field below</li>
+                    <li>Click "Save Account" - you're done! ✅</li>
+                  </ol>
+                  
+                  <div className="mt-3 pt-2 border-t border-blue-500/10">
+                    <p className="text-[10px] text-muted-foreground/80">
+                      <strong>Note:</strong> If you don't see the App Passwords option, make sure:
+                    </p>
+                    <ul className="list-disc ml-4 mt-1 space-y-0.5 text-[10px]">
+                      <li>2-Step Verification is enabled on your Google account</li>
+                      <li>You're not using a work/school account with restrictions</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="mt-2 p-2 rounded bg-green-500/5 border border-green-500/20">
+                    <p className="text-[10px] text-green-700 dark:text-green-400">
+                      ✨ <strong>Pro tip:</strong> You can revoke this password anytime from the same Google page if you need to disconnect this app.
+                    </p>
+                  </div>
+                </div>
+              </details>
+            </div>
+            
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-muted-foreground">Gmail Address</label>
@@ -339,8 +389,8 @@ function AccountForm({
                 />
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground/60 mt-1.5">
-              Uses Gmail IMAP (imap.gmail.com:993). No OAuth setup required.
+            <p className="text-[10px] text-muted-foreground/60">
+              Uses Gmail IMAP (imap.gmail.com:993). Secure and revokable.
             </p>
           </div>
         )}
