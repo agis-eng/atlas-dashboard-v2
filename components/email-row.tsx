@@ -68,6 +68,10 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
         <div className="flex items-center gap-2 mb-1">
           <p className="font-medium text-sm truncate">{email.subject}</p>
           {!email.read && <Badge variant="default" className="text-xs">New</Badge>}
+          {/* Debug: Show read status on ALL emails */}
+          <Badge variant="outline" className="text-[10px] opacity-50">
+            {email.read ? 'Read' : 'Unread'}
+          </Badge>
         </div>
         <p className="text-xs text-muted-foreground truncate">{email.from}</p>
         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
