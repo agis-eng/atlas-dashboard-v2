@@ -807,7 +807,6 @@ export default function EmailPage() {
                   {unsubscribing ? "Unsubscribing..." : "Unsubscribe"}
                 </Button>
                 <Button size="sm" variant="outline" onClick={async () => {
-                  if (!confirm("Delete this email?")) return;
                   try {
                     await fetch("/api/email-action", {
                       method: "POST",
@@ -815,6 +814,14 @@ export default function EmailPage() {
                       body: JSON.stringify({ emailIds: [selectedEmail.id], action: "delete" }),
                     });
                     setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                    
+                    // Update sessionStorage cache
+                    const newEmails = emails.filter((e) => e.id !== selectedEmail.id);
+                    sessionStorage.setItem('emails-cache', JSON.stringify({
+                      emails: newEmails,
+                      timestamp: Date.now()
+                    }));
+                    
                     setSelectedEmail(null);
                   } catch (err) {
                     alert("Failed to delete");
