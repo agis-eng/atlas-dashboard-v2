@@ -208,8 +208,8 @@ export async function GET(request: NextRequest) {
     // Sort by date (newest first)
     allEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Cache in Redis for 15 minutes (increased from 5 to reduce IMAP load)
-    await redis.set(cacheKey, allEmails, { ex: 900 });
+    // Cache in Redis for 1 hour (3600 seconds)
+    await redis.set(cacheKey, allEmails, { ex: 3600 });
 
     return Response.json({ emails: allEmails, count: allEmails.length, cached: false });
   } catch (error: any) {

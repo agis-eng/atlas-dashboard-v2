@@ -83,12 +83,20 @@ export default function EmailPage() {
     if (cached) {
       try {
         const data = JSON.parse(cached);
-        // Check if cache is less than 15 minutes old (increased from 5 to reduce server load)
-        if (Date.now() - data.timestamp < 15 * 60 * 1000) {
-          setEmails(data.emails);
-          setLoading(false);
+        const cacheAge = Date.now() - data.timestamp;
+        const oneHour = 60 * 60 * 1000;
+        
+        // Always show cached data immediately
+        setEmails(data.emails);
+        setLoading(false);
+        
+        // Only auto-refresh if cache is older than 1 hour
+        if (cacheAge < oneHour) {
+          console.log(`Using cached emails (${Math.floor(cacheAge / 60000)} min old). Auto-refresh in ${Math.floor((oneHour - cacheAge) / 60000)} min.`);
           return;
         }
+        
+        console.log('Cache older than 1 hour, refreshing...');
       } catch (e) {
         // Invalid cache, continue to fetch
       }
