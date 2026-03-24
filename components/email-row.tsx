@@ -29,7 +29,6 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete }: 
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this email?")) return;
     
     setDeleting(true);
     try {
@@ -60,9 +59,10 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete }: 
         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
       </div>
       <div className="flex items-start gap-1">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {new Date(email.date).toLocaleDateString()}
-        </span>
+        <div className="text-xs text-muted-foreground whitespace-nowrap text-right">
+          <div>{new Date(email.date).toLocaleDateString()}</div>
+          <div className="text-[10px]">{new Date(email.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
         <Button
           size="sm"
           variant="ghost"

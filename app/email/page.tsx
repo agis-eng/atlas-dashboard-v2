@@ -54,16 +54,41 @@ export default function EmailPage() {
   const [composing, setComposing] = useState(false);
 
   useEffect(() => {
+    // Try to load from sessionStorage first
+    const cached = sessionStorage.getItem('emails-cache');
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        // Check if cache is less than 5 minutes old
+        if (Date.now() - data.timestamp < 5 * 60 * 1000) {
+          setEmails(data.emails);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        // Invalid cache, continue to fetch
+      }
+    }
     loadEmails();
   }, []);
 
   async function loadEmails(forceRefresh = false) {
-    setLoading(true);
+    // Only show loading spinner if we don't have emails yet
+    if (emails.length === 0) {
+      setLoading(true);
+    }
+    
     try {
       const url = forceRefresh ? "/api/email-fetch?refresh=true" : "/api/email-fetch";
       const res = await fetch(url);
       const data = await res.json();
       setEmails(data.emails || []);
+      
+      // Cache in sessionStorage
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: data.emails,
+        timestamp: Date.now()
+      }));
     } catch (err) {
       console.error("Failed to load emails:", err);
     } finally {
@@ -89,8 +114,15 @@ export default function EmailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailIds: ids, action: "archive" }),
       });
-      setEmails(emails.filter((e) => !selected.has(e.id)));
+      const newEmails = emails.filter((e) => !selected.has(e.id));
+      setEmails(newEmails);
       setSelected(new Set());
+      
+      // Update sessionStorage cache
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: newEmails,
+        timestamp: Date.now()
+      }));
     } catch (err) {
       console.error("Archive failed:", err);
       alert("Failed to archive emails");
@@ -106,8 +138,15 @@ export default function EmailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailIds: ids, action: "delete" }),
       });
-      setEmails(emails.filter((e) => !selected.has(e.id)));
+      const newEmails = emails.filter((e) => !selected.has(e.id));
+      setEmails(newEmails);
       setSelected(new Set());
+      
+      // Update sessionStorage cache
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: newEmails,
+        timestamp: Date.now()
+      }));
     } catch (err) {
       console.error("Delete failed:", err);
       alert("Failed to delete emails");
@@ -120,7 +159,14 @@ export default function EmailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emailIds: [id], action: "delete" }),
     });
-    setEmails(emails.filter(e => e.id !== id));
+    const newEmails = emails.filter(e => e.id !== id);
+    setEmails(newEmails);
+    
+    // Update sessionStorage cache
+    sessionStorage.setItem('emails-cache', JSON.stringify({
+      emails: newEmails,
+      timestamp: Date.now()
+    }));
   }
 
   async function markAsRead() {
