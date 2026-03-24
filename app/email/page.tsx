@@ -24,10 +24,12 @@ import {
   Forward,
   Plus,
   Brain,
+  Sparkles,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
 import { EmailRow } from "@/components/email-row";
+import { EmailAI } from "@/components/email-ai";
 import { cn } from "@/lib/utils";
 
 interface Email {
@@ -61,6 +63,7 @@ export default function EmailPage() {
     spam: []
   });
   const [brains, setBrains] = useState<any[]>([]);
+  const [showAI, setShowAI] = useState(false);
   const [showBrainSelector, setShowBrainSelector] = useState(false);
 
   useEffect(() => {
@@ -262,6 +265,22 @@ export default function EmailPage() {
     }));
   }
 
+  async function handleArchiveEmail(id: string) {
+    await fetch("/api/email-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailIds: [id], action: "archive" }),
+    });
+    const newEmails = emails.filter(e => e.id !== id);
+    setEmails(newEmails);
+    
+    // Update sessionStorage cache
+    sessionStorage.setItem('emails-cache', JSON.stringify({
+      emails: newEmails,
+      timestamp: Date.now()
+    }));
+  }
+
   async function handleCategorize(sender: string, category: string) {
     try {
       await fetch("/api/email/categorize", {
@@ -383,6 +402,10 @@ export default function EmailPage() {
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
             Refresh
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowAI(!showAI)}>
+            <Sparkles className="h-4 w-4 mr-2 text-purple-500" />
+            AI Assistant
+          </Button>
           <EmailSettingsSheet />
         </div>
       </div>
@@ -456,6 +479,7 @@ export default function EmailPage() {
                   onToggleSelect={toggleSelect}
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
+                  onArchive={handleArchiveEmail}
                 />
               ))}
             </CardContent>
@@ -482,6 +506,7 @@ export default function EmailPage() {
                   onToggleSelect={toggleSelect}
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
+                  onArchive={handleArchiveEmail}
                 />
               ))}
             </CardContent>
@@ -508,6 +533,7 @@ export default function EmailPage() {
                   onToggleSelect={toggleSelect}
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
+                  onArchive={handleArchiveEmail}
                 />
               ))}
             </CardContent>
@@ -534,6 +560,7 @@ export default function EmailPage() {
                   onToggleSelect={toggleSelect}
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
+                  onArchive={handleArchiveEmail}
                 />
               ))}
             </CardContent>
@@ -823,6 +850,14 @@ export default function EmailPage() {
             <EmailCompose mode="new" onClose={() => setComposing(false)} />
           </div>
         </div>
+      )}
+
+      {/* AI Assistant */}
+      {showAI && (
+        <EmailAI
+          onClose={() => setShowAI(false)}
+          onRefresh={() => loadEmails(true)}
+        />
       )}
     </div>
   );

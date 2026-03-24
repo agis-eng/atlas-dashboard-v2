@@ -1,265 +1,152 @@
+import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+});
 
-// ── Types ─────────────────────────────────────────────────────────
-
-interface EmailInput {
-  id: string;
-  subject: string;
-  from: string;
-  to: string;
-  snippet: string;
-  body?: string;
+interface EmailAction {
+  action: "archive" | "delete" | "mark_read" | "categorize";
+  emailIds?: string[];
+  sender?: string;
+  category?: string;
 }
 
-// ── AI Actions ────────────────────────────────────────────────────
-
-async function triageEmail(email: EmailInput) {
-  const msg = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 256,
-    messages: [
-      {
-        role: "user",
-        content: `Categorize this email into one of three categories:
-- "topOfMind": Requires action, urgent, important business matters, client requests, deadlines, errors/alerts
-- "fyi": Informational, notifications, updates that don't require action
-- "newsletters": Newsletters, digests, marketing, promotional content, low-priority updates
-
-Email:
-From: ${email.from}
-To: ${email.to}
-Subject: ${email.subject}
-Body: ${email.snippet || email.body || ""}
-
-Respond with ONLY the category key: topOfMind, fyi, or newsletters`,
-      },
-    ],
-  });
-
-  const raw = (msg.content[0] as any).text?.trim().toLowerCase();
-  const valid = ["topofmind", "fyi", "newsletters"];
-  const map: Record<string, string> = { topofmind: "topOfMind", fyi: "fyi", newsletters: "newsletters" };
-  const key = valid.find((v) => raw.includes(v)) || "fyi";
-  return map[key];
-}
-
-async function summarizeEmail(email: EmailInput): Promise<string> {
-  const msg = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 128,
-    messages: [
-      {
-        role: "user",
-        content: `Write a single-line summary (max 15 words) of this email. Be specific and actionable.
-
-From: ${email.from}
-Subject: ${email.subject}
-Body: ${email.snippet || email.body || ""}
-
-Respond with ONLY the summary, no quotes or punctuation at end.`,
-      },
-    ],
-  });
-
-  return ((msg.content[0] as any).text || "").trim();
-}
-
-async function draftReply(email: EmailInput, instruction?: string): Promise<string> {
-  const prompt = instruction
-    ? `Draft a reply to this email. Instruction: "${instruction}"`
-    : `Draft a professional reply to this email. Be concise and helpful.`;
-
-  const msg = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
-    messages: [
-      {
-        role: "user",
-        content: `${prompt}
-
-Original email:
-From: ${email.from}
-Subject: ${email.subject}
-Body: ${email.body || email.snippet || ""}
-
-Write the reply body only (no subject line, no "Dear X," header). Sign off as Erik.`,
-      },
-    ],
-  });
-
-  return ((msg.content[0] as any).text || "").trim();
-}
-
-async function analyzeSentiment(email: EmailInput): Promise<string> {
-  const msg = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 64,
-    messages: [
-      {
-        role: "user",
-        content: `Analyze the sentiment/urgency of this email. Reply with ONE word only: urgent, angry, positive, or neutral.
-
-From: ${email.from}
-Subject: ${email.subject}
-Body: ${email.snippet || email.body || ""}`,
-      },
-    ],
-  });
-
-  const raw = ((msg.content[0] as any).text || "").trim().toLowerCase();
-  const valid = ["urgent", "angry", "positive", "neutral"];
-  return valid.find((v) => raw.includes(v)) || "neutral";
-}
-
-async function extractTask(email: EmailInput): Promise<Record<string, string>> {
-  const msg = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
-    messages: [
-      {
-        role: "user",
-        content: `Extract a task from this email. Return a JSON object with these fields:
-- title: concise action-oriented task title (e.g. "Review contract for Peterson & Co")
-- notes: brief context (1-2 sentences)
-- priority: high, medium, or low
-- due_date: ISO date string if mentioned, otherwise null
-- assignee: who should do this (Erik or Anton), default to Erik
-
-Email:
-From: ${email.from}
-Subject: ${email.subject}
-Body: ${email.body || email.snippet || ""}
-
-Return ONLY valid JSON, no markdown.`,
-      },
-    ],
-  });
-
+export async function POST(request: NextRequest) {
   try {
-    const text = ((msg.content[0] as any).text || "").trim();
-    // Extract JSON from response (strip any markdown if present)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-  } catch {
-    return {
-      title: `Follow up: ${email.subject}`,
-      notes: `From: ${email.from}`,
-      priority: "medium",
-      due_date: "",
-      assignee: "Erik",
-    };
-  }
-}
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
 
-async function bulkTriage(emails: EmailInput[]) {
-  // Process in batches of 5 for speed
-  const results: Array<{ id: string; category: string; summary: string; sentiment: string }> = [];
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
 
-  const BATCH = 5;
-  for (let i = 0; i < emails.length; i += BATCH) {
-    const batch = emails.slice(i, i + BATCH);
-    const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: `For each email below, provide: category (topOfMind|fyi|newsletters), a 10-word max summary, and sentiment (urgent|angry|positive|neutral).
+    const { message } = await request.json();
 
-${batch
-  .map(
-    (e, idx) => `Email ${idx + 1} [id: ${e.id}]:
-From: ${e.from}
-Subject: ${e.subject}
-Snippet: ${e.snippet.substring(0, 150)}`
-  )
-  .join("\n\n")}
+    if (!message) {
+      return new Response(JSON.stringify({ error: "Message required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
 
-Return ONLY a JSON array like:
-[{"id":"...","category":"...","summary":"...","sentiment":"..."}]`,
-        },
-      ],
+    // Fetch user's emails
+    const emailsRes = await fetch(`${request.nextUrl.origin}/api/email-fetch`, {
+      headers: {
+        cookie: request.headers.get('cookie') || '',
+      },
+    });
+    const emailsData = await emailsRes.json();
+    const emails = emailsData.emails || [];
+
+    // Create streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+
+        try {
+          // Call Claude to understand the request and determine action
+          const aiStream = await anthropic.messages.create({
+            model: "claude-haiku-4-6",
+            max_tokens: 2000,
+            stream: true,
+            messages: [
+              {
+                role: "user",
+                content: `You are an email management assistant. The user has ${emails.length} emails.
+
+Here are the first 20 emails (id, from, subject):
+${emails.slice(0, 20).map((e: any) => `- ${e.id} | From: ${e.from} | Subject: ${e.subject}`).join('\n')}
+
+User request: "${message}"
+
+Analyze the request and respond with:
+1. A friendly confirmation of what you'll do
+2. The specific action (archive/delete/mark_read)
+3. Which emails will be affected
+
+If the request involves a sender (e.g., "archive all emails from X"), find matching emails by sender.
+If it's about a category (spam, newsletter), look for keywords in the subject or sender.
+
+Format your response as:
+✅ Action confirmation
+📧 Number of emails affected
+📝 List of affected email subjects (max 5)
+
+Then on a new line, output a JSON object with the action details:
+ACTION_JSON: {"action": "archive|delete|mark_read", "emailIds": ["id1", "id2"], "reason": "explanation"}`,
+              },
+            ],
+          });
+
+          let fullResponse = "";
+          let actionJson: any = null;
+
+          for await (const event of aiStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              const text = event.delta.text;
+              fullResponse += text;
+              controller.enqueue(encoder.encode(text));
+
+              // Extract action JSON if present
+              const match = fullResponse.match(/ACTION_JSON:\s*({.*})/);
+              if (match) {
+                try {
+                  actionJson = JSON.parse(match[1]);
+                } catch (e) {
+                  // Invalid JSON, will try again
+                }
+              }
+            }
+          }
+
+          // Execute the action if we have valid JSON
+          if (actionJson && actionJson.emailIds && actionJson.emailIds.length > 0) {
+            const actionRes = await fetch(`${request.nextUrl.origin}/api/email-action`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                cookie: request.headers.get('cookie') || '',
+              },
+              body: JSON.stringify({
+                emailIds: actionJson.emailIds,
+                action: actionJson.action,
+              }),
+            });
+
+            if (actionRes.ok) {
+              controller.enqueue(encoder.encode('\n\n✅ Action completed successfully!'));
+            } else {
+              controller.enqueue(encoder.encode('\n\n⚠️ Action failed. Please try again.'));
+            }
+          }
+
+          controller.close();
+        } catch (error: any) {
+          console.error("Email AI error:", error);
+          controller.enqueue(encoder.encode(`\n\nError: ${error.message}`));
+          controller.close();
+        }
+      },
     });
 
-    try {
-      const text = ((msg.content[0] as any).text || "").trim();
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        results.push(...parsed);
-      }
-    } catch {
-      // If batch fails, add defaults
-      batch.forEach((e) =>
-        results.push({ id: e.id, category: "fyi", summary: e.subject, sentiment: "neutral" })
-      );
-    }
-  }
-
-  return results;
-}
-
-// ── Route Handler ─────────────────────────────────────────────────
-
-export async function POST(request: Request) {
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 503 });
-    }
-
-    const body = await request.json();
-    const { action, email, emails, instruction } = body;
-
-    switch (action) {
-      case "triage": {
-        if (!email) return Response.json({ error: "email required" }, { status: 400 });
-        const category = await triageEmail(email);
-        return Response.json({ category });
-      }
-
-      case "summary": {
-        if (!email) return Response.json({ error: "email required" }, { status: 400 });
-        const summary = await summarizeEmail(email);
-        return Response.json({ summary });
-      }
-
-      case "draft": {
-        if (!email) return Response.json({ error: "email required" }, { status: 400 });
-        const draft = await draftReply(email, instruction);
-        return Response.json({ draft });
-      }
-
-      case "sentiment": {
-        if (!email) return Response.json({ error: "email required" }, { status: 400 });
-        const sentiment = await analyzeSentiment(email);
-        return Response.json({ sentiment });
-      }
-
-      case "task": {
-        if (!email) return Response.json({ error: "email required" }, { status: 400 });
-        const task = await extractTask(email);
-        return Response.json({ task });
-      }
-
-      case "bulk-triage": {
-        if (!emails || !Array.isArray(emails)) {
-          return Response.json({ error: "emails array required" }, { status: 400 });
-        }
-        const results = await bulkTriage(emails);
-        return Response.json({ results });
-      }
-
-      default:
-        return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });
-    }
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
+      },
+    });
   } catch (error: any) {
     console.error("Email AI error:", error);
-    return Response.json(
-      { error: error.message || "AI operation failed" },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ error: "Failed to process request" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }

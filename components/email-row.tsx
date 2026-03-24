@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2 } from "lucide-react";
+import { Trash2, Archive } from "lucide-react";
 
 interface Email {
   id: string;
@@ -23,10 +23,12 @@ interface EmailRowProps {
   onToggleSelect: (id: string) => void;
   onOpen: (email: Email) => void;
   onDelete: (id: string) => void;
+  onArchive: (id: string) => void;
 }
 
-export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete }: EmailRowProps) {
+export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, onArchive }: EmailRowProps) {
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -36,6 +38,17 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete }: 
       await onDelete(email.id);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleArchive = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    setArchiving(true);
+    try {
+      await onArchive(email.id);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -67,9 +80,20 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete }: 
         <Button
           size="sm"
           variant="ghost"
+          disabled={archiving}
+          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={handleArchive}
+          title="Archive"
+        >
+          <Archive className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           disabled={deleting}
           className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={handleDelete}
+          title="Delete"
         >
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
