@@ -95,6 +95,8 @@ interface ProjectDetail {
   previewUrl?: string;
   liveUrl?: string;
   repoUrl?: string;
+  vercelUrl?: string;
+  githubBranch?: string;
   customLinks?: CustomLink[];
   rank?: number;
   priority?: string;
@@ -1320,9 +1322,27 @@ export default function ProjectDetailPage({
               >
                 <GitBranch className="h-4 w-4 text-purple-500" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Repository</p>
+                  <p className="text-sm font-medium">GitHub Repository</p>
                   <p className="text-xs text-muted-foreground truncate">
                     {p.repoUrl}
+                    {p.githubBranch && <span className="ml-2 text-purple-400">({p.githubBranch})</span>}
+                  </p>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </a>
+            )}
+            {p.vercelUrl && (
+              <a
+                href={p.vercelUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
+              >
+                <FolderOpen className="h-4 w-4 text-black dark:text-white" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Vercel Dashboard</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {p.vercelUrl}
                   </p>
                 </div>
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1455,8 +1475,85 @@ export default function ProjectDetailPage({
         />
       )}
 
+      {/* Changelog */}
+      <ChangelogSection projectId={id} />
+
       {/* AI Chat */}
       <ProjectChat projectId={id} projectName={project.name} />
     </div>
+  );
+}
+
+// ── Changelog Section Component ──
+function ChangelogSection({ projectId }: { projectId: string }) {
+  const [changelog, setChangelog] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadChangelog() {
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/changelog`);
+        if (res.ok) {
+          const text = await res.text();
+          setChangelog(text);
+        }
+      } catch (err) {
+        console.error("Failed to load changelog:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadChangelog();
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Recent Changes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!changelog) {
+    return null;
+  }
+
+  // Parse markdown changelog into entries
+  const entries = changelog.split(/^## /m).slice(1).slice(0, 5); // Last 5 entries
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="h-4 w-4" />
+          Recent Changes
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {entries.map((entry, i) => {
+            const lines = entry.trim().split('\n');
+            const header = lines[0];
+            const items = lines.slice(1).filter(l => l.startsWith('-')).map(l => l.substring(2));
+            
+            return (
+              <div key={i} className="border-l-2 border-muted pl-4">
+                <p className="text-sm font-medium text-muted-foreground mb-1">{header}</p>
+                <ul className="space-y-1">
+                  {items.map((item, j) => (
+                    <li key={j} className="text-sm">{item}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

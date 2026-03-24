@@ -22,16 +22,18 @@ projects:
     liveUrl: https://actionrealestate.lovable.app/
     repoUrl: ""
   - id: kenny-salyer-benefitsforyoullc
-    name: Benefitsforyoullc
+    name: Benefitsforyoullc (kennyslayer)
     clientId: kenny-salyer
     owner: Anton
     stage: Client
     status: Active Client
-    lastUpdate: 2026-03-05
-    summary: Active Client
-    previewUrl: https://benefitsforyoullc.com/
-    liveUrl: https://benefitsforyoullc.com/
-    repoUrl: ""
+    lastUpdate: 2026-03-23
+    summary: Active Client - migrated to GitHub/Vercel
+    previewUrl: https://kennyslayer.vercel.app
+    liveUrl: https://kennyslayer.vercel.app
+    repoUrl: https://github.com/agis-eng/kennyslayer
+    vercelUrl: https://vercel.com/agis-engs-projects/kennyslayer
+    githubBranch: main
   - id: capture-build-connect-capture-build-connect
     name: TED-Associates V2
     clientId: capture-build-connect
