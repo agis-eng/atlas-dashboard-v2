@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
+import { EmailRow } from "@/components/email-row";
 import { cn } from "@/lib/utils";
 
 interface Email {
@@ -111,6 +112,15 @@ export default function EmailPage() {
       console.error("Delete failed:", err);
       alert("Failed to delete emails");
     }
+  }
+
+  async function handleDeleteEmail(id: string) {
+    await fetch("/api/email-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailIds: [id], action: "delete" }),
+    });
+    setEmails(emails.filter(e => e.id !== id));
   }
 
   async function markAsRead() {
@@ -273,56 +283,14 @@ export default function EmailPage() {
                 <p className="text-sm text-muted-foreground">No urgent emails</p>
               )}
               {categorized.topOfMind.map((email) => (
-                <div
+                <EmailRow
                   key={email.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors group"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(email.id)}
-                    onChange={() => toggleSelect(email.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-1 cursor-pointer"
-                  />
-                  <div 
-                    className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => setSelectedEmail(email)}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-sm truncate">{email.subject}</p>
-                      {!email.read && <Badge variant="default" className="text-xs">New</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{email.from}</p>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
-                  </div>
-                  <div className="flex items-start gap-1">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(email.date).toLocaleDateString()}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!confirm("Delete this email?")) return;
-                        try {
-                          await fetch("/api/email-action", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ emailIds: [email.id], action: "delete" }),
-                          });
-                          setEmails(emails.filter(e => e.id !== email.id));
-                        } catch (err) {
-                          console.error("Delete failed:", err);
-                          alert("Failed to delete email");
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
+                  email={email}
+                  selected={selected.has(email.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={setSelectedEmail}
+                  onDelete={handleDeleteEmail}
+                />
               ))}
             </CardContent>
           </Card>
@@ -341,31 +309,14 @@ export default function EmailPage() {
                 <p className="text-sm text-muted-foreground">No FYI emails</p>
               )}
               {categorized.fyi.slice(0, 10).map((email) => (
-                <div
+                <EmailRow
                   key={email.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => setSelectedEmail(email)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(email.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleSelect(email.id);
-                    }}
-                    className="mt-1"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-sm truncate">{email.subject}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{email.from}</p>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{email.snippet}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(email.date).toLocaleDateString()}
-                  </span>
-                </div>
+                  email={email}
+                  selected={selected.has(email.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={setSelectedEmail}
+                  onDelete={handleDeleteEmail}
+                />
               ))}
             </CardContent>
           </Card>
@@ -384,28 +335,40 @@ export default function EmailPage() {
                 <p className="text-sm text-muted-foreground">No newsletters</p>
               )}
               {categorized.newsletters.slice(0, 5).map((email) => (
-                <div
+                <EmailRow
                   key={email.id}
-                  className="flex items-start gap-3 p-2 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => setSelectedEmail(email)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(email.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleSelect(email.id);
-                    }}
-                    className="mt-1"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{email.subject}</p>
-                    <p className="text-xs text-muted-foreground truncate">{email.from}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(email.date).toLocaleDateString()}
-                  </span>
-                </div>
+                  email={email}
+                  selected={selected.has(email.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={setSelectedEmail}
+                  onDelete={handleDeleteEmail}
+                />
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Spam */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Trash2 className="h-4 w-4 text-red-500" />
+                Spam
+                <Badge variant="secondary">{categorized.spam.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {categorized.spam.length === 0 && (
+                <p className="text-sm text-muted-foreground">No spam emails</p>
+              )}
+              {categorized.spam.slice(0, 5).map((email) => (
+                <EmailRow
+                  key={email.id}
+                  email={email}
+                  selected={selected.has(email.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={setSelectedEmail}
+                  onDelete={handleDeleteEmail}
+                />
               ))}
             </CardContent>
           </Card>
