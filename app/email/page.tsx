@@ -37,6 +37,7 @@ interface Email {
   date: string;
   snippet: string;
   body: string;
+  htmlBody?: string;
   read: boolean;
   starred: boolean;
   account: string;
@@ -659,8 +660,40 @@ export default function EmailPage() {
               </div>
             </div>
             <div className="p-6">
-              <div className="whitespace-pre-wrap">{selectedEmail.body}</div>
+              {selectedEmail.htmlBody ? (
+                <div 
+                  className="email-content"
+                  dangerouslySetInnerHTML={{ __html: selectedEmail.htmlBody }}
+                  style={{
+                    maxWidth: '100%',
+                    overflowX: 'auto'
+                  }}
+                />
+              ) : (
+                <div className="whitespace-pre-wrap">{selectedEmail.body}</div>
+              )}
             </div>
+            <style jsx>{`
+              .email-content {
+                font-size: 14px;
+                line-height: 1.6;
+              }
+              .email-content img {
+                max-width: 100%;
+                height: auto;
+              }
+              .email-content a {
+                color: #3b82f6;
+                text-decoration: underline;
+              }
+              .email-content table {
+                border-collapse: collapse;
+                width: 100%;
+              }
+              .email-content td, .email-content th {
+                padding: 8px;
+              }
+            `}</style>
           </div>
         </div>
       )}
