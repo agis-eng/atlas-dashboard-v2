@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 
-const BRAINS_KEY = "brains:data";
+function getBrainsKey(userId: string) {
+  return `brains:${userId}`;
+}
 
-async function readBrains() {
+async function readBrains(userId: string) {
   const redis = getRedis();
-  const data = await redis.get(BRAINS_KEY);
+  const data = await redis.get(getBrainsKey(userId));
   
   if (!data || typeof data !== 'object') {
     return { brains: [] };
@@ -14,14 +16,21 @@ async function readBrains() {
   return data as { brains: any[] };
 }
 
-async function writeBrains(data: any) {
+async function writeBrains(userId: string, data: any) {
   const redis = getRedis();
-  await redis.set(BRAINS_KEY, data);
+  await redis.set(getBrainsKey(userId), data);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const data = await readBrains();
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const data = await readBrains(user.profile);
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error reading brains:", error);
@@ -34,6 +43,13 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, icon, description, schedule } = body;
 
@@ -44,7 +60,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = await readBrains();
+    const data = await readBrains(user.profile);
     
     // Generate ID from name
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -69,7 +85,7 @@ export async function POST(request: NextRequest) {
     };
 
     data.brains.push(newBrain);
-    await writeBrains(data);
+    await writeBrains(user.profile, data);
 
     return NextResponse.json(newBrain, { status: 201 });
   } catch (error) {

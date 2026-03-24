@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 
-const BRAINS_KEY = "brains:data";
+function getBrainsKey(userId: string) { return `brains:${userId}`; }
 
-async function readBrains() {
+async function readBrains(userId: string) {
   const redis = getRedis();
-  const data = await redis.get(BRAINS_KEY);
+  const data = await redis.get(getBrainsKey(userId));
   
   if (!data || typeof data !== 'object') {
     return { brains: [] };
@@ -20,7 +20,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = await readBrains();
+    const data = await readBrains(user.profile);
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {

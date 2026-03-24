@@ -6,11 +6,11 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || "",
 });
 
-const BRAINS_KEY = "brains:data";
+function getBrainsKey(userId: string) { return `brains:${userId}`; }
 
-async function readBrains() {
+async function readBrains(userId: string) {
   const redis = getRedis();
-  const data = await redis.get(BRAINS_KEY);
+  const data = await redis.get(getBrainsKey(userId));
   
   if (!data || typeof data !== 'object') {
     return { brains: [] };
@@ -82,6 +82,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const { id } = await params;
     const { message, history } = await request.json();
 
@@ -93,7 +103,7 @@ export async function POST(
     }
 
     // Load brain
-    const data = await readBrains();
+    const data = await readBrains(user.profile);
     const brain = data.brains.find((b: any) => b.id === id);
 
     if (!brain) {
