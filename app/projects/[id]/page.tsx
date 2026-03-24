@@ -38,6 +38,7 @@ import {
   FileText,
   Download,
   Camera,
+  RefreshCw,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 
@@ -1453,6 +1454,57 @@ export default function ProjectDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Live Preview */}
+      {(p.liveUrl || p.previewUrl) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Eye className="h-4 w-4" />
+                Live Preview
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const iframe = document.getElementById(`preview-${id}`) as HTMLIFrameElement;
+                    if (iframe) iframe.src = iframe.src; // Reload
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Refresh
+                </Button>
+                <a
+                  href={p.liveUrl || p.previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" size="sm">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Open
+                  </Button>
+                </a>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg border overflow-hidden bg-white">
+              <iframe
+                id={`preview-${id}`}
+                src={p.liveUrl || p.previewUrl}
+                className="w-full h-[600px] border-0"
+                title={`${p.name} Preview`}
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Showing: {p.liveUrl || p.previewUrl}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Brain section - always show in edit mode, or when brain has content */}
       {(hasBrain || editing) && (
