@@ -132,6 +132,14 @@ async function performImapAction(config: {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get logged-in user
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body: EmailAction = await request.json();
     
     if (!body.emailIds || body.emailIds.length === 0) {
@@ -142,9 +150,9 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "No action specified" }, { status: 400 });
     }
 
-    // Get email settings
+    // Get email settings (filtered by user profile)
     const redis = getRedis();
-    const settings = await redis.get(REDIS_KEYS.emailSettings("default"));
+    const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
     
     if (!settings || typeof settings !== "object") {
       return Response.json({ error: "No email accounts configured" }, { status: 400 });
@@ -176,7 +184,7 @@ export async function POST(request: NextRequest) {
     }, body);
 
     // Invalidate cache after successful action
-    const cacheKey = `email:inbox:default:${body.accountId || "all"}`;
+    const cacheKey = `email:inbox:${user.profile}:${body.accountId || "all"}`;
     await redis.del(cacheKey);
 
     return Response.json(result);

@@ -129,7 +129,7 @@ export default function EmailPage() {
       fetch("/api/email-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: [email.id], action: "markRead" }),
+        body: JSON.stringify({ emailIds: [email.id], action: "mark-read" }),
       }).catch(err => console.error("Failed to mark as read:", err));
     }
     
