@@ -1,0 +1,15 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🔨 Running pre-commit checks..."
+
+# Run build to catch errors
+echo "📦 Testing build..."
+npm run build
+
+if [ $? -ne 0 ]; then
+  echo "❌ Build failed! Fix errors before committing."
+  exit 1
+fi
+
+echo "✅ All checks passed!"
