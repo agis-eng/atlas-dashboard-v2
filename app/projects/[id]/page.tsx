@@ -1593,16 +1593,19 @@ function LivePreview({
   projectId: string;
 }) {
   const [device, setDevice] = useState<DeviceSize>('desktop');
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(100);
 
   const currentPreset = DEVICE_PRESETS[device];
   const iframeWidth = currentPreset.width;
   
   // Calculate scale to fit smaller devices in the container
   const maxContainerWidth = 1200; // Approximate max width of card content
-  const scale = device === 'desktop' 
+  const baseScale = device === 'desktop' 
     ? 1 
     : Math.min(1, maxContainerWidth / iframeWidth);
+  
+  // Apply zoom on top of base scale
+  const scale = baseScale * (zoom / 100);
 
   return (
     <Card>
@@ -1663,6 +1666,32 @@ function LivePreview({
             </a>
           </div>
         </CardTitle>
+        
+        {/* Zoom Slider */}
+        <div className="flex items-center gap-3 pt-2 border-t mt-3">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Zoom:</span>
+          <input
+            type="range"
+            min="25"
+            max="200"
+            step="25"
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="flex-1 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+          />
+          <span className="text-xs font-medium text-muted-foreground w-12 text-right">
+            {zoom}%
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setZoom(100)}
+            disabled={zoom === 100}
+            className="h-7 px-2 text-xs"
+          >
+            Reset
+          </Button>
+        </div>
       </CardHeader>
       
       <CardContent>
@@ -1688,7 +1717,7 @@ function LivePreview({
         
         <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
           <p>
-            {currentPreset.name}: {currentPreset.width}px {scale < 1 && `(scaled ${Math.round(scale * 100)}%)`}
+            {currentPreset.name}: {currentPreset.width}px @ {Math.round(scale * 100)}%
           </p>
           <p className="truncate ml-4">{url}</p>
         </div>
