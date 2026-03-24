@@ -284,7 +284,7 @@ export default function EmailPage() {
   }
 
   async function handleUnsubscribe(email: Email) {
-    if (!confirm(`Unsubscribe from ${email.from}? AI will find and click the unsubscribe link.`)) {
+    if (!confirm(`Unsubscribe from ${email.from}?\n\nAI will:\n1. Find the unsubscribe link\n2. Open your browser\n3. Click the confirmation button automatically`)) {
       return;
     }
 
@@ -302,14 +302,19 @@ export default function EmailPage() {
       const data = await res.json();
 
       if (data.success) {
-        if (data.manualAction) {
-          // Open the URL in a new tab
+        if (data.automated) {
+          // Fully automated - browser clicked the button
+          alert(data.message);
+          
+          // Auto-archive the email if fully successful
+          if (!data.needsVerification) {
+            await handleArchiveEmail(email.id);
+            setSelectedEmail(null);
+          }
+        } else if (data.manualAction) {
+          // Open the URL in a new tab for manual action
           window.open(data.url, '_blank');
           alert(data.message);
-        } else {
-          alert(data.message);
-          // Auto-archive the email after unsubscribe
-          await handleArchiveEmail(email.id);
         }
       } else {
         alert(data.message || "Could not find unsubscribe link");
