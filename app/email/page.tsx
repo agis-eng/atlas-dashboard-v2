@@ -632,7 +632,7 @@ export default function EmailPage() {
                 <Button 
                   size="sm" 
                   variant="outline"
-                  className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-600 border-purple-600/20"
+                  className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 dark:text-purple-300 border-purple-600/30"
                   onClick={() => setShowBrainSelector(!showBrainSelector)}
                 >
                   <Brain className="h-4 w-4 mr-2" />
@@ -708,11 +708,11 @@ export default function EmailPage() {
               {/* Brain Selector Dropdown */}
               {showBrainSelector && (
                 <div className="px-6 pb-4">
-                  <div className="bg-purple-600/5 border border-purple-600/20 rounded-lg p-4">
-                    <p className="text-sm font-medium mb-3">Add sender to Brain sources:</p>
+                  <div className="bg-purple-600/10 dark:bg-purple-600/20 border border-purple-600/30 rounded-lg p-4">
+                    <p className="text-sm font-medium mb-3 text-foreground">Add sender to Brain sources:</p>
                     {brains.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        No Brains yet. <a href="/brain" className="text-purple-600 underline">Create one first</a>
+                        No Brains yet. <a href="/brain" className="text-purple-400 hover:text-purple-300 underline">Create one first</a>
                       </p>
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
@@ -721,7 +721,7 @@ export default function EmailPage() {
                             key={brain.id}
                             size="sm"
                             variant="outline"
-                            className="justify-start"
+                            className="justify-start bg-background hover:bg-muted text-foreground border-border"
                             onClick={() => addToBrain(brain.id)}
                           >
                             <span className="mr-2">{brain.icon}</span>
