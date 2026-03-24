@@ -4,9 +4,9 @@ import path from "path";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   
   const changelogPath = path.join(
     process.cwd(),

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────
 
-export type ComposeMode = "compose" | "reply" | "replyAll" | "forward";
+export type ComposeMode = "compose" | "reply" | "replyAll" | "forward" | "new";
 
 export interface ComposeEmail {
   id: string;
