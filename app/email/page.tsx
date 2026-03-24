@@ -597,11 +597,11 @@ export default function EmailPage() {
                 <Badge variant="secondary">{categorized.fyi.length}</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.fyi.length === 0 && (
                 <p className="text-sm text-muted-foreground">No FYI emails</p>
               )}
-              {categorized.fyi.slice(0, 10).map((email) => (
+              {categorized.fyi.map((email) => (
                 <EmailRow
                   key={email.id}
                   email={email}
@@ -624,11 +624,11 @@ export default function EmailPage() {
                 <Badge variant="secondary">{categorized.newsletters.length}</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.newsletters.length === 0 && (
                 <p className="text-sm text-muted-foreground">No newsletters</p>
               )}
-              {categorized.newsletters.slice(0, 5).map((email) => (
+              {categorized.newsletters.map((email) => (
                 <EmailRow
                   key={email.id}
                   email={email}
@@ -651,11 +651,11 @@ export default function EmailPage() {
                 <Badge variant="secondary">{categorized.spam.length}</Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.spam.length === 0 && (
                 <p className="text-sm text-muted-foreground">No spam emails</p>
               )}
-              {categorized.spam.slice(0, 5).map((email) => (
+              {categorized.spam.map((email) => (
                 <EmailRow
                   key={email.id}
                   email={email}
