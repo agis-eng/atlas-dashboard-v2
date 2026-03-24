@@ -1457,53 +1457,11 @@ export default function ProjectDetailPage({
 
       {/* Live Preview */}
       {(p.liveUrl || p.previewUrl) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Eye className="h-4 w-4" />
-                Live Preview
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const iframe = document.getElementById(`preview-${id}`) as HTMLIFrameElement;
-                    if (iframe) iframe.src = iframe.src; // Reload
-                  }}
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                  Refresh
-                </Button>
-                <a
-                  href={p.liveUrl || p.previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Button variant="outline" size="sm">
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                    Open
-                  </Button>
-                </a>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg border overflow-hidden bg-white">
-              <iframe
-                id={`preview-${id}`}
-                src={p.liveUrl || p.previewUrl}
-                className="w-full h-[600px] border-0"
-                title={`${p.name} Preview`}
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Showing: {p.liveUrl || p.previewUrl}
-            </p>
-          </CardContent>
-        </Card>
+        <LivePreview 
+          url={p.liveUrl || p.previewUrl || ''} 
+          projectName={p.name}
+          projectId={id}
+        />
       )}
 
       {/* Brain section - always show in edit mode, or when brain has content */}
@@ -1604,6 +1562,135 @@ function ChangelogSection({ projectId }: { projectId: string }) {
               </div>
             );
           })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Live Preview Component ──
+type DeviceSize = 'mobile' | 'tablet' | 'desktop';
+
+interface DevicePreset {
+  name: string;
+  width: number;
+  icon: string;
+}
+
+const DEVICE_PRESETS: Record<DeviceSize, DevicePreset> = {
+  mobile: { name: 'Mobile', width: 375, icon: '📱' },
+  tablet: { name: 'Tablet', width: 768, icon: '📱' },
+  desktop: { name: 'Desktop', width: 1440, icon: '💻' },
+};
+
+function LivePreview({ 
+  url, 
+  projectName,
+  projectId 
+}: { 
+  url: string; 
+  projectName: string;
+  projectId: string;
+}) {
+  const [device, setDevice] = useState<DeviceSize>('desktop');
+  const [zoom, setZoom] = useState(1);
+
+  const currentPreset = DEVICE_PRESETS[device];
+  const iframeWidth = currentPreset.width;
+  
+  // Calculate scale to fit smaller devices in the container
+  const maxContainerWidth = 1200; // Approximate max width of card content
+  const scale = device === 'desktop' 
+    ? 1 
+    : Math.min(1, maxContainerWidth / iframeWidth);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center justify-between flex-wrap gap-3">
+          <span className="flex items-center gap-2">
+            <Eye className="h-4 w-4" />
+            Live Preview
+          </span>
+          
+          {/* Device Size Selector */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-lg border bg-muted/50 p-1">
+              {(Object.keys(DEVICE_PRESETS) as DeviceSize[]).map((size) => {
+                const preset = DEVICE_PRESETS[size];
+                return (
+                  <button
+                    key={size}
+                    onClick={() => setDevice(size)}
+                    className={`
+                      px-3 py-1.5 text-xs font-medium rounded-md transition-all
+                      ${device === size 
+                        ? 'bg-background text-foreground shadow-sm' 
+                        : 'text-muted-foreground hover:text-foreground'
+                      }
+                    `}
+                  >
+                    <span className="mr-1.5">{preset.icon}</span>
+                    {preset.name}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <div className="h-6 w-px bg-border" />
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const iframe = document.getElementById(`preview-${projectId}`) as HTMLIFrameElement;
+                if (iframe) iframe.src = iframe.src;
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Refresh
+            </Button>
+            
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" size="sm">
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Open
+              </Button>
+            </a>
+          </div>
+        </CardTitle>
+      </CardHeader>
+      
+      <CardContent>
+        <div className="flex justify-center bg-muted/30 rounded-lg p-6">
+          <div 
+            className="bg-white rounded-lg shadow-2xl overflow-hidden transition-all duration-300 ease-out"
+            style={{
+              width: `${iframeWidth}px`,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top center',
+            }}
+          >
+            <iframe
+              id={`preview-${projectId}`}
+              src={url}
+              className="w-full border-0"
+              style={{ height: '800px' }}
+              title={`${projectName} Preview`}
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            />
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+          <p>
+            {currentPreset.name}: {currentPreset.width}px {scale < 1 && `(scaled ${Math.round(scale * 100)}%)`}
+          </p>
+          <p className="truncate ml-4">{url}</p>
         </div>
       </CardContent>
     </Card>
