@@ -56,36 +56,14 @@ Return ONLY the unsubscribe URL, nothing else. If no unsubscribe link found, ret
       });
     }
 
-    // Call the auto-unsubscribe script on the Mac
-    try {
-      const { exec } = await import('child_process');
-      const { promisify } = await import('util');
-      const execAsync = promisify(exec);
-
-      const scriptPath = '/Users/eriklaine/.openclaw/workspace/scripts/auto-unsubscribe.js';
-      const { stdout } = await execAsync(`node "${scriptPath}" "${unsubscribeUrl}"`, {
-        timeout: 30000 // 30 second timeout
-      });
-
-      console.log('Auto-unsubscribe output:', stdout);
-
-      return NextResponse.json({
-        success: true,
-        message: "✅ Automated unsubscribe in progress! Check your browser on the Mac.",
-        url: unsubscribeUrl,
-        automated: true,
-      });
-    } catch (scriptError: any) {
-      console.error("Auto-unsubscribe script failed:", scriptError);
-      
-      // Fallback: just return the URL
-      return NextResponse.json({
-        success: true,
-        message: "Automation failed. Opening unsubscribe link for you to complete manually.",
-        url: unsubscribeUrl,
-        manualAction: true,
-      });
-    }
+    // Return the URL - user can click to complete
+    // For automation, they can run: openclaw workspace/scripts/auto-unsubscribe.js <url>
+    return NextResponse.json({
+      success: true,
+      message: `Found unsubscribe link! Opening in new tab.`,
+      url: unsubscribeUrl,
+      manualAction: true,
+    });
   } catch (error: any) {
     console.error("Unsubscribe error:", error);
     return NextResponse.json(
