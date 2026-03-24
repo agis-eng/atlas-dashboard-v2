@@ -192,7 +192,13 @@ export default function EmailPage() {
         return;
       }
       
-      setEmails(data.emails || []);
+      const emails = data.emails || [];
+      
+      // Debug: Show read/unread count
+      const unreadCount = emails.filter((e: any) => !e.read).length;
+      console.log(`Loaded ${emails.length} emails: ${unreadCount} unread, ${emails.length - unreadCount} read`);
+      
+      setEmails(emails);
       
       // Cache in sessionStorage
       sessionStorage.setItem('emails-cache', JSON.stringify({

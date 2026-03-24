@@ -88,6 +88,11 @@ async function fetchEmailsViaIMAP(config: {
             const flags = data.flags || [];
             const isRead = flags.includes('\\Seen');
             const isStarred = flags.includes('\\Flagged');
+            
+            // Debug: log first 3 emails to check flags
+            if (emails.length < 3) {
+              console.log(`Email UID ${uid}: flags=${JSON.stringify(flags)}, isRead=${isRead}`);
+            }
 
             emails.push({
               id: `${uid}`,
