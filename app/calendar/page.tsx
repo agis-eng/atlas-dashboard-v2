@@ -230,6 +230,17 @@ export default function CalendarPage() {
           onCalendarsUpdated={() => loadCalendars()}
         />
       )}
+
+      {/* Floating AI Button */}
+      {!showAI && (
+        <button
+          onClick={() => setShowAI(true)}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-purple-600 text-white shadow-2xl hover:bg-purple-700 transition-all hover:scale-110 z-40 flex items-center justify-center"
+          aria-label="Open AI Assistant"
+        >
+          <Bot className="h-6 w-6" />
+        </button>
+      )}
     </div>
   );
 }
