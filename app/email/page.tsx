@@ -106,6 +106,31 @@ export default function EmailPage() {
     }
   }
 
+  function handleOpenEmail(email: Email) {
+    // Mark as read when opened
+    if (!email.read) {
+      const updatedEmails = emails.map(e => 
+        e.id === email.id ? { ...e, read: true } : e
+      );
+      setEmails(updatedEmails);
+      
+      // Update cache
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: updatedEmails,
+        timestamp: Date.now()
+      }));
+      
+      // Mark as read on server
+      fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: [email.id], action: "markRead" }),
+      }).catch(err => console.error("Failed to mark as read:", err));
+    }
+    
+    setSelectedEmail(email);
+  }
+
   async function addToBrain(brainId: string) {
     if (!selectedEmail) return;
     
@@ -122,7 +147,18 @@ export default function EmailPage() {
       setShowBrainSelector(false);
       await loadBrains();
       
-      alert(`Added ${selectedEmail.from} to brain sources`);
+      // Auto-dismiss toast after 2 seconds
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      toast.textContent = `Added ${selectedEmail.from} to brain`;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 2000);
+      
     } catch (err) {
       console.error("Failed to add to brain:", err);
       alert("Failed to add to brain");
@@ -418,7 +454,7 @@ export default function EmailPage() {
                   email={email}
                   selected={selected.has(email.id)}
                   onToggleSelect={toggleSelect}
-                  onOpen={setSelectedEmail}
+                  onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                 />
               ))}
@@ -444,7 +480,7 @@ export default function EmailPage() {
                   email={email}
                   selected={selected.has(email.id)}
                   onToggleSelect={toggleSelect}
-                  onOpen={setSelectedEmail}
+                  onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                 />
               ))}
@@ -470,7 +506,7 @@ export default function EmailPage() {
                   email={email}
                   selected={selected.has(email.id)}
                   onToggleSelect={toggleSelect}
-                  onOpen={setSelectedEmail}
+                  onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                 />
               ))}
@@ -496,7 +532,7 @@ export default function EmailPage() {
                   email={email}
                   selected={selected.has(email.id)}
                   onToggleSelect={toggleSelect}
-                  onOpen={setSelectedEmail}
+                  onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                 />
               ))}
@@ -716,18 +752,25 @@ export default function EmailPage() {
                       </p>
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
-                        {brains.map(brain => (
-                          <Button
-                            key={brain.id}
-                            size="sm"
-                            variant="outline"
-                            className="justify-start bg-background hover:bg-muted text-foreground border-border"
-                            onClick={() => addToBrain(brain.id)}
-                          >
-                            <span className="mr-2">{brain.icon}</span>
-                            {brain.name}
-                          </Button>
-                        ))}
+                        {brains.map(brain => {
+                          const alreadyAdded = brain.email_sources?.includes(selectedEmail?.from || '');
+                          return (
+                            <Button
+                              key={brain.id}
+                              size="sm"
+                              variant={alreadyAdded ? "default" : "outline"}
+                              className={alreadyAdded 
+                                ? "justify-start bg-purple-600 hover:bg-purple-700 text-white" 
+                                : "justify-start bg-background hover:bg-muted text-foreground border-border"
+                              }
+                              onClick={() => addToBrain(brain.id)}
+                            >
+                              <span className="mr-2">{brain.icon}</span>
+                              {brain.name}
+                              {alreadyAdded && <span className="ml-auto text-xs">✓</span>}
+                            </Button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
