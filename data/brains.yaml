@@ -1,0 +1,9 @@
+brains:
+  - id: travel-points
+    name: Travel Points & Deals
+    icon: ✈️
+    description: Track travel points, transfer bonuses, and award redemption strategies
+    schedule: daily
+    email_sources: []
+    created: 2026-03-24
+    lastUpdated: 2026-03-24
