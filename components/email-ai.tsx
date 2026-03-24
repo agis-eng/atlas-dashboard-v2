@@ -71,7 +71,7 @@ export function EmailAI({ onClose, onRefresh }: EmailAIProps) {
   ];
 
   return (
-    <Card className="fixed right-6 top-20 w-96 shadow-2xl z-50">
+    <Card className="fixed right-6 bottom-24 w-96 shadow-2xl z-50 max-h-[500px] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-purple-500" />
@@ -82,7 +82,7 @@ export function EmailAI({ onClose, onRefresh }: EmailAIProps) {
         </Button>
       </CardHeader>
 
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 flex-1 overflow-y-auto">
         {/* Response Area */}
         {(streamedResponse || response) && (
           <div className="p-3 rounded-lg bg-muted text-sm max-h-60 overflow-y-auto whitespace-pre-wrap">

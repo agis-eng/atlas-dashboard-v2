@@ -179,16 +179,29 @@ export default function EmailPage() {
     try {
       const url = forceRefresh ? "/api/email-fetch?refresh=true" : "/api/email-fetch";
       const res = await fetch(url);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
       const data = await res.json();
+      
+      if (data.error) {
+        console.error("Email fetch error:", data.error);
+        alert(`Failed to load emails: ${data.error}`);
+        return;
+      }
+      
       setEmails(data.emails || []);
       
       // Cache in sessionStorage
       sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: data.emails,
+        emails: data.emails || [],
         timestamp: Date.now()
       }));
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load emails:", err);
+      alert(`Error loading emails: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -455,10 +468,6 @@ export default function EmailPage() {
           <Button size="sm" variant="outline" onClick={() => loadEmails(true)} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
             Refresh
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowAI(!showAI)}>
-            <Sparkles className="h-4 w-4 mr-2 text-purple-500" />
-            AI Assistant
           </Button>
           <EmailSettingsSheet />
         </div>
@@ -916,7 +925,17 @@ export default function EmailPage() {
         </div>
       )}
 
-      {/* AI Assistant */}
+      {/* AI Assistant - Floating Chat Bubble */}
+      {!showAI && (
+        <button
+          onClick={() => setShowAI(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center justify-center z-40 transition-transform hover:scale-110"
+          title="AI Email Assistant"
+        >
+          <Sparkles className="h-6 w-6" />
+        </button>
+      )}
+
       {showAI && (
         <EmailAI
           onClose={() => setShowAI(false)}
