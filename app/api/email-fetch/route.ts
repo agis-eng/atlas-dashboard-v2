@@ -55,43 +55,57 @@ async function fetchEmailsViaIMAP(config: {
           struct: true,
         });
 
+        const emailData: Map<number, any> = new Map();
+        
         fetch.on("message", (msg, seqno) => {
           let msgUid = seqno;
-          let msgFlags: string[] = [];
           
           msg.once("attributes", (attrs) => {
             msgUid = attrs.uid;
-            msgFlags = attrs.flags || [];
+            if (!emailData.has(msgUid)) {
+              emailData.set(msgUid, {});
+            }
+            emailData.get(msgUid)!.flags = attrs.flags || [];
           });
           
           msg.on("body", (stream) => {
             simpleParser(stream, (err, parsed) => {
               if (err) return;
-
-              // Check if email has been read (has \Seen flag)
-              const isRead = msgFlags.includes('\\Seen');
-              const isStarred = msgFlags.includes('\\Flagged');
-
-              emails.push({
-                id: `${msgUid}`, // Use UID as ID for easy IMAP operations
-                uid: msgUid,
-                from: parsed.from?.text || "",
-                to: parsed.to?.text || "",
-                subject: parsed.subject || "(no subject)",
-                date: parsed.date?.toISOString() || new Date().toISOString(),
-                snippet: parsed.text?.substring(0, 200) || "",
-                body: parsed.text || "",
-                htmlBody: parsed.html || undefined,
-                read: isRead,
-                starred: isStarred,
-                labels: [],
-                account: config.user,
-              });
+              
+              if (!emailData.has(msgUid)) {
+                emailData.set(msgUid, {});
+              }
+              emailData.get(msgUid)!.parsed = parsed;
             });
           });
         });
 
         fetch.once("end", () => {
+          // Combine all email data
+          emailData.forEach((data, uid) => {
+            if (!data.parsed) return; // Skip if parsing failed
+            
+            const flags = data.flags || [];
+            const isRead = flags.includes('\\Seen');
+            const isStarred = flags.includes('\\Flagged');
+
+            emails.push({
+              id: `${uid}`,
+              uid: uid,
+              from: data.parsed.from?.text || "",
+              to: data.parsed.to?.text || "",
+              subject: data.parsed.subject || "(no subject)",
+              date: data.parsed.date?.toISOString() || new Date().toISOString(),
+              snippet: data.parsed.text?.substring(0, 200) || "",
+              body: data.parsed.text || "",
+              htmlBody: data.parsed.html || undefined,
+              read: isRead,
+              starred: isStarred,
+              labels: [],
+              account: config.user,
+            });
+          });
+          
           imap.end();
           resolve(emails.reverse()); // Newest first
         });
