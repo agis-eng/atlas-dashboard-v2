@@ -155,8 +155,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error fetching events:", error);
+    
+    // Try to return cached data even if stale
+    try {
+      const redis = getRedis();
+      const { getSessionUserFromRequest } = await import("@/lib/auth");
+      const user = await getSessionUserFromRequest(request);
+      
+      if (user) {
+        const cached = await redis.get(EVENTS_CACHE_KEY(user.profile));
+        if (cached && typeof cached === 'object' && 'events' in cached) {
+          return NextResponse.json({
+            ...cached,
+            warning: "Using cached events due to error"
+          });
+        }
+      }
+    } catch {}
+    
     return NextResponse.json(
-      { error: "Failed to fetch events" },
+      { error: "Failed to fetch events", events: [], count: 0 },
       { status: 500 }
     );
   }
