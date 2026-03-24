@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Archive } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Email {
   id: string;
