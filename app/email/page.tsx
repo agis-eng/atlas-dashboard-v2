@@ -188,7 +188,24 @@ export default function EmailPage() {
       
       if (data.error) {
         console.error("Email fetch error:", data.error);
-        alert(`Failed to load emails: ${data.error}`);
+        // Show toast instead of alert
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg z-50';
+        toast.innerHTML = `
+          <div class="flex items-start gap-2">
+            <span class="text-lg">⚠️</span>
+            <div>
+              <div class="font-medium">Failed to load emails</div>
+              <div class="text-sm opacity-90 mt-1">${data.error}</div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.3s';
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 5000);
         return;
       }
       
@@ -207,7 +224,24 @@ export default function EmailPage() {
       }));
     } catch (err: any) {
       console.error("Failed to load emails:", err);
-      alert(`Error loading emails: ${err.message}`);
+      // Show toast instead of alert
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg z-50';
+      toast.innerHTML = `
+        <div class="flex items-start gap-2">
+          <span class="text-lg">⚠️</span>
+          <div>
+            <div class="font-medium">Error loading emails</div>
+            <div class="text-sm opacity-90 mt-1">${err.message}</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 5000);
     } finally {
       setLoading(false);
     }
@@ -404,11 +438,26 @@ export default function EmailPage() {
       
       // Clear cache to force refresh with new categorization
       sessionStorage.removeItem('emails-cache');
-      
-      alert(`All emails from ${sender} will now be categorized as ${category}`);
     } catch (err) {
       console.error("Categorize failed:", err);
-      alert("Failed to save categorization rule");
+      // Show toast instead of alert
+      const errorToast = document.createElement('div');
+      errorToast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg z-50';
+      errorToast.innerHTML = `
+        <div class="flex items-start gap-2">
+          <span class="text-lg">⚠️</span>
+          <div>
+            <div class="font-medium">Failed to categorize</div>
+            <div class="text-sm opacity-90 mt-1">Could not save categorization rule</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(errorToast);
+      setTimeout(() => {
+        errorToast.style.opacity = '0';
+        errorToast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(errorToast), 300);
+      }, 4000);
     }
   }
 
