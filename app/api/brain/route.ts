@@ -1,29 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import yaml from "yaml";
+import { getRedis } from "@/lib/redis";
 
-const BRAINS_FILE = path.join(process.cwd(), "data", "brains.yaml");
+const BRAINS_KEY = "brains:data";
 
-function readBrains() {
-  if (!fs.existsSync(BRAINS_FILE)) {
+async function readBrains() {
+  const redis = getRedis();
+  const data = await redis.get(BRAINS_KEY);
+  
+  if (!data || typeof data !== 'object') {
     return { brains: [] };
   }
-  const content = fs.readFileSync(BRAINS_FILE, "utf-8");
-  return yaml.parse(content) || { brains: [] };
+  
+  return data as { brains: any[] };
 }
 
-function writeBrains(data: any) {
-  const dir = path.dirname(BRAINS_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(BRAINS_FILE, yaml.stringify(data));
+async function writeBrains(data: any) {
+  const redis = getRedis();
+  await redis.set(BRAINS_KEY, data);
 }
 
 export async function GET() {
   try {
-    const data = readBrains();
+    const data = await readBrains();
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error reading brains:", error);
@@ -46,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = readBrains();
+    const data = await readBrains();
     
     // Generate ID from name
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -71,18 +69,7 @@ export async function POST(request: NextRequest) {
     };
 
     data.brains.push(newBrain);
-    writeBrains(data);
-
-    // Create brain directory
-    const brainDir = path.join(process.cwd(), "data", "brains", id);
-    fs.mkdirSync(path.join(brainDir, "summaries"), { recursive: true });
-    fs.mkdirSync(path.join(brainDir, "documents"), { recursive: true });
-    
-    // Create empty knowledge base file
-    fs.writeFileSync(
-      path.join(brainDir, "knowledge-base.md"),
-      `# ${name}\n\n${description}\n\n---\n\n`
-    );
+    await writeBrains(data);
 
     return NextResponse.json(newBrain, { status: 201 });
   } catch (error) {
