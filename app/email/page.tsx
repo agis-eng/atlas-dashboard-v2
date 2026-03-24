@@ -25,6 +25,7 @@ import {
   Plus,
   Brain,
   Sparkles,
+  Ban,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
@@ -64,6 +65,7 @@ export default function EmailPage() {
   });
   const [brains, setBrains] = useState<any[]>([]);
   const [showAI, setShowAI] = useState(false);
+  const [unsubscribing, setUnsubscribing] = useState(false);
   const [showBrainSelector, setShowBrainSelector] = useState(false);
 
   useEffect(() => {
@@ -279,6 +281,45 @@ export default function EmailPage() {
       emails: newEmails,
       timestamp: Date.now()
     }));
+  }
+
+  async function handleUnsubscribe(email: Email) {
+    if (!confirm(`Unsubscribe from ${email.from}? AI will find and click the unsubscribe link.`)) {
+      return;
+    }
+
+    setUnsubscribing(true);
+    try {
+      const res = await fetch("/api/email/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailBody: email.body,
+          emailHtml: email.htmlBody,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        if (data.manualAction) {
+          // Open the URL in a new tab
+          window.open(data.url, '_blank');
+          alert(data.message);
+        } else {
+          alert(data.message);
+          // Auto-archive the email after unsubscribe
+          await handleArchiveEmail(email.id);
+        }
+      } else {
+        alert(data.message || "Could not find unsubscribe link");
+      }
+    } catch (err) {
+      console.error("Unsubscribe failed:", err);
+      alert("Failed to process unsubscribe request");
+    } finally {
+      setUnsubscribing(false);
+    }
   }
 
   async function handleCategorize(sender: string, category: string) {
@@ -732,6 +773,16 @@ export default function EmailPage() {
                 }}>
                   <Archive className="h-4 w-4 mr-2" />
                   Archive
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  disabled={unsubscribing}
+                  onClick={() => handleUnsubscribe(selectedEmail)}
+                  className="text-orange-600 hover:text-orange-700"
+                >
+                  <Ban className="h-4 w-4 mr-2" />
+                  {unsubscribing ? "Unsubscribing..." : "Unsubscribe"}
                 </Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   if (!confirm("Delete this email?")) return;
