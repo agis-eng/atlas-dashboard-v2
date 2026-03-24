@@ -57,14 +57,20 @@ async function fetchEmailsViaIMAP(config: {
 
         fetch.on("message", (msg, seqno) => {
           let msgUid = seqno;
+          let msgFlags: string[] = [];
           
           msg.once("attributes", (attrs) => {
             msgUid = attrs.uid;
+            msgFlags = attrs.flags || [];
           });
           
           msg.on("body", (stream) => {
             simpleParser(stream, (err, parsed) => {
               if (err) return;
+
+              // Check if email has been read (has \Seen flag)
+              const isRead = msgFlags.includes('\\Seen');
+              const isStarred = msgFlags.includes('\\Flagged');
 
               emails.push({
                 id: `${msgUid}`, // Use UID as ID for easy IMAP operations
@@ -76,8 +82,8 @@ async function fetchEmailsViaIMAP(config: {
                 snippet: parsed.text?.substring(0, 200) || "",
                 body: parsed.text || "",
                 htmlBody: parsed.html || undefined,
-                read: false,
-                starred: false,
+                read: isRead,
+                starred: isStarred,
                 labels: [],
                 account: config.user,
               });
