@@ -284,7 +284,7 @@ export default function EmailPage() {
   }
 
   async function handleUnsubscribe(email: Email) {
-    if (!confirm(`Unsubscribe from ${email.from}?\n\nAI will:\n1. Find the unsubscribe link\n2. Open your browser\n3. Click the confirmation button automatically`)) {
+    if (!confirm(`Unsubscribe from ${email.from}?\n\nAI will:\n1. Find the unsubscribe link\n2. Open it in a new tab\n3. You click the final confirmation button`)) {
       return;
     }
 
@@ -301,21 +301,29 @@ export default function EmailPage() {
 
       const data = await res.json();
 
-      if (data.success) {
-        if (data.automated) {
-          // Fully automated - browser clicked the button
-          alert(data.message);
-          
-          // Auto-archive the email if fully successful
-          if (!data.needsVerification) {
-            await handleArchiveEmail(email.id);
-            setSelectedEmail(null);
-          }
-        } else if (data.manualAction) {
-          // Open the URL in a new tab for manual action
-          window.open(data.url, '_blank');
-          alert(data.message);
-        }
+      if (data.success && data.url) {
+        // Open the unsubscribe URL in a new tab
+        const unsubWindow = window.open(data.url, '_blank');
+        
+        // Show success message
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg z-50 max-w-md';
+        toast.innerHTML = `
+          <div class="flex items-start gap-2">
+            <span class="text-lg">✓</span>
+            <div>
+              <div class="font-medium">Unsubscribe link opened!</div>
+              <div class="text-sm opacity-90 mt-1">${data.message}</div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.3s';
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 5000);
       } else {
         alert(data.message || "Could not find unsubscribe link");
       }
