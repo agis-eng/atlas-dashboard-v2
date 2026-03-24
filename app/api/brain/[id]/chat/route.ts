@@ -70,6 +70,27 @@ You have access to the following information:
     });
   }
 
+  // Load documents
+  if (brain.documents && brain.documents.length > 0) {
+    context += `## Uploaded Documents:\n`;
+    brain.documents.forEach((doc: any) => {
+      const docPath = path.join(process.cwd(), "data", "brains", brainId, doc.path);
+      
+      // Only read text-based files
+      if (doc.name.endsWith('.txt') || doc.name.endsWith('.md')) {
+        try {
+          const docContent = fs.readFileSync(docPath, 'utf-8');
+          context += `### ${doc.name}:\n${docContent}\n\n`;
+        } catch (err) {
+          // Skip unreadable files
+        }
+      } else {
+        // Just mention the document exists
+        context += `- ${doc.name} (${doc.type})\n`;
+      }
+    });
+  }
+
   // Load knowledge base file
   const knowledgeBaseFile = path.join(process.cwd(), "data", "brains", brainId, "knowledge-base.md");
   if (fs.existsSync(knowledgeBaseFile)) {
