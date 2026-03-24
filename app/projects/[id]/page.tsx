@@ -39,6 +39,8 @@ import {
   Download,
   Camera,
   RefreshCw,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 
@@ -1455,12 +1457,13 @@ export default function ProjectDetailPage({
         </Card>
       </div>
 
-      {/* Live Preview */}
+      {/* Live Preview + AI Code Changes */}
       {(p.liveUrl || p.previewUrl) && (
-        <LivePreview 
+        <LivePreviewWithAI 
           url={p.liveUrl || p.previewUrl || ''} 
           projectName={p.name}
           projectId={id}
+          project={p}
         />
       )}
 
@@ -1723,5 +1726,184 @@ function LivePreview({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Live Preview with AI Code Changes ──
+function LivePreviewWithAI({ 
+  url, 
+  projectName,
+  projectId,
+  project
+}: { 
+  url: string; 
+  projectName: string;
+  projectId: string;
+  project: any;
+}) {
+  const [showCodeChat, setShowCodeChat] = useState(false);
+  const [codeRequest, setCodeRequest] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  
+  const handleCodeChange = async () => {
+    if (!codeRequest.trim()) return;
+    
+    setProcessing(true);
+    setResult(null);
+    
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/ai-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          request: codeRequest,
+          repoUrl: project.repoUrl,
+          branch: project.githubBranch || 'main'
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        setResult({ 
+          success: true, 
+          message: `✅ Changes pushed! PR: ${data.prUrl || 'Creating...'}`
+        });
+        setCodeRequest('');
+        
+        // Auto-refresh preview after 3 seconds
+        setTimeout(() => {
+          const iframe = document.getElementById(`preview-${projectId}`) as HTMLIFrameElement;
+          if (iframe) iframe.src = iframe.src;
+        }, 3000);
+      } else {
+        setResult({ 
+          success: false, 
+          message: `❌ ${data.error || 'Failed to make changes'}`
+        });
+      }
+    } catch (err: any) {
+      setResult({ 
+        success: false, 
+        message: `❌ Network error: ${err.message}`
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <LivePreview 
+        url={url}
+        projectName={projectName}
+        projectId={projectId}
+      />
+      
+      {/* AI Code Changes */}
+      {project.repoUrl && (
+        <Card className="border-purple-500/20">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                AI Code Changes
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCodeChat(!showCodeChat)}
+              >
+                {showCodeChat ? (
+                  <>
+                    <X className="h-3.5 w-3.5 mr-1.5" />
+                    Close
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                    Make Changes
+                  </>
+                )}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          
+          {showCodeChat && (
+            <CardContent>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Describe the changes you want to make. AI will modify the code and create a PR.
+                </p>
+                
+                <div className="space-y-2">
+                  <textarea
+                    value={codeRequest}
+                    onChange={(e) => setCodeRequest(e.target.value)}
+                    placeholder="e.g., 'Change the hero button from blue to purple' or 'Add a footer with social links'"
+                    className="w-full min-h-[100px] p-3 text-sm rounded-lg border bg-background resize-y"
+                    disabled={processing}
+                  />
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleCodeChange}
+                      disabled={!codeRequest.trim() || processing}
+                      className="flex-1"
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 mr-2" />
+                          Apply Changes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                
+                {result && (
+                  <div className={`p-3 rounded-lg text-sm ${
+                    result.success 
+                      ? 'bg-green-500/10 text-green-600 border border-green-500/20' 
+                      : 'bg-red-500/10 text-red-600 border border-red-500/20'
+                  }`}>
+                    {result.message}
+                  </div>
+                )}
+                
+                <div className="pt-2 border-t space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Examples:</strong>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      'Change button color to green',
+                      'Add contact form',
+                      'Make navbar sticky',
+                      'Update footer text'
+                    ].map((example) => (
+                      <button
+                        key={example}
+                        onClick={() => setCodeRequest(example)}
+                        disabled={processing}
+                        className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+    </div>
   );
 }
