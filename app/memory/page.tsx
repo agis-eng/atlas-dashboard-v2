@@ -49,6 +49,10 @@ export default function MemoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MemoryEntry[] | null>(null);
   const [searching, setSearching] = useState(false);
+  
+  // Daily summaries
+  const [dailySummaries, setDailySummaries] = useState<any[]>([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(true);
 
   // Filters
   const [showFilters, setShowFilters] = useState(false);
@@ -87,6 +91,7 @@ export default function MemoryPage() {
     setMounted(true);
     loadEntries();
     loadProjects();
+    loadDailySummaries();
   }, [loadEntries]);
 
   async function loadProjects() {
@@ -98,6 +103,18 @@ export default function MemoryPage() {
       );
     } catch {
       // Projects are optional
+    }
+  }
+  
+  async function loadDailySummaries() {
+    try {
+      const res = await fetch("/api/memory/daily-summaries?limit=7");
+      const data = await res.json();
+      setDailySummaries(data.summaries || []);
+    } catch (err) {
+      console.error("Failed to load daily summaries:", err);
+    } finally {
+      setLoadingSummaries(false);
     }
   }
 
@@ -529,6 +546,61 @@ export default function MemoryPage() {
         ) : (
           /* Timeline view */
           <div className="space-y-8">
+            {/* Daily Summaries */}
+            {!loadingSummaries && dailySummaries.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-orange-600" />
+                    Daily Summaries
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {dailySummaries.map((summary) => (
+                    <div key={summary.date} className="border-l-2 border-orange-600/30 pl-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-sm">
+                          {new Date(summary.date).toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </h3>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>{summary.stats.events} events</span>
+                          <span>{summary.stats.heartbeats} checks</span>
+                          <span>{summary.stats.openLoops} open</span>
+                        </div>
+                      </div>
+                      {summary.events && summary.events.length > 0 && (
+                        <div className="space-y-1 mb-2">
+                          {summary.events.map((event: any, i: number) => (
+                            <div key={i} className="text-sm">
+                              <span className="font-medium">{event.title}</span>
+                              {event.time && <span className="text-muted-foreground ml-2">({event.time})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {summary.openLoops && summary.openLoops.length > 0 && (
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            Open loops ({summary.openLoops.length})
+                          </summary>
+                          <ul className="mt-1 ml-4 space-y-0.5 list-disc text-muted-foreground">
+                            {summary.openLoops.map((loop: string, i: number) => (
+                              <li key={i}>{loop}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+            
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
