@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Brain,
   Calendar,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ const navItems = [
   { icon: Mail, label: "Email", href: "/email" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
+  { icon: Activity, label: "Monitor", href: "/monitor" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
