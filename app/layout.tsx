@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Toaster } from "@/components/ui/sonner";
 import { getSession } from "@/lib/session";
 
 const geistSans = Geist({
@@ -62,6 +63,7 @@ export default async function RootLayout({
             </header>
             <main className="flex-1 overflow-auto">{children}</main>
           </div>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
