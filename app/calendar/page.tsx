@@ -34,9 +34,10 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [calendars, setCalendars] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAI, setShowAI] = useState(false);
+  const [showAI, setShowAI] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [eventModalMode, setEventModalMode] = useState<"view" | "create">("view");
   const [nextDays, setNextDays] = useState(3); // For "next N days" view
 
   useEffect(() => {
@@ -133,6 +134,55 @@ export default function CalendarPage() {
     return currentDate.toLocaleDateString('en-US', options);
   };
 
+  function openCreateEvent(date?: Date) {
+    const start = date ? new Date(date) : new Date();
+    start.setMinutes(0, 0, 0);
+    if (!date) {
+      start.setHours(start.getHours() + 1);
+    }
+
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+
+    const fallbackCalendar = calendars.find((calendar) => calendar.visible) || calendars[0];
+
+    setSelectedEvent({
+      id: '',
+      title: '',
+      start: start.toISOString(),
+      end: end.toISOString(),
+      allDay: false,
+      location: '',
+      description: '',
+      calendarId: fallbackCalendar?.id || 'local-primary',
+      color: fallbackCalendar?.color || '#3b82f6',
+    });
+    setEventModalMode('create');
+  }
+
+  async function moveEvent(event: any, start: Date, end: Date) {
+    try {
+      const res = await fetch('/api/calendar/events', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...event,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to move event');
+      }
+
+      await loadEvents();
+    } catch (err) {
+      console.error('Failed to move event:', err);
+    }
+  }
+
   return (
     <div className="flex h-[calc(100vh-4rem)] gap-4 p-6">
       {/* Sidebar */}
@@ -153,7 +203,7 @@ export default function CalendarPage() {
           <Button 
             className="w-full justify-start" 
             size="sm"
-            onClick={() => {/* TODO: Create event */}}
+            onClick={() => openCreateEvent()}
           >
             <Plus className="h-4 w-4 mr-2" />
             New Event
@@ -261,10 +311,16 @@ export default function CalendarPage() {
         {selectedEvent && (
           <EventDetailModal
             event={selectedEvent}
-            onClose={() => setSelectedEvent(null)}
+            calendars={calendars}
+            mode={eventModalMode}
+            onClose={() => {
+              setSelectedEvent(null);
+              setEventModalMode('view');
+            }}
             onUpdate={() => {
               loadEvents();
               setSelectedEvent(null);
+              setEventModalMode('view');
             }}
           />
         )}
@@ -356,16 +412,27 @@ export default function CalendarPage() {
                 date={currentDate}
                 events={events}
                 calendars={calendars}
-                onEventClick={(event) => setSelectedEvent(event)}
-                onDateClick={(date) => {
-                  setCurrentDate(date);
-                  setView('day');
+                onEventClick={(event) => {
+                  setSelectedEvent(event);
+                  setEventModalMode('view');
                 }}
+                onDateClick={(date) => openCreateEvent(date)}
+                onEventMove={moveEvent}
                 nextDays={view === 'next' ? nextDays : undefined}
               />
             )}
           </CardContent>
         </Card>
+
+        {!showAI && (
+          <Button
+            className="fixed bottom-6 right-6 rounded-full shadow-lg z-40 h-12 w-12 p-0"
+            onClick={() => setShowAI(true)}
+            aria-label="Open AI assistant"
+          >
+            <Bot className="h-5 w-5" />
+          </Button>
+        )}
       </div>
     </div>
   );

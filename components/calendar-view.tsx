@@ -30,7 +30,17 @@ interface CalendarViewProps {
   calendars: Calendar[];
   onEventClick: (event: CalendarEvent) => void;
   onDateClick: (date: Date) => void;
+  onEventMove?: (event: CalendarEvent, start: Date, end: Date) => void;
   nextDays?: number;
+}
+
+function getEventDurationMs(event: CalendarEvent) {
+  return Math.max(30 * 60 * 1000, new Date(event.end).getTime() - new Date(event.start).getTime());
+}
+
+function parseDraggedEvent(dataTransfer: DataTransfer, events: CalendarEvent[]) {
+  const eventId = dataTransfer.getData("text/calendar-event-id");
+  return events.find((event) => event.id === eventId);
 }
 
 export function CalendarView({
@@ -40,6 +50,7 @@ export function CalendarView({
   calendars,
   onEventClick,
   onDateClick,
+  onEventMove,
   nextDays = 3,
 }: CalendarViewProps) {
   // Filter to visible calendars only
@@ -51,15 +62,15 @@ export function CalendarView({
   }, [events, calendars]);
 
   if (view === "month") {
-    return <MonthView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} />;
+    return <MonthView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} onEventMove={onEventMove} />;
   }
 
   if (view === "week") {
-    return <WeekView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} />;
+    return <WeekView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} onEventMove={onEventMove} />;
   }
 
   if (view === "day") {
-    return <DayView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} />;
+    return <DayView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} onEventMove={onEventMove} />;
   }
 
   if (view === "next") {
@@ -70,7 +81,7 @@ export function CalendarView({
 }
 
 // Month View Component
-function MonthView({ date, events, onEventClick, onDateClick }: any) {
+function MonthView({ date, events, onEventClick, onDateClick, onEventMove }: any) {
   const { days, weeks } = useMemo(() => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -143,6 +154,18 @@ function MonthView({ date, events, onEventClick, onDateClick }: any) {
               <div
                 key={`${weekIdx}-${dayIdx}`}
                 onClick={() => onDateClick(day)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedEvent = parseDraggedEvent(e.dataTransfer, events);
+                  if (!draggedEvent || !onEventMove) return;
+                  const originalStart = new Date(draggedEvent.start);
+                  const durationMs = getEventDurationMs(draggedEvent);
+                  const nextStart = new Date(day);
+                  nextStart.setHours(originalStart.getHours(), originalStart.getMinutes(), 0, 0);
+                  const nextEnd = new Date(nextStart.getTime() + durationMs);
+                  onEventMove(draggedEvent, nextStart, nextEnd);
+                }}
                 className={`
                   min-h-[120px] border-b border-r p-2 cursor-pointer hover:bg-muted/50 transition-colors
                   ${!currentMonth ? 'bg-muted/20 text-muted-foreground' : ''}
@@ -161,6 +184,11 @@ function MonthView({ date, events, onEventClick, onDateClick }: any) {
                   {dayEvents.slice(0, 3).map((event: CalendarEvent) => (
                     <button
                       key={event.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/calendar-event-id", event.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         onEventClick(event);
@@ -191,7 +219,7 @@ function MonthView({ date, events, onEventClick, onDateClick }: any) {
 }
 
 // Week View Component
-function WeekView({ date, events, onEventClick, onDateClick }: any) {
+function WeekView({ date, events, onEventClick, onDateClick, onEventMove }: any) {
   const days = useMemo(() => {
     const start = new Date(date);
     start.setDate(start.getDate() - start.getDay());
@@ -231,6 +259,16 @@ function WeekView({ date, events, onEventClick, onDateClick }: any) {
               <div
                 key={`${day.toISOString()}-${hour}`}
                 onClick={() => onDateClick(day)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedEvent = parseDraggedEvent(e.dataTransfer, events);
+                  if (!draggedEvent || !onEventMove) return;
+                  const slotStart = new Date(day);
+                  slotStart.setHours(hour, 0, 0, 0);
+                  const nextEnd = new Date(slotStart.getTime() + getEventDurationMs(draggedEvent));
+                  onEventMove(draggedEvent, slotStart, nextEnd);
+                }}
                 className="border-b border-r p-1 min-h-[60px] cursor-pointer hover:bg-muted/50 relative"
               >
                 {/* Events in this slot */}
@@ -247,6 +285,11 @@ function WeekView({ date, events, onEventClick, onDateClick }: any) {
                   .map((event: CalendarEvent) => (
                     <button
                       key={event.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/calendar-event-id", event.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         onEventClick(event);
@@ -273,7 +316,7 @@ function WeekView({ date, events, onEventClick, onDateClick }: any) {
 }
 
 // Day View Component  
-function DayView({ date, events, onEventClick }: any) {
+function DayView({ date, events, onEventClick, onDateClick, onEventMove }: any) {
   const hours = Array.from({ length: 18 }, (_, i) => i + 6);
   
   return (
@@ -283,7 +326,20 @@ function DayView({ date, events, onEventClick }: any) {
           <div className="w-20 p-2 text-xs text-muted-foreground text-right border-r">
             {hour % 12 || 12}{hour >= 12 ? 'pm' : 'am'}
           </div>
-          <div className="flex-1 p-2 min-h-[80px]">
+          <div
+            className="flex-1 p-2 min-h-[80px]"
+            onClick={() => onDateClick(date)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const draggedEvent = parseDraggedEvent(e.dataTransfer, events);
+              if (!draggedEvent || !onEventMove) return;
+              const slotStart = new Date(date);
+              slotStart.setHours(hour, 0, 0, 0);
+              const nextEnd = new Date(slotStart.getTime() + getEventDurationMs(draggedEvent));
+              onEventMove(draggedEvent, slotStart, nextEnd);
+            }}
+          >
             {events
               .filter((e: CalendarEvent) => {
                 const eventStart = new Date(e.start);
@@ -292,7 +348,15 @@ function DayView({ date, events, onEventClick }: any) {
               .map((event: CalendarEvent) => (
                 <button
                   key={event.id}
-                  onClick={() => onEventClick(event)}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/calendar-event-id", event.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(event);
+                  }}
                   className="w-full text-left px-3 py-2 rounded mb-2 hover:opacity-80"
                   style={{
                     backgroundColor: event.color || '#3b82f6',

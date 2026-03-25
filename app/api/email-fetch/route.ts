@@ -9,11 +9,14 @@ interface EmailMessage {
   uid: number;
   from: string;
   to: string;
+  cc?: string;
   subject: string;
   date: string;
   snippet: string;
   body: string;
   htmlBody?: string;
+  messageId?: string;
+  references?: string[];
   read: boolean;
   starred: boolean;
   labels: string[];
@@ -106,11 +109,14 @@ async function fetchEmailsViaIMAP(config: {
               uid: uid,
               from: data.parsed.from?.text || "",
               to: data.parsed.to?.text || "",
+              cc: data.parsed.cc?.text || "",
               subject: data.parsed.subject || "(no subject)",
               date: data.parsed.date?.toISOString() || new Date().toISOString(),
               snippet: data.parsed.text?.substring(0, 200) || "",
               body: data.parsed.text || "",
               htmlBody: data.parsed.html || undefined,
+              messageId: data.parsed.messageId || undefined,
+              references: data.parsed.references || undefined,
               read: isRead,
               starred: isStarred,
               labels: [],

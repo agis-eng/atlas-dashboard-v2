@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +28,7 @@ import {
   Ban,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
-import { EmailCompose } from "@/components/email-compose";
+import { EmailCompose, type ComposeEmail, type ComposeMode } from "@/components/email-compose";
 import { EmailRow } from "@/components/email-row";
 import { EmailAI } from "@/components/email-ai";
 import { cn } from "@/lib/utils";
@@ -37,11 +37,14 @@ interface Email {
   id: string;
   from: string;
   to: string;
+  cc?: string;
   subject: string;
   date: string;
   snippet: string;
   body: string;
   htmlBody?: string;
+  messageId?: string;
+  references?: string[];
   read: boolean;
   starred: boolean;
   account: string;
@@ -61,7 +64,7 @@ export default function EmailPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<ViewTab>("digest");
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState<{ mode: ComposeMode; replyTo?: ComposeEmail } | null>(null);
   const [categorizationRules, setCategorizationRules] = useState<any>({
     topOfMind: [],
     fyi: [],
@@ -72,11 +75,15 @@ export default function EmailPage() {
   const [showAI, setShowAI] = useState(false);
   const [unsubscribing, setUnsubscribing] = useState(false);
   const [showBrainSelector, setShowBrainSelector] = useState(false);
+  const [folders, setFolders] = useState<string[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState("");
+  const [newFolderName, setNewFolderName] = useState("");
 
   useEffect(() => {
     // Load categorization rules and brains
     loadCategorizationRules();
     loadBrains();
+    loadFolders();
     
     // Try to load from sessionStorage first
     const cached = sessionStorage.getItem('emails-cache');
@@ -131,6 +138,16 @@ export default function EmailPage() {
       setBrains(data.brains || []);
     } catch (err) {
       console.error("Failed to load brains:", err);
+    }
+  }
+
+  async function loadFolders() {
+    try {
+      const res = await fetch("/api/email-folders");
+      const data = await res.json();
+      setFolders(data.folders || []);
+    } catch (err) {
+      console.error("Failed to load folders:", err);
     }
   }
 
@@ -504,11 +521,93 @@ export default function EmailPage() {
     }
   }
 
+  async function moveSelectedToFolder() {
+    const ids = Array.from(selected);
+    if (!selectedFolder || ids.length === 0) return;
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "move", targetFolder: selectedFolder }),
+      });
+      const newEmails = emails.filter((e) => !selected.has(e.id));
+      setEmails(newEmails);
+      setSelected(new Set());
+      setSelectedFolder("");
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: newEmails,
+        timestamp: Date.now()
+      }));
+    } catch (err) {
+      console.error("Move failed:", err);
+      alert("Failed to move emails");
+    }
+  }
+
+  async function createFolder() {
+    const name = newFolderName.trim();
+    if (!name) return;
+    try {
+      const res = await fetch("/api/email-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create folder");
+      setFolders(data.folders || []);
+      setSelectedFolder(name);
+      setNewFolderName("");
+    } catch (err: any) {
+      console.error("Create folder failed:", err);
+      alert(err.message || "Failed to create folder");
+    }
+  }
+
   const filtered = emails.filter(
     (e) =>
       e.subject.toLowerCase().includes(search.toLowerCase()) ||
       e.from.toLowerCase().includes(search.toLowerCase())
   );
+
+  function asComposeEmail(email: Email): ComposeEmail {
+    return {
+      id: email.id,
+      subject: email.subject,
+      from: email.from,
+      to: email.to,
+      cc: email.cc,
+      body: email.body,
+      htmlBody: email.htmlBody,
+      messageId: email.messageId,
+      references: email.references,
+    };
+  }
+
+  function openCompose(mode: ComposeMode, email?: Email | null) {
+    setComposing({
+      mode,
+      replyTo: email ? asComposeEmail(email) : undefined,
+    });
+  }
+
+  function toggleSectionSelection(sectionEmails: Email[]) {
+    const sectionIds = sectionEmails.map((email) => email.id);
+    const allSelected = sectionIds.length > 0 && sectionIds.every((id) => selected.has(id));
+    const newSelected = new Set(selected);
+
+    if (allSelected) {
+      sectionIds.forEach((id) => newSelected.delete(id));
+    } else {
+      sectionIds.forEach((id) => newSelected.add(id));
+    }
+
+    setSelected(newSelected);
+  }
+
+  function sectionFullySelected(sectionEmails: Email[]) {
+    return sectionEmails.length > 0 && sectionEmails.every((email) => selected.has(email.id));
+  }
 
   // Helper to check if email sender matches any rule
   const matchesSender = (email: Email, senders: string[]) => {
@@ -579,7 +678,7 @@ export default function EmailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => setComposing(true)}>
+          <Button size="sm" onClick={() => openCompose("new")}>
             <Plus className="h-4 w-4 mr-2" />
             Compose
           </Button>
@@ -604,7 +703,7 @@ export default function EmailPage() {
 
       {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button size="sm" variant="ghost" onClick={markAsRead}>
             <Check className="h-4 w-4 mr-2" />
@@ -617,6 +716,28 @@ export default function EmailPage() {
           <Button size="sm" variant="ghost" onClick={deleteSelected}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
+          </Button>
+          <select
+            value={selectedFolder}
+            onChange={(e) => setSelectedFolder(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="">Move to folder…</option>
+            {folders.map((folder) => (
+              <option key={folder} value={folder}>{folder}</option>
+            ))}
+          </select>
+          <Button size="sm" variant="outline" onClick={moveSelectedToFolder} disabled={!selectedFolder}>
+            Move
+          </Button>
+          <Input
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="New folder"
+            className="h-8 w-40"
+          />
+          <Button size="sm" variant="outline" onClick={createFolder} disabled={!newFolderName.trim()}>
+            Create Folder
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
             <span className="text-xs">Clear</span>
@@ -642,11 +763,21 @@ export default function EmailPage() {
           {/* Top of Mind */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Star className="h-4 w-4 text-orange-500" />
-                Top of Mind
-                <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Star className="h-4 w-4 text-orange-500" />
+                  Top of Mind
+                  <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
+                </CardTitle>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={sectionFullySelected(categorized.topOfMind)}
+                    onChange={() => toggleSectionSelection(categorized.topOfMind)}
+                  />
+                  Check all above
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               {categorized.topOfMind.length === 0 && (
@@ -669,11 +800,21 @@ export default function EmailPage() {
           {/* FYI */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Inbox className="h-4 w-4 text-blue-500" />
-                FYI
-                <Badge variant="secondary">{categorized.fyi.length}</Badge>
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Inbox className="h-4 w-4 text-blue-500" />
+                  FYI
+                  <Badge variant="secondary">{categorized.fyi.length}</Badge>
+                </CardTitle>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={sectionFullySelected(categorized.fyi)}
+                    onChange={() => toggleSectionSelection(categorized.fyi)}
+                  />
+                  Check all above
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.fyi.length === 0 && (
@@ -696,11 +837,21 @@ export default function EmailPage() {
           {/* Newsletters */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4 text-gray-500" />
-                Newsletters
-                <Badge variant="secondary">{categorized.newsletters.length}</Badge>
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-gray-500" />
+                  Newsletters
+                  <Badge variant="secondary">{categorized.newsletters.length}</Badge>
+                </CardTitle>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={sectionFullySelected(categorized.newsletters)}
+                    onChange={() => toggleSectionSelection(categorized.newsletters)}
+                  />
+                  Check all above
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.newsletters.length === 0 && (
@@ -723,11 +874,21 @@ export default function EmailPage() {
           {/* Spam */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Trash2 className="h-4 w-4 text-red-500" />
-                Spam
-                <Badge variant="secondary">{categorized.spam.length}</Badge>
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                  Spam
+                  <Badge variant="secondary">{categorized.spam.length}</Badge>
+                </CardTitle>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={sectionFullySelected(categorized.spam)}
+                    onChange={() => toggleSectionSelection(categorized.spam)}
+                  />
+                  Check all above
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
               {categorized.spam.length === 0 && (
@@ -899,16 +1060,14 @@ export default function EmailPage() {
                   Add to Brain
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => {
-                  // Reply - open compose with prefilled data
-                  setComposing(true);
+                  openCompose("reply", selectedEmail);
                   setSelectedEmail(null);
                 }}>
                   <Reply className="h-4 w-4 mr-2" />
                   Reply
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => {
-                  // Forward
-                  setComposing(true);
+                  openCompose("forward", selectedEmail);
                   setSelectedEmail(null);
                 }}>
                   <Forward className="h-4 w-4 mr-2" />
@@ -929,6 +1088,37 @@ export default function EmailPage() {
                 }}>
                   <Archive className="h-4 w-4 mr-2" />
                   Archive
+                </Button>
+                <select
+                  value={selectedFolder}
+                  onChange={(e) => setSelectedFolder(e.target.value)}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="">Move to folder…</option>
+                  {folders.map((folder) => (
+                    <option key={folder} value={folder}>{folder}</option>
+                  ))}
+                </select>
+                <Button size="sm" variant="outline" disabled={!selectedFolder} onClick={async () => {
+                  try {
+                    await fetch("/api/email-action", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: "move", targetFolder: selectedFolder }),
+                    });
+                    const newEmails = emails.filter((e) => e.id !== selectedEmail.id);
+                    setEmails(newEmails);
+                    sessionStorage.setItem('emails-cache', JSON.stringify({
+                      emails: newEmails,
+                      timestamp: Date.now()
+                    }));
+                    setSelectedEmail(null);
+                    setSelectedFolder("");
+                  } catch (err) {
+                    alert("Failed to move email");
+                  }
+                }}>
+                  Move
                 </Button>
                 <Button 
                   size="sm" 
@@ -1061,7 +1251,12 @@ export default function EmailPage() {
       {composing && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-background rounded-lg max-w-3xl w-full max-h-[90vh] overflow-auto">
-            <EmailCompose mode="new" onClose={() => setComposing(false)} />
+            <EmailCompose
+              mode={composing.mode}
+              replyTo={composing.replyTo}
+              onClose={() => setComposing(null)}
+              onSent={() => setComposing(null)}
+            />
           </div>
         </div>
       )}
