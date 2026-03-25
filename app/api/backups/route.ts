@@ -6,6 +6,12 @@ import { promisify } from "util";
 
 const execPromise = promisify(exec);
 
+type BackupRecord = {
+  id: string;
+  timestamp?: string;
+  [key: string]: unknown;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getSessionUserFromRequest(request);
@@ -18,20 +24,20 @@ export async function GET(request: NextRequest) {
     
     // Get all backup metadata from Redis
     const keys = await redis.keys('backup:*');
-    const backups = [];
+    const backups: BackupRecord[] = [];
     
     for (const key of keys) {
-      const data = await redis.get(key);
-      if (data) {
+      const data = await redis.get<Record<string, unknown>>(key);
+      if (data && typeof data === 'object') {
         backups.push({
           id: key.replace('backup:', ''),
-          ...data
+          ...data,
         });
       }
     }
     
     // Sort by timestamp descending
-    backups.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    backups.sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime());
     
     return NextResponse.json({ backups, count: backups.length });
   } catch (error: any) {

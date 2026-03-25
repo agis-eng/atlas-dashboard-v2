@@ -98,7 +98,7 @@ export default function MonitorPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const refreshIntervalRef = useRef<NodeJS.Timeout>();
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check admin status on mount
   useEffect(() => {

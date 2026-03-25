@@ -11,6 +11,7 @@ interface FileChange {
   path: string;
   content: string;
   operation: 'create' | 'update' | 'delete';
+  description?: string;
 }
 
 async function createGitHubPR(

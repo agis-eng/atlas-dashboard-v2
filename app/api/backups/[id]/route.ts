@@ -8,9 +8,10 @@ const BACKUP_DIR = path.join(process.cwd(), '../data/backups');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -18,7 +19,7 @@ export async function GET(
     }
 
     const redis = getRedis();
-    const metadata = await redis.get(`backup:${params.id}`);
+    const metadata = await redis.get(`backup:${id}`);
     
     if (!metadata) {
       return NextResponse.json({ error: "Backup not found" }, { status: 404 });
@@ -35,9 +36,10 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -47,10 +49,10 @@ export async function DELETE(
     const redis = getRedis();
     
     // Delete from Redis
-    await redis.del(`backup:${params.id}`);
+    await redis.del(`backup:${id}`);
     
     // Delete from filesystem
-    const filepath = path.join(BACKUP_DIR, params.id);
+    const filepath = path.join(BACKUP_DIR, id);
     if (fs.existsSync(filepath)) {
       fs.unlinkSync(filepath);
     }
@@ -66,9 +68,10 @@ export async function DELETE(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -79,7 +82,7 @@ export async function POST(
     
     if (action === 'restore') {
       // Read backup file
-      const filepath = path.join(BACKUP_DIR, params.id);
+      const filepath = path.join(BACKUP_DIR, id);
       
       if (!fs.existsSync(filepath)) {
         return NextResponse.json({ error: "Backup file not found" }, { status: 404 });

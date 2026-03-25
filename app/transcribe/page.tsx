@@ -243,7 +243,9 @@ export default function TranscribePage() {
                 </Select>
 
                 {saveTarget === "brain" && (
-                  <Select value={selectedBrain} onValueChange={setSelectedBrain}>
+                  <Select value={selectedBrain} onValueChange={(value) => {
+                    if (value) setSelectedBrain(value);
+                  }}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Select Brain..." />
                     </SelectTrigger>
@@ -258,7 +260,9 @@ export default function TranscribePage() {
                 )}
 
                 {saveTarget === "project" && (
-                  <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <Select value={selectedProject} onValueChange={(value) => {
+                    if (value) setSelectedProject(value);
+                  }}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Select Project..." />
                     </SelectTrigger>

@@ -250,7 +250,7 @@ export default function CalendarPage() {
               setShowSettings(false);
               loadCalendars();
             }}
-            onSave={() => {
+            onCalendarsUpdated={() => {
               loadCalendars();
               loadEvents();
             }}
@@ -294,7 +294,9 @@ export default function CalendarPage() {
                 {view === 'next' && (
                   <Select
                     value={nextDays.toString()}
-                    onValueChange={(val) => setNextDays(parseInt(val))}
+                    onValueChange={(val) => {
+                      if (val) setNextDays(parseInt(val, 10));
+                    }}
                   >
                     <SelectTrigger className="w-16 h-7 text-xs ml-1">
                       <SelectValue />

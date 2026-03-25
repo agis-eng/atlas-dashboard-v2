@@ -9,3 +9,6 @@ cmds = ["npm run build"]
 
 [start]
 cmd = "npm start"
+
+[variables]
+NO_DRIZZLE = "true"
