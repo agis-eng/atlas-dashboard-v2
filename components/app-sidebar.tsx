@@ -20,6 +20,7 @@ import {
   Brain,
   Calendar,
   Activity,
+  Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const navItems = [
   { icon: Brain, label: "Brain", href: "/brain" },
   { icon: TrendingUp, label: "Trends", href: "/trends" },
   { icon: Mail, label: "Email", href: "/email" },
+  { icon: Video, label: "Transcribe", href: "/transcribe" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Activity, label: "Monitor", href: "/monitor" },
