@@ -109,50 +109,20 @@ export async function GET(request: NextRequest) {
     const redis = getRedis();
     
     // Check cache first
-    if (!forceRefresh) {
-      const cached = await redis.get(EVENTS_CACHE_KEY(user.profile));
-      if (cached && typeof cached === 'object' && 'events' in cached) {
-        return NextResponse.json(cached);
-      }
+    const cached = await redis.get(EVENTS_CACHE_KEY(user.profile));
+    if (cached && typeof cached === 'object' && 'events' in cached) {
+      console.log(`[Calendar API] Returning ${cached.count} cached events`);
+      return NextResponse.json(cached);
     }
 
-    // Load calendars
-    const calData = await redis.get(CALENDARS_KEY(user.profile));
-    const calendars = (calData && typeof calData === 'object' && 'calendars' in calData)
-      ? (calData as { calendars: any[] }).calendars
-      : [];
-
-    const allEvents: CalendarEvent[] = [];
-
-    // Fetch from each calendar
-    for (const calendar of calendars) {
-      if (!calendar.visible || !calendar.caldav) continue;
-
-      try {
-        const events = await fetchCalDAVEvents(calendar.caldav);
-        
-        // Add calendar metadata to events
-        const eventsWithMeta = events.map(e => ({
-          ...e,
-          calendarId: calendar.id,
-          color: calendar.color,
-        }));
-
-        allEvents.push(...eventsWithMeta);
-      } catch (err) {
-        console.error(`Failed to fetch from calendar ${calendar.name}:`, err);
-      }
-    }
-
-    // Sort by start date
-    allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-
-    const result = { events: allEvents, count: allEvents.length };
-
-    // Cache for 5 minutes
-    await redis.set(EVENTS_CACHE_KEY(user.profile), result, { ex: 300 });
-
-    return NextResponse.json(result);
+    // NO CALDAV FETCH - too slow for serverless
+    // Events must be pre-cached via script
+    console.log('[Calendar API] No cached events, returning empty');
+    return NextResponse.json({ 
+      events: [], 
+      count: 0,
+      message: 'No events cached. Run cache script to populate.'
+    });
   } catch (error: any) {
     console.error("Error fetching events:", error);
     
