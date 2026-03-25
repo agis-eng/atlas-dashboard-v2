@@ -109,7 +109,18 @@ export async function GET(request: NextRequest) {
     const redis = getRedis();
     
     // Check cache first
-    const cached = await redis.get(EVENTS_CACHE_KEY(user.profile));
+    let cached = await redis.get(EVENTS_CACHE_KEY(user.profile));
+    
+    // Parse if string
+    if (cached && typeof cached === 'string') {
+      try {
+        cached = JSON.parse(cached);
+      } catch (e) {
+        console.error('[Calendar API] Failed to parse cached data');
+        cached = null;
+      }
+    }
+    
     if (cached && typeof cached === 'object' && 'events' in cached) {
       console.log(`[Calendar API] Returning ${cached.count} cached events`);
       return NextResponse.json(cached);
