@@ -50,3 +50,34 @@ export async function GET(
     );
   }
 }
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    
+    // Trigger brain summarizer script for this specific brain
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execPromise = promisify(exec);
+    
+    await execPromise(`node /Users/eriklaine/.openclaw/workspace/scripts/brain-summarizer.js --brain-id ${id}`);
+    
+    return NextResponse.json({ success: true, message: "Summary generation started" });
+  } catch (error: any) {
+    console.error("Error generating summary:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to generate summary" },
+      { status: 500 }
+    );
+  }
+}

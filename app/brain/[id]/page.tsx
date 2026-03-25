@@ -349,7 +349,30 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
                   <p className="text-sm text-muted-foreground">
                     No summaries yet. Summaries will be generated {brain.schedule} based on your email sources.
                   </p>
-                  <Button size="sm" variant="outline" className="mt-4">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={async () => {
+                      setLoadingSummaries(true);
+                      try {
+                        const res = await fetch(`/api/brain/${id}/summaries`, {
+                          method: 'POST',
+                        });
+                        if (res.ok) {
+                          await loadSummaries();
+                          alert('Summary generated successfully!');
+                        } else {
+                          alert('Failed to generate summary');
+                        }
+                      } catch (err) {
+                        console.error('Generate summary error:', err);
+                        alert('Failed to generate summary');
+                      } finally {
+                        setLoadingSummaries(false);
+                      }
+                    }}
+                  >
                     Generate Now
                   </Button>
                 </>
@@ -390,8 +413,14 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
               ) : (
                 <div className="space-y-2">
                   {brain.email_sources.map((source, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded border">
-                      <span className="text-sm">{source}</span>
+                    <div key={i} className="flex items-center justify-between p-2 rounded border hover:bg-muted/50 transition-colors">
+                      <a 
+                        href={`/email?from=${encodeURIComponent(source)}`}
+                        className="text-sm hover:underline flex-1"
+                        title="View emails from this sender"
+                      >
+                        {source}
+                      </a>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -647,6 +676,17 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Floating AI Chat Bubble (visible on all tabs) */}
+      {activeTab !== "chat" && (
+        <button
+          onClick={() => setActiveTab("chat")}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-50"
+          title="Open AI Chat"
+        >
+          <MessageSquare className="h-6 w-6" />
+        </button>
       )}
     </div>
   );
