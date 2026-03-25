@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-type ViewMode = "month" | "week" | "day" | "agenda";
+type ViewMode = "month" | "week" | "day" | "agenda" | "next";
 
 interface CalendarEvent {
   id: string;
@@ -30,6 +30,7 @@ interface CalendarViewProps {
   calendars: Calendar[];
   onEventClick: (event: CalendarEvent) => void;
   onDateClick: (date: Date) => void;
+  nextDays?: number;
 }
 
 export function CalendarView({
@@ -39,6 +40,7 @@ export function CalendarView({
   calendars,
   onEventClick,
   onDateClick,
+  nextDays = 3,
 }: CalendarViewProps) {
   // Filter to visible calendars only
   const visibleEvents = useMemo(() => {
@@ -58,6 +60,10 @@ export function CalendarView({
 
   if (view === "day") {
     return <DayView date={date} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} />;
+  }
+
+  if (view === "next") {
+    return <NextDaysView date={date} days={nextDays} events={visibleEvents} onEventClick={onEventClick} onDateClick={onDateClick} />;
   }
 
   return <AgendaView events={visibleEvents} onEventClick={onEventClick} />;
@@ -311,13 +317,115 @@ function DayView({ date, events, onEventClick }: any) {
   );
 }
 
+// Next N Days View Component
+function NextDaysView({ date, days, events, onEventClick, onDateClick }: any) {
+  const daysArray = useMemo(() => {
+    const arr = [];
+    const today = new Date(date);
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < days; i++) {
+      const day = new Date(today);
+      day.setDate(today.getDate() + i);
+      arr.push(day);
+    }
+    return arr;
+  }, [date, days]);
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    
+    daysArray.forEach(day => {
+      const key = day.toISOString().split('T')[0];
+      map.set(key, []);
+    });
+    
+    events.forEach((event: CalendarEvent) => {
+      const eventDate = new Date(event.start);
+      const key = eventDate.toISOString().split('T')[0];
+      
+      if (map.has(key)) {
+        map.get(key)!.push(event);
+      }
+    });
+    
+    return map;
+  }, [daysArray, events]);
+
+  return (
+    <div className="space-y-4 p-4">
+      {daysArray.map((day) => {
+        const key = day.toISOString().split('T')[0];
+        const dayEvents = eventsByDay.get(key) || [];
+        const isToday = new Date().toDateString() === day.toDateString();
+        
+        return (
+          <div key={key} className={isToday ? 'border-l-4 border-blue-500 pl-4' : ''}>
+            <div 
+              className="flex items-center gap-2 mb-2 cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors"
+              onClick={() => onDateClick(day)}
+            >
+              <div className="text-sm font-semibold">
+                {day.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+              </div>
+              {isToday && (
+                <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">Today</span>
+              )}
+              <span className="text-xs text-muted-foreground ml-auto">
+                {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
+              </span>
+            </div>
+            
+            {dayEvents.length === 0 ? (
+              <p className="text-xs text-muted-foreground pl-4 py-2">No events</p>
+            ) : (
+              <div className="space-y-2">
+                {dayEvents.map((event: CalendarEvent) => (
+                  <button
+                    key={event.id}
+                    onClick={() => onEventClick(event)}
+                    className="w-full text-left p-3 rounded-lg border hover:border-muted-foreground/50 transition-colors"
+                    style={{ borderLeftColor: event.color, borderLeftWidth: '3px' }}
+                  >
+                    <div className="font-medium text-sm">{event.title}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {event.allDay ? (
+                        'All day'
+                      ) : (
+                        <>
+                          {new Date(event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          {' - '}
+                          {new Date(event.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </>
+                      )}
+                    </div>
+                    {event.location && (
+                      <div className="text-xs text-muted-foreground mt-1">📍 {event.location}</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Agenda View Component
 function AgendaView({ events, onEventClick }: any) {
   const groupedEvents = useMemo(() => {
     const groups: Record<string, CalendarEvent[]> = {};
     
-    events.forEach((event: CalendarEvent) => {
-      const date = new Date(event.start).toLocaleDateString('en-US', {
+    // Sort events by start date
+    const sortedEvents = [...events].sort((a, b) => 
+      new Date(a.start).getTime() - new Date(b.start).getTime()
+    );
+    
+    sortedEvents.forEach((event: CalendarEvent) => {
+      const eventDate = new Date(event.start);
+      const date = eventDate.toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
