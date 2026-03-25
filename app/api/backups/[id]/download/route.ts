@@ -7,7 +7,7 @@ const BACKUP_DIR = path.join(process.cwd(), '../data/backups');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getSessionUserFromRequest(request);
@@ -16,7 +16,8 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized - Admin only" }, { status: 403 });
     }
 
-    const filepath = path.join(BACKUP_DIR, params.id);
+    const { id } = await params;
+    const filepath = path.join(BACKUP_DIR, id);
     
     if (!fs.existsSync(filepath)) {
       return NextResponse.json({ error: "Backup file not found" }, { status: 404 });
