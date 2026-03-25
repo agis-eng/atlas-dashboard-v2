@@ -11,6 +11,7 @@ import {
   Settings,
   Bot,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { CalendarView } from "@/components/calendar-view";
 import { CalendarAI } from "@/components/calendar-ai";
@@ -113,6 +114,23 @@ export default function CalendarPage() {
         </div>
         
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              loadCalendars();
+              loadEvents();
+            }}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
+          
           <Button
             variant="outline"
             size="sm"
