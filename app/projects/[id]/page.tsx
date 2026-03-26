@@ -114,6 +114,7 @@ interface ProjectDeckSlide {
   bullets?: string[];
   visualIdea?: string;
   speakerNotes?: string;
+  imagePrompt?: string;
 }
 
 interface ProjectDeck {
@@ -127,6 +128,8 @@ interface ProjectDeck {
   narrativeArc?: string[];
   chosenSources?: string[];
   selectedSources?: Record<string, boolean>;
+  visualStylePreset?: string;
+  coverImagePrompt?: string;
   slides?: ProjectDeckSlide[];
 }
 
@@ -890,6 +893,8 @@ export default function ProjectDetailPage({
   const [editingDeck, setEditingDeck] = useState(false);
   const [deckDraft, setDeckDraft] = useState<ProjectDeck | null>(null);
   const [savingDeck, setSavingDeck] = useState(false);
+  const [generatingDeckVisuals, setGeneratingDeckVisuals] = useState(false);
+  const [deckVisualStylePreset, setDeckVisualStylePreset] = useState('dark modern strategic');
   const [deckSources, setDeckSources] = useState<Record<string, boolean>>({
     projectMeta: true,
     clientInfo: true,
@@ -936,6 +941,7 @@ export default function ProjectDetailPage({
             const deckData = await deckRes.json();
             setLatestDeck(deckData.deck || null);
             setDeckDraft(deckData.deck ? JSON.parse(JSON.stringify(deckData.deck)) : null);
+            setDeckVisualStylePreset(deckData.deck?.visualStylePreset || 'dark modern strategic');
           }
         } catch (err) {
           console.error('Failed to load project deck:', err);
@@ -1083,6 +1089,7 @@ export default function ProjectDetailPage({
       if (!res.ok) throw new Error(data.error || 'Failed to generate deck draft');
       setLatestDeck(data.deck);
       setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
+      setDeckVisualStylePreset(data.deck?.visualStylePreset || deckVisualStylePreset);
       setEditingDeck(false);
       setDeckPrompt('');
       setToast({ message: 'Deck draft created', type: 'success' });
@@ -1130,6 +1137,27 @@ export default function ProjectDetailPage({
       return next;
     });
   }, []);
+
+  const generateDeckVisualPrompts = useCallback(async () => {
+    if (!latestDeck?.id) return;
+    setGeneratingDeckVisuals(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck/visuals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deckId: latestDeck.id, stylePreset: deckVisualStylePreset }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate deck visual prompts');
+      setLatestDeck(data.deck);
+      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
+      setToast({ message: 'Deck visual prompts created', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to generate deck visual prompts', type: 'error' });
+    } finally {
+      setGeneratingDeckVisuals(false);
+    }
+  }, [id, latestDeck, deckVisualStylePreset]);
 
   const saveDeckDraft = useCallback(async () => {
     if (!deckDraft?.id) return;
@@ -1705,13 +1733,17 @@ export default function ProjectDetailPage({
               </label>
             ))}
           </div>
+          <Input value={deckVisualStylePreset} onChange={(e) => setDeckVisualStylePreset(e.target.value)} placeholder="Visual style preset, e.g. dark modern strategic, premium minimal, cinematic technical" />
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Phase 2 supports regeneration from saved settings plus manual editing, reordering, and saving of slide drafts.
+              Phase 3 adds saved visual prompts: a cover prompt plus per-slide image prompts you can use for later slide rendering.
             </p>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={reuseDeckSettings} disabled={!latestDeck}>
                 Reuse Latest Settings
+              </Button>
+              <Button variant="outline" onClick={generateDeckVisualPrompts} disabled={generatingDeckVisuals || !latestDeck}>
+                {generatingDeckVisuals ? 'Generating Visuals…' : 'Generate Visual Prompts'}
               </Button>
               <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
                 {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
@@ -1755,6 +1787,8 @@ export default function ProjectDetailPage({
                   {activeDeck.objective && <div><span className="font-medium">Objective:</span> {activeDeck.objective}</div>}
                 </>
               )}
+              {activeDeck.visualStylePreset && <div><span className="font-medium">Visual style:</span> {activeDeck.visualStylePreset}</div>}
+              {activeDeck.coverImagePrompt && <div><span className="font-medium">Cover prompt:</span> <span className="text-muted-foreground">{activeDeck.coverImagePrompt}</span></div>}
               {Array.isArray(activeDeck.chosenSources) && activeDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {activeDeck.chosenSources.join(' • ')}</div>}
               {Array.isArray(activeDeck.narrativeArc) && activeDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {activeDeck.narrativeArc.join(' → ')}</div>}
               {Array.isArray(activeDeck.slides) && activeDeck.slides.length > 0 && (
@@ -1787,6 +1821,7 @@ export default function ProjectDetailPage({
                             {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
                             {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
                             {slide.speakerNotes && <div className="text-xs mt-2 text-muted-foreground">Notes: {slide.speakerNotes}</div>}
+                            {slide.imagePrompt && <div className="text-xs mt-2 text-cyan-300">Image prompt: {slide.imagePrompt}</div>}
                           </>
                         )}
                       </div>
