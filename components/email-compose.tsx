@@ -40,6 +40,16 @@ interface EmailTemplate {
   tags: string[];
 }
 
+interface EmailAccountOption {
+  id: string;
+  name: string;
+  email: string;
+  type: "smtp" | "google";
+  smtp?: {
+    host?: string;
+  };
+}
+
 interface Props {
   mode: ComposeMode;
   replyTo?: ComposeEmail;
@@ -160,11 +170,32 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
   const [expanded, setExpanded] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [accounts, setAccounts] = useState<EmailAccountOption[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
 
   // Focus body on open (with small delay for animation)
   useEffect(() => {
     const timer = setTimeout(() => bodyRef.current?.focus(), 150);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/email-settings", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : Promise.resolve({ accounts: [] })))
+      .then((data) => {
+        if (cancelled) return;
+        const loadedAccounts = Array.isArray(data?.accounts) ? data.accounts : [];
+        setAccounts(loadedAccounts);
+        const preferred = loadedAccounts.find((account: any) => account.smtp?.host) || loadedAccounts[0];
+        if (preferred?.id) setSelectedAccountId(preferred.id);
+      })
+      .catch(() => {
+        if (!cancelled) setAccounts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Keyboard shortcut: Ctrl/Cmd+Enter to send
@@ -192,6 +223,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
     setError("");
     try {
       const payload: Record<string, unknown> = { to, subject, text: body };
+      if (selectedAccountId) payload.accountId = selectedAccountId;
       if (cc.trim()) payload.cc = cc;
       if (bcc.trim()) payload.bcc = bcc;
       if (replyTo?.messageId) {
@@ -220,7 +252,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
     } finally {
       setSending(false);
     }
-  }, [to, subject, body, cc, bcc, replyTo, onSent, onClose]);
+  }, [to, subject, body, cc, bcc, selectedAccountId, replyTo, onSent, onClose]);
 
   const handleGetDraft = useCallback(async () => {
     if (!replyTo) return;
@@ -264,7 +296,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
   }, []);
 
   const modeLabel =
-    mode === "compose"
+    mode === "compose" || mode === "new"
       ? "New Message"
       : mode === "reply"
       ? "Reply"
@@ -312,6 +344,28 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
 
         {/* Fields */}
         <div className="border-b border-border">
+          {/* From */}
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
+            <span className="text-xs text-muted-foreground w-12 shrink-0">From</span>
+            <div className="flex-1 min-w-0">
+              {accounts.length > 0 ? (
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  className="w-full border-0 bg-transparent shadow-none focus-visible:ring-0 h-7 px-0 text-sm outline-none"
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id} className="bg-background text-foreground">
+                      {account.name} ({account.email})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-sm text-muted-foreground">No sending accounts loaded</span>
+              )}
+            </div>
+          </div>
+
           {/* To */}
           <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
             <span className="text-xs text-muted-foreground w-12 shrink-0">To</span>
@@ -319,7 +373,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
               value={to}
               onChange={(e) => setTo(e.target.value)}
               placeholder="recipient@example.com"
-              className="border-0 shadow-none focus-visible:ring-0 h-7 px-0 text-sm"
+              className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
             />
             <div className="flex gap-1 shrink-0">
               <button
@@ -355,7 +409,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
                 placeholder="cc@example.com"
-                className="border-0 shadow-none focus-visible:ring-0 h-7 px-0 text-sm"
+                className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
               />
             </div>
           )}
@@ -368,7 +422,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
                 value={bcc}
                 onChange={(e) => setBcc(e.target.value)}
                 placeholder="bcc@example.com"
-                className="border-0 shadow-none focus-visible:ring-0 h-7 px-0 text-sm"
+                className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
               />
             </div>
           )}
@@ -380,7 +434,7 @@ export function EmailCompose({ mode, replyTo, defaultTo, onClose, onSent }: Prop
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Subject"
-              className="border-0 shadow-none focus-visible:ring-0 h-7 px-0 text-sm"
+              className="border-0 shadow-none focus-visible:ring-0 h-7 px-1 text-sm"
             />
           </div>
         </div>
