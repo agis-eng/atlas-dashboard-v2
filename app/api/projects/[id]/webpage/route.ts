@@ -332,6 +332,20 @@ function buildGuidedPrompt(guidedAnswers: any, referenceUrl: string, inspiration
   return `Create a production-ready website concept using this guided intake:\n${parts.join("\n")}`.trim();
 }
 
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const pagesData = await loadYaml<{ projectPages: any[] }>(PROJECT_PAGES_PATH, { projectPages: [] });
+    const page = (pagesData.projectPages || []).find((item) => item.projectId === id) || null;
+    return Response.json({ page });
+  } catch (error: any) {
+    return Response.json({ error: error.message || "Failed to load webpage draft" }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

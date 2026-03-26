@@ -149,6 +149,15 @@ interface SeoReport {
   findings?: { priority: string; issue: string }[];
 }
 
+interface WebsiteBuild {
+  id: string;
+  repoName?: string;
+  repoUrl?: string;
+  branch?: string;
+  status?: string;
+  createdAt?: string;
+}
+
 // ── Constants ──
 
 const stageColors: Record<string, string> = {
@@ -918,6 +927,8 @@ export default function ProjectDetailPage({
   const [uploadingWebpageImages, setUploadingWebpageImages] = useState(false);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
+  const [creatingWebsiteBuild, setCreatingWebsiteBuild] = useState(false);
+  const [latestWebsiteBuild, setLatestWebsiteBuild] = useState<WebsiteBuild | null>(null);
   const [seoUrl, setSeoUrl] = useState("");
   const [generatingSeo, setGeneratingSeo] = useState(false);
   const [seoReports, setSeoReports] = useState<SeoReport[]>([]);
@@ -982,6 +993,26 @@ export default function ProjectDetailPage({
           }
         } catch (err) {
           console.error('Failed to load project deck:', err);
+        }
+
+        try {
+          const webpageRes = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, { cache: "no-store" });
+          if (webpageRes.ok) {
+            const webpageData = await webpageRes.json();
+            setLatestWebpageDraft(webpageData.page || null);
+          }
+        } catch (err) {
+          console.error('Failed to load webpage draft:', err);
+        }
+
+        try {
+          const buildRes = await fetch(`/api/projects/${encodeURIComponent(id)}/website-build`, { cache: "no-store" });
+          if (buildRes.ok) {
+            const buildData = await buildRes.json();
+            setLatestWebsiteBuild(buildData.build || null);
+          }
+        } catch (err) {
+          console.error('Failed to load site build:', err);
         }
 
         try {
@@ -1156,6 +1187,24 @@ export default function ProjectDetailPage({
       setGeneratingWebpage(false);
     }
   }, [id, webpageMode, webpagePrompt, webpageGuidedAnswers, webpageReferenceUrl, webpageInspirationImages, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
+
+  const createWebsiteBuild = useCallback(async () => {
+    setCreatingWebsiteBuild(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/website-build`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create website repo');
+      setLatestWebsiteBuild(data.build);
+      setProject((prev) => prev ? { ...prev, repoUrl: data.build.repoUrl, githubBranch: data.build.branch } : prev);
+      setToast({ message: 'Website repo created', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to create website repo', type: 'error' });
+    } finally {
+      setCreatingWebsiteBuild(false);
+    }
+  }, [id]);
 
   const generateSeoAudit = useCallback(async () => {
     const targetUrl = seoUrl.trim() || project?.liveUrl || project?.previewUrl || '';
@@ -1928,6 +1977,23 @@ export default function ProjectDetailPage({
               {latestWebpageDraft.mode && <div><span className="font-medium">Mode:</span> {latestWebpageDraft.mode}</div>}
               {latestWebpageDraft.referenceUrl && <div><span className="font-medium">Reference:</span> <a href={latestWebpageDraft.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebpageDraft.referenceUrl}</a></div>}
               {Array.isArray(latestWebpageDraft.inspirationImages) && latestWebpageDraft.inspirationImages.length > 0 && <div><span className="font-medium">Inspiration images:</span> {latestWebpageDraft.inspirationImages.length}</div>}
+              {!p.liveUrl && !p.previewUrl && (
+                <div className="rounded-md border border-cyan-500/20 bg-cyan-500/10 p-3 space-y-3">
+                  <div className="text-sm text-cyan-100">This project has no live site yet. You can now create a real GitHub-backed website repo from this draft.</div>
+                  {latestWebsiteBuild ? (
+                    <div className="space-y-1 text-sm">
+                      <div><span className="font-medium text-foreground">Repo:</span> <a href={latestWebsiteBuild.repoUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebsiteBuild.repoUrl}</a></div>
+                      <div><span className="font-medium text-foreground">Status:</span> {latestWebsiteBuild.status}</div>
+                    </div>
+                  ) : (
+                    <Button onClick={createWebsiteBuild} disabled={creatingWebsiteBuild}>
+                      {creatingWebsiteBuild ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                      {creatingWebsiteBuild ? 'Creating Repo…' : 'Create Real Website Repo'}
+                    </Button>
+                  )}
+                  <div className="text-xs text-muted-foreground">This creates the actual site codebase in GitHub. Vercel auto-deploy wiring is the next step.</div>
+                </div>
+              )}
               {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between gap-2">
