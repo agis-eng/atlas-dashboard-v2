@@ -151,6 +151,34 @@ export default function EmailPage() {
     }
   }
 
+  function showToast(message: string, type: "success" | "error" = "success") {
+    const toast = document.createElement('div');
+    const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+    toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => document.body.contains(toast) && document.body.removeChild(toast), 300);
+    }, 2200);
+  }
+
+  function updateEmailCache(nextEmails: Email[]) {
+    sessionStorage.setItem('emails-cache', JSON.stringify({
+      emails: nextEmails,
+      timestamp: Date.now()
+    }));
+  }
+
+  function getSelectedIdsForSection(sectionEmails: Email[]) {
+    return sectionEmails.filter((email) => selected.has(email.id)).map((email) => email.id);
+  }
+
+  function sectionSelectedCount(sectionEmails: Email[]) {
+    return getSelectedIdsForSection(sectionEmails).length;
+  }
+
   function handleOpenEmail(email: Email) {
     // Mark as read when opened
     if (!email.read) {
@@ -310,21 +338,17 @@ export default function EmailPage() {
       const newEmails = emails.filter((e) => !selected.has(e.id));
       setEmails(newEmails);
       setSelected(new Set());
-      
-      // Update sessionStorage cache
-      sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: newEmails,
-        timestamp: Date.now()
-      }));
+      updateEmailCache(newEmails);
+      showToast(`Archived ${ids.length} email${ids.length === 1 ? '' : 's'}`);
     } catch (err) {
       console.error("Archive failed:", err);
-      alert("Failed to archive emails");
+      showToast("Failed to archive emails", "error");
     }
   }
 
   async function deleteSelected() {
-    if (!confirm(`Delete ${selected.size} email(s)?`)) return;
     const ids = Array.from(selected);
+    if (ids.length === 0) return;
     try {
       await fetch("/api/email-action", {
         method: "POST",
@@ -334,48 +358,68 @@ export default function EmailPage() {
       const newEmails = emails.filter((e) => !selected.has(e.id));
       setEmails(newEmails);
       setSelected(new Set());
-      
-      // Update sessionStorage cache
-      sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: newEmails,
-        timestamp: Date.now()
-      }));
+      updateEmailCache(newEmails);
+      showToast(`Deleted ${ids.length} email${ids.length === 1 ? '' : 's'}`);
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete emails");
+      showToast("Failed to delete emails", "error");
+    }
+  }
+
+  async function deleteSectionEmails(sectionEmails: Email[]) {
+    const ids = getSelectedIdsForSection(sectionEmails);
+    if (ids.length === 0) return;
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "delete" }),
+      });
+      const idSet = new Set(ids);
+      const newEmails = emails.filter((e) => !idSet.has(e.id));
+      const newSelected = new Set(Array.from(selected).filter((id) => !idSet.has(id)));
+      setEmails(newEmails);
+      setSelected(newSelected);
+      updateEmailCache(newEmails);
+      showToast(`Deleted ${ids.length} email${ids.length === 1 ? '' : 's'}`);
+    } catch (err) {
+      console.error("Section delete failed:", err);
+      showToast("Failed to delete emails", "error");
     }
   }
 
   async function handleDeleteEmail(id: string) {
-    await fetch("/api/email-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emailIds: [id], action: "delete" }),
-    });
-    const newEmails = emails.filter(e => e.id !== id);
-    setEmails(newEmails);
-    
-    // Update sessionStorage cache
-    sessionStorage.setItem('emails-cache', JSON.stringify({
-      emails: newEmails,
-      timestamp: Date.now()
-    }));
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: [id], action: "delete" }),
+      });
+      const newEmails = emails.filter(e => e.id !== id);
+      setEmails(newEmails);
+      updateEmailCache(newEmails);
+      showToast("Email deleted");
+    } catch (err) {
+      console.error("Delete failed:", err);
+      showToast("Failed to delete email", "error");
+    }
   }
 
   async function handleArchiveEmail(id: string) {
-    await fetch("/api/email-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emailIds: [id], action: "archive" }),
-    });
-    const newEmails = emails.filter(e => e.id !== id);
-    setEmails(newEmails);
-    
-    // Update sessionStorage cache
-    sessionStorage.setItem('emails-cache', JSON.stringify({
-      emails: newEmails,
-      timestamp: Date.now()
-    }));
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: [id], action: "archive" }),
+      });
+      const newEmails = emails.filter(e => e.id !== id);
+      setEmails(newEmails);
+      updateEmailCache(newEmails);
+      showToast("Email archived");
+    } catch (err) {
+      console.error("Archive failed:", err);
+      showToast("Failed to archive email", "error");
+    }
   }
 
   async function handleUnsubscribe(email: Email) {
@@ -779,14 +823,22 @@ export default function EmailPage() {
                   Top of Mind
                   <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
                 </CardTitle>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={sectionFullySelected(categorized.topOfMind)}
-                    onChange={() => toggleSectionSelection(categorized.topOfMind)}
-                  />
-                  Check all above
-                </label>
+                <div className="flex items-center gap-2">
+                  {sectionSelectedCount(categorized.topOfMind) > 0 && (
+                    <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.topOfMind)}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete selected ({sectionSelectedCount(categorized.topOfMind)})
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={sectionFullySelected(categorized.topOfMind)}
+                      onChange={() => toggleSectionSelection(categorized.topOfMind)}
+                    />
+                    Check all emails
+                  </label>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -816,14 +868,22 @@ export default function EmailPage() {
                   FYI
                   <Badge variant="secondary">{categorized.fyi.length}</Badge>
                 </CardTitle>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={sectionFullySelected(categorized.fyi)}
-                    onChange={() => toggleSectionSelection(categorized.fyi)}
-                  />
-                  Check all above
-                </label>
+                <div className="flex items-center gap-2">
+                  {sectionSelectedCount(categorized.fyi) > 0 && (
+                    <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.fyi)}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete selected ({sectionSelectedCount(categorized.fyi)})
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={sectionFullySelected(categorized.fyi)}
+                      onChange={() => toggleSectionSelection(categorized.fyi)}
+                    />
+                    Check all emails
+                  </label>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -853,14 +913,22 @@ export default function EmailPage() {
                   Newsletters
                   <Badge variant="secondary">{categorized.newsletters.length}</Badge>
                 </CardTitle>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={sectionFullySelected(categorized.newsletters)}
-                    onChange={() => toggleSectionSelection(categorized.newsletters)}
-                  />
-                  Check all above
-                </label>
+                <div className="flex items-center gap-2">
+                  {sectionSelectedCount(categorized.newsletters) > 0 && (
+                    <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.newsletters)}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete selected ({sectionSelectedCount(categorized.newsletters)})
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={sectionFullySelected(categorized.newsletters)}
+                      onChange={() => toggleSectionSelection(categorized.newsletters)}
+                    />
+                    Check all emails
+                  </label>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -890,14 +958,22 @@ export default function EmailPage() {
                   Spam
                   <Badge variant="secondary">{categorized.spam.length}</Badge>
                 </CardTitle>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={sectionFullySelected(categorized.spam)}
-                    onChange={() => toggleSectionSelection(categorized.spam)}
-                  />
-                  Check all above
-                </label>
+                <div className="flex items-center gap-2">
+                  {sectionSelectedCount(categorized.spam) > 0 && (
+                    <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.spam)}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete selected ({sectionSelectedCount(categorized.spam)})
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={sectionFullySelected(categorized.spam)}
+                      onChange={() => toggleSectionSelection(categorized.spam)}
+                    />
+                    Check all emails
+                  </label>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -1147,18 +1223,13 @@ export default function EmailPage() {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ emailIds: [selectedEmail.id], action: "delete" }),
                     });
-                    setEmails(emails.filter((e) => e.id !== selectedEmail.id));
-                    
-                    // Update sessionStorage cache
                     const newEmails = emails.filter((e) => e.id !== selectedEmail.id);
-                    sessionStorage.setItem('emails-cache', JSON.stringify({
-                      emails: newEmails,
-                      timestamp: Date.now()
-                    }));
-                    
+                    setEmails(newEmails);
+                    updateEmailCache(newEmails);
                     setSelectedEmail(null);
+                    showToast('Email deleted');
                   } catch (err) {
-                    alert("Failed to delete");
+                    showToast('Failed to delete email', 'error');
                   }
                 }}>
                   <Trash2 className="h-4 w-4 mr-2" />
@@ -1174,7 +1245,7 @@ export default function EmailPage() {
                     setEmails(emails.map(e => e.id === selectedEmail.id ? { ...e, read: !e.read } : e));
                     setSelectedEmail({ ...selectedEmail, read: !selectedEmail.read });
                   } catch (err) {
-                    alert("Failed to update");
+                    showToast('Failed to update email', 'error');
                   }
                 }}>
                   <Check className="h-4 w-4 mr-2" />
