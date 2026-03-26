@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const PROJECTS_PATH = join(process.cwd(), "data", "projects.yaml");
 const PROJECT_PAGES_PATH = join(process.cwd(), "data", "projectPages.yaml");
 const CLIENTS_PATH = join(process.cwd(), "data", "clients.yaml");
+const REPO_REFS_ROOT = join(process.cwd(), "data", "webpage-generator");
 const SHARED_SKILLS_ROOT = join(process.env.HOME || "", ".openclaw", "skills", "webpage-generator", "references");
 
 const anthropic = process.env.ANTHROPIC_API_KEY
@@ -23,9 +24,13 @@ async function loadYaml<T>(path: string, fallback: T): Promise<T> {
 
 async function loadReference(name: string) {
   try {
-    return await readFile(join(SHARED_SKILLS_ROOT, name), "utf8");
+    return await readFile(join(REPO_REFS_ROOT, name), "utf8");
   } catch {
-    return "";
+    try {
+      return await readFile(join(SHARED_SKILLS_ROOT, name), "utf8");
+    } catch {
+      return "";
+    }
   }
 }
 
