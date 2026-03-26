@@ -856,6 +856,7 @@ export default function ProjectDetailPage({
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [webpagePrompt, setWebpagePrompt] = useState("");
+  const [webpagePreferredConcept, setWebpagePreferredConcept] = useState("");
   const [webpageCompetitorQuery, setWebpageCompetitorQuery] = useState("");
   const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
@@ -992,6 +993,7 @@ export default function ProjectDetailPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: webpagePrompt,
+          preferredConcept: webpagePreferredConcept,
           competitorQuery: webpageCompetitorQuery,
           researchCompetitors: webpageResearchCompetitors,
         }),
@@ -1000,6 +1002,7 @@ export default function ProjectDetailPage({
       if (!res.ok) throw new Error(data.error || 'Failed to generate webpage draft');
       setLatestWebpageDraft(data.page);
       setWebpagePrompt('');
+      setWebpagePreferredConcept('');
       setWebpageCompetitorQuery('');
       setToast({ message: 'Website draft created', type: 'success' });
       const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`);
@@ -1545,6 +1548,11 @@ export default function ProjectDetailPage({
             onChange={(e) => setWebpagePrompt(e.target.value)}
             placeholder="Example: Create a polished behavioral health clinic homepage focused on trust, insurance-friendly messaging, and a clear intake CTA."
             className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <Input
+            value={webpagePreferredConcept}
+            onChange={(e) => setWebpagePreferredConcept(e.target.value)}
+            placeholder="Optional preferred concept name, e.g. 'editorial authority' or the exact recommended concept"
           />
           <Input
             value={webpageCompetitorQuery}

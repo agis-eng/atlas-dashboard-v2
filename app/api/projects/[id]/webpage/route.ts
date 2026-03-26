@@ -318,7 +318,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { prompt, competitorQuery, researchCompetitors } = await request.json();
+    const { prompt, preferredConcept, competitorQuery, researchCompetitors } = await request.json();
 
     if (!prompt || !String(prompt).trim()) {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
@@ -343,10 +343,14 @@ export async function POST(
       ? (clientsData.clients || []).find((item) => item.id === project.clientId || item.slug === project.clientId)
       : null;
 
+    const preferredConceptName = String(preferredConcept || "").trim();
     const derivedCompetitorQuery = String(competitorQuery || "").trim() || [client?.name, project?.name, project?.summary].filter(Boolean).join(" ");
     const competitorResults = researchCompetitors ? await searchCompetitors(derivedCompetitorQuery, 6) : [];
 
     let draft: any = fallbackDraft(project, client, String(prompt).trim(), competitorResults);
+    if (preferredConceptName) {
+      draft.recommendedConcept = preferredConceptName;
+    }
     draft.pageCodeDraft = buildFallbackPageCode(project, draft);
 
     if (anthropic) {
@@ -361,7 +365,7 @@ export async function POST(
           messages: [
             {
               role: "user",
-              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts. If competitor inspiration is present, borrow only structural and messaging ideas that are broadly useful; do not imitate or reproduce any site's unique branding or copy.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 2600)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 1800)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 1800)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 1800)}\n\nReference: section copy formulas\n${sectionCopyFormulas.slice(0, 1600)}\n\nCompetitor inspiration query:\n${derivedCompetitorQuery || "None"}\n\nCompetitor inspiration results:\n${competitorBlock}\n\nReturn strict JSON with keys:\npageName, concept, concepts (array of exactly 3 objects with keys: name, direction, signatureMove, headline, whyItCouldWork), recommendedConcept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), sectionCopy (object with keys hero, proof, services, process, cta; each value is an array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), competitorIdeas (array of strings), competitorSummary (object with keys marketPatterns, trustSignals, contentIdeas, differentiationAngles; each value is an array of strings), pageDraft (object with keys hero, proofItems, services, processSteps, faq, finalCta, componentSuggestions), pageCodeDraft (string containing a Next.js/Tailwind page scaffold based on the recommended concept), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
+              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts. If competitor inspiration is present, borrow only structural and messaging ideas that are broadly useful; do not imitate or reproduce any site's unique branding or copy.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 2600)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 1800)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 1800)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 1800)}\n\nReference: section copy formulas\n${sectionCopyFormulas.slice(0, 1600)}\n\nPreferred concept (if provided, bias the output toward it):\n${preferredConceptName || "None"}\n\nCompetitor inspiration query:\n${derivedCompetitorQuery || "None"}\n\nCompetitor inspiration results:\n${competitorBlock}\n\nReturn strict JSON with keys:\npageName, concept, concepts (array of exactly 3 objects with keys: name, direction, signatureMove, headline, whyItCouldWork), recommendedConcept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), sectionCopy (object with keys hero, proof, services, process, cta; each value is an array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), competitorIdeas (array of strings), competitorSummary (object with keys marketPatterns, trustSignals, contentIdeas, differentiationAngles; each value is an array of strings), pageDraft (object with keys hero, proofItems, services, processSteps, faq, finalCta, componentSuggestions), pageCodeDraft (string containing a Next.js/Tailwind page scaffold based on the recommended concept), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
             },
           ],
         });
@@ -400,6 +404,7 @@ export async function POST(
       name: draft.pageName,
       url: "",
       prompt: String(prompt).trim(),
+      preferredConcept: preferredConceptName,
       competitorQuery: researchCompetitors ? derivedCompetitorQuery : "",
       competitors: competitorResults,
       concept: draft.concept,
