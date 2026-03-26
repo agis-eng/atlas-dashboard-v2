@@ -13,6 +13,12 @@ const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
 
+type CompetitorResult = {
+  title: string;
+  url: string;
+  snippet?: string;
+};
+
 async function loadYaml<T>(path: string, fallback: T): Promise<T> {
   try {
     const raw = await readFile(path, "utf8");
@@ -44,6 +50,73 @@ function extractJson(text: string) {
   }
 }
 
+function stripHtml(input: string) {
+  return input
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueByUrl(results: CompetitorResult[]) {
+  const seen = new Set<string>();
+  return results.filter((item) => {
+    try {
+      const normalized = new URL(item.url).toString();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+async function searchCompetitors(query: string, limit = 6): Promise<CompetitorResult[]> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 AtlasDashboard/1.0",
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = [...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+    const snippetMatches = [...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<div[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/div>/g)];
+
+    const raw = matches.map((m, i) => {
+      let href = m[1] || "";
+      try {
+        if (href.startsWith("//")) href = `https:${href}`;
+        const parsed = new URL(href);
+        const uddg = parsed.searchParams.get("uddg");
+        if (uddg) href = decodeURIComponent(uddg);
+      } catch {
+        // leave as-is
+      }
+      const snippet = stripHtml(snippetMatches[i]?.[1] || snippetMatches[i]?.[2] || "");
+      return {
+        title: stripHtml(m[2] || ""),
+        url: href,
+        snippet,
+      };
+    });
+
+    return uniqueByUrl(raw)
+      .filter((item) => /^https?:\/\//.test(item.url))
+      .filter((item) => !/dribbble\.com|facebook\.com|instagram\.com|linkedin\.com|yelp\.com|mapquest\.com|yellowpages\.com/i.test(item.url))
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
 function pickDesignDirection(project: any, client: any, prompt: string) {
   const blob = `${project?.summary || ""} ${client?.summary || ""} ${client?.notes || ""} ${prompt}`.toLowerCase();
   if (/clinic|health|medical|care|dental|therapy|behavioral/.test(blob)) return "premium service";
@@ -53,7 +126,34 @@ function pickDesignDirection(project: any, client: any, prompt: string) {
   return "editorial authority";
 }
 
-function fallbackDraft(project: any, client: any, prompt: string) {
+function fallbackConcepts(project: any, client: any, prompt: string) {
+  const base = pickDesignDirection(project, client, prompt);
+  return [
+    {
+      name: `${base} lead-gen`,
+      direction: base,
+      signatureMove: "Trust and CTA clustered near the hero",
+      headline: `${project.name} with a clearer first-screen offer`,
+      whyItCouldWork: "Strong default for conversion-focused pages.",
+    },
+    {
+      name: "editorial authority",
+      direction: "editorial authority",
+      signatureMove: "Bold typography with a calmer supporting column",
+      headline: `A more credible, confident presentation for ${project.name}`,
+      whyItCouldWork: "Works when trust and clarity matter more than flashy effects.",
+    },
+    {
+      name: "modern technical",
+      direction: "modern technical",
+      signatureMove: "Split-panel hero with denser proof framing",
+      headline: `${project.name} framed as a sharper modern system`,
+      whyItCouldWork: "Good fit for AI, automation, software, and operational products.",
+    },
+  ];
+}
+
+function fallbackDraft(project: any, client: any, prompt: string, competitors: CompetitorResult[] = []) {
   const designDirection = pickDesignDirection(project, client, prompt);
   const audience = client?.name ? `Prospective customers of ${client.name}` : `Prospective customers for ${project.name}`;
   const goal = /book|schedule|consult/i.test(prompt) ? "Drive booked consultations" : "Turn interest into a clear next step";
@@ -62,6 +162,7 @@ function fallbackDraft(project: any, client: any, prompt: string) {
   return {
     pageName: `${project.name} Webpage Draft`,
     concept: `${designDirection} conversion page`,
+    concepts: fallbackConcepts(project, client, prompt),
     audience,
     goal,
     designDirection,
@@ -79,6 +180,13 @@ function fallbackDraft(project: any, client: any, prompt: string) {
       "Process / how it works section",
       "Final CTA with reassurance and next step",
     ],
+    sectionCopy: {
+      hero: ["Lead with a concrete outcome", "Name who the offer is for", "Place one trust cue near the CTA"],
+      proof: ["Use short trust markers", "Highlight outcomes or credentials"],
+      services: ["Describe services in plain language", "Pair features with buyer-facing value"],
+      process: ["Reduce uncertainty in 3-5 steps", "Keep the flow buyer-friendly"],
+      cta: ["Restate value", "Reduce hesitation", "Match CTA wording to the actual next step"],
+    },
     trustSignals: [client?.summary, client?.notes, project?.stage, project?.status].filter(Boolean),
     visualMotifs: designDirection === "modern technical"
       ? ["grid accents", "split panels", "compact proof strip"]
@@ -91,6 +199,9 @@ function fallbackDraft(project: any, client: any, prompt: string) {
       "Bring proof near the first CTA",
       "Keep section headlines outcome-oriented",
     ],
+    competitorIdeas: competitors.length
+      ? competitors.map((item) => `${item.title} — borrow structural or messaging ideas, not design copies`)
+      : [],
     critique: [
       "Avoid generic three-card feature layouts as the whole page",
       "Ensure the hero communicates who this is for in the first screen",
@@ -105,19 +216,20 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { prompt } = await request.json();
+    const { prompt, competitorQuery, researchCompetitors } = await request.json();
 
     if (!prompt || !String(prompt).trim()) {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    const [projectsData, clientsData, pagePatterns, antiPatterns, visualMotifs, patterns21st] = await Promise.all([
+    const [projectsData, clientsData, pagePatterns, antiPatterns, visualMotifs, patterns21st, sectionCopyFormulas] = await Promise.all([
       loadYaml<{ projects: any[] }>(PROJECTS_PATH, { projects: [] }),
       loadYaml<{ clients: any[] }>(CLIENTS_PATH, { clients: [] }),
       loadReference("page-patterns.md"),
       loadReference("anti-patterns.md"),
       loadReference("visual-motifs.md"),
       loadReference("21st-patterns.md"),
+      loadReference("section-copy-formulas.md"),
     ]);
 
     const project = (projectsData.projects || []).find((item) => item.id === id);
@@ -129,17 +241,24 @@ export async function POST(
       ? (clientsData.clients || []).find((item) => item.id === project.clientId || item.slug === project.clientId)
       : null;
 
-    let draft = fallbackDraft(project, client, String(prompt).trim());
+    const derivedCompetitorQuery = String(competitorQuery || "").trim() || [client?.name, project?.name, project?.summary].filter(Boolean).join(" ");
+    const competitorResults = researchCompetitors ? await searchCompetitors(derivedCompetitorQuery, 6) : [];
+
+    let draft = fallbackDraft(project, client, String(prompt).trim(), competitorResults);
 
     if (anthropic) {
       try {
+        const competitorBlock = competitorResults.length
+          ? competitorResults.map((item, idx) => `${idx + 1}. ${item.title}\nURL: ${item.url}\nSnippet: ${item.snippet || "None"}`).join("\n\n")
+          : "None";
+
         const msg = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
-          max_tokens: 1800,
+          max_tokens: 2600,
           messages: [
             {
               role: "user",
-              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 3200)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 2200)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 2200)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 2200)}\n\nReturn strict JSON with keys:\npageName, concept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
+              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts. If competitor inspiration is present, borrow only structural and messaging ideas that are broadly useful; do not imitate or reproduce any site's unique branding or copy.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 2600)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 1800)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 1800)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 1800)}\n\nReference: section copy formulas\n${sectionCopyFormulas.slice(0, 1600)}\n\nCompetitor inspiration query:\n${derivedCompetitorQuery || "None"}\n\nCompetitor inspiration results:\n${competitorBlock}\n\nReturn strict JSON with keys:\npageName, concept, concepts (array of exactly 3 objects with keys: name, direction, signatureMove, headline, whyItCouldWork), audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), sectionCopy (object with keys hero, proof, services, process, cta; each value is an array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), competitorIdeas (array of strings), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
             },
           ],
         });
@@ -150,11 +269,14 @@ export async function POST(
           draft = {
             ...draft,
             ...parsed,
+            concepts: Array.isArray(parsed.concepts) ? parsed.concepts.slice(0, 3) : draft.concepts,
             sections: Array.isArray(parsed.sections) ? parsed.sections : draft.sections,
             trustSignals: Array.isArray(parsed.trustSignals) ? parsed.trustSignals : draft.trustSignals,
             visualMotifs: Array.isArray(parsed.visualMotifs) ? parsed.visualMotifs : draft.visualMotifs,
             copyNotes: Array.isArray(parsed.copyNotes) ? parsed.copyNotes : draft.copyNotes,
+            competitorIdeas: Array.isArray(parsed.competitorIdeas) ? parsed.competitorIdeas : draft.competitorIdeas,
             critique: Array.isArray(parsed.critique) ? parsed.critique : draft.critique,
+            sectionCopy: typeof parsed.sectionCopy === "object" && parsed.sectionCopy ? parsed.sectionCopy : draft.sectionCopy,
           };
         }
       } catch (error) {
@@ -171,7 +293,10 @@ export async function POST(
       name: draft.pageName,
       url: "",
       prompt: String(prompt).trim(),
+      competitorQuery: researchCompetitors ? derivedCompetitorQuery : "",
+      competitors: competitorResults,
       concept: draft.concept,
+      concepts: draft.concepts,
       audience: draft.audience,
       goal: draft.goal,
       designDirection: draft.designDirection,
@@ -179,10 +304,12 @@ export async function POST(
       headline: draft.headline,
       subheadline: draft.subheadline,
       sections: draft.sections,
+      sectionCopy: draft.sectionCopy,
       trustSignals: draft.trustSignals,
       visualMotifs: draft.visualMotifs,
       cta: draft.cta,
       copyNotes: draft.copyNotes,
+      competitorIdeas: draft.competitorIdeas,
       critique: draft.critique,
       notes: draft.notes,
       createdAt: new Date().toISOString(),

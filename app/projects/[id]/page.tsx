@@ -856,6 +856,8 @@ export default function ProjectDetailPage({
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [webpagePrompt, setWebpagePrompt] = useState("");
+  const [webpageCompetitorQuery, setWebpageCompetitorQuery] = useState("");
+  const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
@@ -988,12 +990,17 @@ export default function ProjectDetailPage({
       const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: webpagePrompt }),
+        body: JSON.stringify({
+          prompt: webpagePrompt,
+          competitorQuery: webpageCompetitorQuery,
+          researchCompetitors: webpageResearchCompetitors,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate webpage draft');
       setLatestWebpageDraft(data.page);
       setWebpagePrompt('');
+      setWebpageCompetitorQuery('');
       setToast({ message: 'Website draft created', type: 'success' });
       const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (refreshed.ok) {
@@ -1539,9 +1546,22 @@ export default function ProjectDetailPage({
             placeholder="Example: Create a polished behavioral health clinic homepage focused on trust, insurance-friendly messaging, and a clear intake CTA."
             className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
+          <Input
+            value={webpageCompetitorQuery}
+            onChange={(e) => setWebpageCompetitorQuery(e.target.value)}
+            placeholder="Optional competitor search query, e.g. 'Atlanta behavioral health clinic intensive outpatient'"
+          />
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={webpageResearchCompetitors}
+              onChange={(e) => setWebpageResearchCompetitors(e.target.checked)}
+            />
+            Research competitors for inspiration (structure + messaging ideas only, never copy)
+          </label>
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              This creates a saved website draft record tied to the project.
+              This creates a saved website draft record tied to the project with concepts, copy guidance, and optional competitor inspiration.
             </p>
             <Button onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
               {generatingWebpage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
@@ -1549,18 +1569,65 @@ export default function ProjectDetailPage({
             </Button>
           </div>
           {latestWebpageDraft && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-2">
+            <div className="rounded-md border border-border p-3 text-sm space-y-3">
               <div><span className="font-medium">Saved draft:</span> {latestWebpageDraft.name}</div>
               {latestWebpageDraft.concept && <div><span className="font-medium">Concept:</span> {latestWebpageDraft.concept}</div>}
               {latestWebpageDraft.designDirection && <div><span className="font-medium">Direction:</span> {latestWebpageDraft.designDirection}</div>}
               {latestWebpageDraft.headline && <div><span className="font-medium">Headline:</span> {latestWebpageDraft.headline}</div>}
               {latestWebpageDraft.cta && <div><span className="font-medium">CTA:</span> {latestWebpageDraft.cta}</div>}
+              {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
+                <div>
+                  <span className="font-medium">Three design directions:</span>
+                  <div className="mt-2 grid gap-2 md:grid-cols-3">
+                    {latestWebpageDraft.concepts.map((concept: any, idx: number) => (
+                      <div key={idx} className="rounded-md border border-border p-2 bg-muted/30">
+                        <div className="font-medium">{concept.name || concept.direction}</div>
+                        {concept.signatureMove && <div className="text-xs text-muted-foreground mt-1">{concept.signatureMove}</div>}
+                        {concept.whyItCouldWork && <div className="text-xs mt-2">{concept.whyItCouldWork}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {Array.isArray(latestWebpageDraft.sections) && latestWebpageDraft.sections.length > 0 && (
                 <div>
                   <span className="font-medium">Sections:</span>
                   <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
-                    {latestWebpageDraft.sections.slice(0, 5).map((section: string, idx: number) => (
+                    {latestWebpageDraft.sections.slice(0, 6).map((section: string, idx: number) => (
                       <li key={idx}>{section}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {latestWebpageDraft.sectionCopy && (
+                <div>
+                  <span className="font-medium">Section copy guidance:</span>
+                  <div className="mt-1 text-muted-foreground space-y-1">
+                    {Object.entries(latestWebpageDraft.sectionCopy).slice(0, 5).map(([key, value]: [string, any]) => (
+                      <div key={key}><span className="capitalize font-medium text-foreground">{key}:</span> {Array.isArray(value) ? value.join(' • ') : String(value)}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(latestWebpageDraft.competitors) && latestWebpageDraft.competitors.length > 0 && (
+                <div>
+                  <span className="font-medium">Competitor inspiration:</span>
+                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
+                    {latestWebpageDraft.competitors.slice(0, 5).map((item: any, idx: number) => (
+                      <li key={idx}>
+                        <span className="text-foreground">{item.title}</span>
+                        {item.url && <span className="text-xs ml-1">({item.url})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {Array.isArray(latestWebpageDraft.competitorIdeas) && latestWebpageDraft.competitorIdeas.length > 0 && (
+                <div>
+                  <span className="font-medium">Borrowable ideas:</span>
+                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
+                    {latestWebpageDraft.competitorIdeas.slice(0, 5).map((item: string, idx: number) => (
+                      <li key={idx}>{item}</li>
                     ))}
                   </ul>
                 </div>
