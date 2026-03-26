@@ -1577,11 +1577,19 @@ export default function ProjectDetailPage({
               {latestWebpageDraft.cta && <div><span className="font-medium">CTA:</span> {latestWebpageDraft.cta}</div>}
               {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
                 <div>
-                  <span className="font-medium">Three design directions:</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">Three design directions:</span>
+                    {latestWebpageDraft.recommendedConcept && (
+                      <span className="text-xs rounded-full px-2 py-0.5 bg-orange-600/10 text-orange-600 border border-orange-600/20">
+                        Recommended: {latestWebpageDraft.recommendedConcept}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-2 grid gap-2 md:grid-cols-3">
                     {latestWebpageDraft.concepts.map((concept: any, idx: number) => (
                       <div key={idx} className="rounded-md border border-border p-2 bg-muted/30">
                         <div className="font-medium">{concept.name || concept.direction}</div>
+                        {concept.headline && <div className="text-xs mt-1 text-foreground/90">{concept.headline}</div>}
                         {concept.signatureMove && <div className="text-xs text-muted-foreground mt-1">{concept.signatureMove}</div>}
                         {concept.whyItCouldWork && <div className="text-xs mt-2">{concept.whyItCouldWork}</div>}
                       </div>
@@ -1622,6 +1630,20 @@ export default function ProjectDetailPage({
                   </ul>
                 </div>
               )}
+              {latestWebpageDraft.competitorSummary && (
+                <div>
+                  <span className="font-medium">Competitor insight summary:</span>
+                  <div className="mt-1 space-y-1 text-muted-foreground">
+                    {Object.entries(latestWebpageDraft.competitorSummary).map(([key, value]: [string, any]) => (
+                      Array.isArray(value) && value.length > 0 ? (
+                        <div key={key}>
+                          <span className="capitalize font-medium text-foreground">{key.replace(/([A-Z])/g, ' $1').trim()}:</span> {value.slice(0, 4).join(' • ')}
+                        </div>
+                      ) : null
+                    ))}
+                  </div>
+                </div>
+              )}
               {Array.isArray(latestWebpageDraft.competitorIdeas) && latestWebpageDraft.competitorIdeas.length > 0 && (
                 <div>
                   <span className="font-medium">Borrowable ideas:</span>
@@ -1630,6 +1652,37 @@ export default function ProjectDetailPage({
                       <li key={idx}>{item}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+              {latestWebpageDraft.pageDraft && (
+                <div>
+                  <span className="font-medium">Implementation-ready page draft:</span>
+                  <div className="mt-2 rounded-md border border-border bg-muted/20 p-3 space-y-2 text-muted-foreground">
+                    {latestWebpageDraft.pageDraft.hero && (
+                      <div>
+                        <span className="font-medium text-foreground">Hero:</span>{' '}
+                        {[latestWebpageDraft.pageDraft.hero.eyebrow, latestWebpageDraft.pageDraft.hero.headline, latestWebpageDraft.pageDraft.hero.subheadline].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                    {Array.isArray(latestWebpageDraft.pageDraft.proofItems) && latestWebpageDraft.pageDraft.proofItems.length > 0 && (
+                      <div><span className="font-medium text-foreground">Proof:</span> {latestWebpageDraft.pageDraft.proofItems.join(' • ')}</div>
+                    )}
+                    {Array.isArray(latestWebpageDraft.pageDraft.services) && latestWebpageDraft.pageDraft.services.length > 0 && (
+                      <div><span className="font-medium text-foreground">Services:</span> {latestWebpageDraft.pageDraft.services.slice(0, 3).join(' • ')}</div>
+                    )}
+                    {Array.isArray(latestWebpageDraft.pageDraft.processSteps) && latestWebpageDraft.pageDraft.processSteps.length > 0 && (
+                      <div><span className="font-medium text-foreground">Process:</span> {latestWebpageDraft.pageDraft.processSteps.join(' → ')}</div>
+                    )}
+                    {Array.isArray(latestWebpageDraft.pageDraft.faq) && latestWebpageDraft.pageDraft.faq.length > 0 && (
+                      <div><span className="font-medium text-foreground">FAQ angles:</span> {latestWebpageDraft.pageDraft.faq.join(' • ')}</div>
+                    )}
+                    {latestWebpageDraft.pageDraft.finalCta && (
+                      <div><span className="font-medium text-foreground">Final CTA:</span> {[latestWebpageDraft.pageDraft.finalCta.headline, latestWebpageDraft.pageDraft.finalCta.action, latestWebpageDraft.pageDraft.finalCta.reassurance].filter(Boolean).join(' • ')}</div>
+                    )}
+                    {Array.isArray(latestWebpageDraft.pageDraft.componentSuggestions) && latestWebpageDraft.pageDraft.componentSuggestions.length > 0 && (
+                      <div><span className="font-medium text-foreground">Suggested components:</span> {latestWebpageDraft.pageDraft.componentSuggestions.join(' • ')}</div>
+                    )}
+                  </div>
                 </div>
               )}
               {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}

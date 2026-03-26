@@ -117,6 +117,10 @@ async function searchCompetitors(query: string, limit = 6): Promise<CompetitorRe
   }
 }
 
+function researchCompetitorSafeSecondaryCta(prompt: string) {
+  return /call|phone/i.test(prompt) ? "View Services" : /quote|estimate/i.test(prompt) ? "See Pricing Factors" : "See How It Works";
+}
+
 function pickDesignDirection(project: any, client: any, prompt: string) {
   const blob = `${project?.summary || ""} ${client?.summary || ""} ${client?.notes || ""} ${prompt}`.toLowerCase();
   if (/clinic|health|medical|care|dental|therapy|behavioral/.test(blob)) return "premium service";
@@ -159,10 +163,13 @@ function fallbackDraft(project: any, client: any, prompt: string, competitors: C
   const goal = /book|schedule|consult/i.test(prompt) ? "Drive booked consultations" : "Turn interest into a clear next step";
   const cta = /call|phone/i.test(prompt) ? "Call Now" : /quote|estimate/i.test(prompt) ? "Get a Quote" : "Request a Consultation";
 
+  const concepts = fallbackConcepts(project, client, prompt);
+
   return {
     pageName: `${project.name} Webpage Draft`,
     concept: `${designDirection} conversion page`,
-    concepts: fallbackConcepts(project, client, prompt),
+    concepts,
+    recommendedConcept: concepts[0]?.name || designDirection,
     audience,
     goal,
     designDirection,
@@ -202,6 +209,42 @@ function fallbackDraft(project: any, client: any, prompt: string, competitors: C
     competitorIdeas: competitors.length
       ? competitors.map((item) => `${item.title} — borrow structural or messaging ideas, not design copies`)
       : [],
+    competitorSummary: {
+      marketPatterns: competitors.length ? ["Competitors in this niche tend to lead with immediate credibility and a clear service promise", "Proof and reassurance should appear before deep detail", "High-intent pages should surface contact or conversion actions early"] : [],
+      trustSignals: competitors.length ? ["Credentials or experience", "Location/service-area clarity", "Testimonials or outcomes"] : [],
+      contentIdeas: competitors.length ? ["FAQ covering fit, process, pricing, or timing", "More concrete service breakdowns", "Clearer proof close to the hero"] : [],
+      differentiationAngles: ["Use clearer positioning than the market average", "Make the first CTA more specific", "Out-explain vague competitor copy with stronger plain-language value"],
+    },
+    pageDraft: {
+      hero: {
+        eyebrow: project.stage || client?.summary || "Trusted service",
+        headline: `${project.name} — ${goal}`,
+        subheadline: String(prompt).trim(),
+        primaryCta: cta,
+        secondaryCta: researchCompetitorSafeSecondaryCta(prompt),
+      },
+      proofItems: [client?.summary, project?.status, project?.stage].filter(Boolean).slice(0, 3),
+      services: [
+        "Primary service or offer explained in plain language",
+        "Differentiator tied to outcomes or experience",
+        "Supportive capability or reassurance block",
+      ],
+      processSteps: ["Start with inquiry", "Review fit / needs", "Deliver service clearly", "Follow through with next steps"],
+      faq: ["Who is this for?", "What does the process look like?", "How do I get started?"],
+      finalCta: {
+        headline: `Ready to move forward with ${project.name}?`,
+        action: cta,
+        reassurance: "Clear next steps, no vague handoff.",
+      },
+      componentSuggestions: [
+        "Hero with trust strip and CTA cluster",
+        "Proof bar or testimonial row",
+        "Service cards or capability blocks",
+        "Process timeline or step grid",
+        "FAQ accordion",
+        "Final CTA panel",
+      ],
+    },
     critique: [
       "Avoid generic three-card feature layouts as the whole page",
       "Ensure the hero communicates who this is for in the first screen",
@@ -270,11 +313,14 @@ export async function POST(
             ...draft,
             ...parsed,
             concepts: Array.isArray(parsed.concepts) ? parsed.concepts.slice(0, 3) : draft.concepts,
+            recommendedConcept: parsed.recommendedConcept || draft.recommendedConcept,
             sections: Array.isArray(parsed.sections) ? parsed.sections : draft.sections,
             trustSignals: Array.isArray(parsed.trustSignals) ? parsed.trustSignals : draft.trustSignals,
             visualMotifs: Array.isArray(parsed.visualMotifs) ? parsed.visualMotifs : draft.visualMotifs,
             copyNotes: Array.isArray(parsed.copyNotes) ? parsed.copyNotes : draft.copyNotes,
             competitorIdeas: Array.isArray(parsed.competitorIdeas) ? parsed.competitorIdeas : draft.competitorIdeas,
+            competitorSummary: typeof parsed.competitorSummary === "object" && parsed.competitorSummary ? parsed.competitorSummary : draft.competitorSummary,
+            pageDraft: typeof parsed.pageDraft === "object" && parsed.pageDraft ? parsed.pageDraft : draft.pageDraft,
             critique: Array.isArray(parsed.critique) ? parsed.critique : draft.critique,
             sectionCopy: typeof parsed.sectionCopy === "object" && parsed.sectionCopy ? parsed.sectionCopy : draft.sectionCopy,
           };
@@ -297,6 +343,7 @@ export async function POST(
       competitors: competitorResults,
       concept: draft.concept,
       concepts: draft.concepts,
+      recommendedConcept: draft.recommendedConcept,
       audience: draft.audience,
       goal: draft.goal,
       designDirection: draft.designDirection,
@@ -310,6 +357,8 @@ export async function POST(
       cta: draft.cta,
       copyNotes: draft.copyNotes,
       competitorIdeas: draft.competitorIdeas,
+      competitorSummary: draft.competitorSummary,
+      pageDraft: draft.pageDraft,
       critique: draft.critique,
       notes: draft.notes,
       createdAt: new Date().toISOString(),
