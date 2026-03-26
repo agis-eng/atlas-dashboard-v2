@@ -230,11 +230,23 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     loadProjects();
+
+    const handleRefresh = () => loadProjects();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") loadProjects();
+    };
+
+    window.addEventListener("focus", handleRefresh);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleRefresh);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   async function loadProjects() {
     try {
-      const res = await fetch("/api/projects");
+      const res = await fetch("/api/projects", { cache: "no-store" });
       const data = await res.json();
       setProjects(data.projects || []);
     } catch {

@@ -930,7 +930,7 @@ export default function ProjectDetailPage({
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, { cache: "no-store" });
         if (!res.ok) {
           setError(res.status === 404 ? "Project not found" : "Failed to load project");
           return;
@@ -941,7 +941,7 @@ export default function ProjectDetailPage({
         // Load client contact info if clientId exists
         if (data.project?.clientId) {
           try {
-            const clientRes = await fetch(`/api/clients/${encodeURIComponent(data.project.clientId)}`);
+            const clientRes = await fetch(`/api/clients/${encodeURIComponent(data.project.clientId)}`, { cache: "no-store" });
             if (clientRes.ok) {
               const clientData = await clientRes.json();
               setClientContact({
@@ -956,7 +956,7 @@ export default function ProjectDetailPage({
         }
 
         try {
-          const deckRes = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`);
+          const deckRes = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, { cache: "no-store" });
           if (deckRes.ok) {
             const deckData = await deckRes.json();
             setLatestDeck(deckData.deck || null);
@@ -968,7 +968,7 @@ export default function ProjectDetailPage({
         }
 
         try {
-          const seoRes = await fetch(`/api/seo-audit?projectId=${encodeURIComponent(id)}`);
+          const seoRes = await fetch(`/api/seo-audit?projectId=${encodeURIComponent(id)}`, { cache: "no-store" });
           if (seoRes.ok) {
             const seoData = await seoRes.json();
             setSeoReports(seoData.reports || []);
@@ -1049,6 +1049,7 @@ export default function ProjectDetailPage({
 
       const data = await res.json();
       setProject(data.project);
+      router.refresh();
       setEditing(false);
       setDraft(null);
       setToast({ message: "Project saved", type: "success" });
@@ -1091,7 +1092,7 @@ export default function ProjectDetailPage({
       setWebpagePreferredConcept('');
       setWebpageCompetitorQuery('');
       setToast({ message: 'Website draft created', type: 'success' });
-      const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`, { cache: "no-store" });
       if (refreshed.ok) {
         const refreshedData = await refreshed.json();
         setProject(refreshedData.project);
@@ -1735,7 +1736,7 @@ export default function ProjectDetailPage({
         </Card>
       </div>
 
-      {/* Live Preview + AI Code Changes */}
+      {/* Live Preview + Website Changes */}
       {(p.liveUrl || p.previewUrl) && (
         <LivePreviewWithAI 
           url={p.liveUrl || p.previewUrl || ''} 
@@ -1748,9 +1749,11 @@ export default function ProjectDetailPage({
       {/* Website draft first, then SEO + deck tools on wider desktop layouts */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Create Webpage Draft</CardTitle>
+          <CardTitle className="text-base">{p.liveUrl || p.previewUrl ? "Create Separate Website Redesign Draft" : "Create Website Draft"}</CardTitle>
           <CardDescription>
-            Generate a richer webpage concept using project/client context plus Atlas design-pattern references, then save it to project pages.
+            {p.liveUrl || p.previewUrl
+              ? "Generate a separate redesign draft for planning only. This does not replace, deploy over, or modify the current site."
+              : "Generate a richer website concept using project/client context plus Atlas design-pattern references, then save it as a planning draft."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -1778,13 +1781,18 @@ export default function ProjectDetailPage({
             />
             Research competitors for inspiration (structure + messaging ideas only, never copy)
           </label>
+          {(p.liveUrl || p.previewUrl) && (
+            <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              Existing site detected. This tool is safe: it only creates a separate draft record and will not overwrite the live or preview site.
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              This creates a saved website draft record tied to the project with concepts, copy guidance, and optional competitor inspiration.
+              This creates a saved website draft record tied to the project with concepts, copy guidance, and optional competitor inspiration. No deploy happens here.
             </p>
             <Button onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
               {generatingWebpage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {generatingWebpage ? 'Generating Draft…' : 'Generate Webpage Draft'}
+              {generatingWebpage ? 'Generating Draft…' : (p.liveUrl || p.previewUrl ? 'Create Separate Redesign Draft' : 'Generate Website Draft')}
             </Button>
           </div>
           {latestWebpageDraft && (
@@ -2384,7 +2392,7 @@ function LivePreview({
   );
 }
 
-// ── Live Preview with AI Code Changes ──
+// ── Live Preview with Website Changes ──
 function LivePreviewWithAI({ 
   url, 
   projectName,
@@ -2456,14 +2464,14 @@ function LivePreviewWithAI({
         projectId={projectId}
       />
       
-      {/* AI Code Changes */}
+      {/* Website Changes */}
       {project.repoUrl && (
         <Card className="border-purple-500/20">
           <CardHeader>
             <CardTitle className="text-base flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-purple-500" />
-                AI Code Changes
+                Website Changes
               </span>
               <Button
                 variant="outline"
@@ -2478,7 +2486,7 @@ function LivePreviewWithAI({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Make Changes
+                    Make Website Changes
                   </>
                 )}
               </Button>
@@ -2489,7 +2497,7 @@ function LivePreviewWithAI({
             <CardContent>
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Describe the changes you want to make. AI will modify the code and create a PR.
+                  Describe the website changes you want. Atlas will modify the site code and create a PR.
                 </p>
                 
                 <div className="space-y-2">
