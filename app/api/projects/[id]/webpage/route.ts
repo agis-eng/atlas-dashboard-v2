@@ -312,16 +312,38 @@ function fallbackDraft(project: any, client: any, prompt: string, competitors: C
   };
 }
 
+
+function buildGuidedPrompt(guidedAnswers: any, referenceUrl: string, inspirationImages: string[]) {
+  const parts = [
+    guidedAnswers?.siteType ? `Site type: ${guidedAnswers.siteType}` : "",
+    guidedAnswers?.audience ? `Audience: ${guidedAnswers.audience}` : "",
+    guidedAnswers?.goal ? `Primary goal: ${guidedAnswers.goal}` : "",
+    guidedAnswers?.style ? `Style / vibe: ${guidedAnswers.style}` : "",
+    guidedAnswers?.pages ? `Pages needed: ${guidedAnswers.pages}` : "",
+    guidedAnswers?.cta ? `Primary CTA: ${guidedAnswers.cta}` : "",
+    guidedAnswers?.mustHave ? `Required sections/features: ${guidedAnswers.mustHave}` : "",
+    guidedAnswers?.brand ? `Brand notes: ${guidedAnswers.brand}` : "",
+    guidedAnswers?.content ? `Existing content/assets available: ${guidedAnswers.content}` : "",
+    guidedAnswers?.notes ? `Extra notes: ${guidedAnswers.notes}` : "",
+    referenceUrl ? `Reference URL: ${referenceUrl}` : "",
+    inspirationImages?.length ? `Inspiration images: ${inspirationImages.join(", ")}` : "",
+  ].filter(Boolean);
+
+  return `Create a production-ready website concept using this guided intake:\n${parts.join("\n")}`.trim();
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const { prompt, preferredConcept, competitorQuery, researchCompetitors } = await request.json();
+    const { prompt, preferredConcept, competitorQuery, researchCompetitors, mode, referenceUrl, guidedAnswers, inspirationImages } = await request.json();
 
-    if (!prompt || !String(prompt).trim()) {
-      return Response.json({ error: "Prompt is required" }, { status: 400 });
+    const effectivePrompt = String(prompt || "").trim() || buildGuidedPrompt(guidedAnswers || {}, String(referenceUrl || "").trim(), Array.isArray(inspirationImages) ? inspirationImages : []);
+
+    if (!effectivePrompt) {
+      return Response.json({ error: "Prompt or guided answers are required" }, { status: 400 });
     }
 
     const [projectsData, clientsData, pagePatterns, antiPatterns, visualMotifs, patterns21st, sectionCopyFormulas] = await Promise.all([
@@ -347,7 +369,7 @@ export async function POST(
     const derivedCompetitorQuery = String(competitorQuery || "").trim() || [client?.name, project?.name, project?.summary].filter(Boolean).join(" ");
     const competitorResults = researchCompetitors ? await searchCompetitors(derivedCompetitorQuery, 6) : [];
 
-    let draft: any = fallbackDraft(project, client, String(prompt).trim(), competitorResults);
+    let draft: any = fallbackDraft(project, client, effectivePrompt, competitorResults);
     if (preferredConceptName) {
       draft.recommendedConcept = preferredConceptName;
     }
@@ -404,7 +426,11 @@ export async function POST(
       clientId: project.clientId || "",
       name: draft.pageName,
       url: "",
-      prompt: String(prompt).trim(),
+      prompt: effectivePrompt,
+      mode: String(mode || (String(prompt || "").trim() ? "quick" : "guided")),
+      referenceUrl: String(referenceUrl || "").trim(),
+      guidedAnswers: guidedAnswers || {},
+      inspirationImages: Array.isArray(inspirationImages) ? inspirationImages : [],
       preferredConcept: preferredConceptName,
       competitorQuery: researchCompetitors ? derivedCompetitorQuery : "",
       competitors: competitorResults,
@@ -442,7 +468,7 @@ export async function POST(
 
     if (!project.brain) project.brain = {};
     if (!project.brain.notes) project.brain.notes = [];
-    project.brain.notes.unshift(`Website draft created: ${draft.headline}`);
+    project.brain.notes.unshift(`Website draft created: ${draft.headline}${referenceUrl ? ` (ref: ${String(referenceUrl).trim()})` : ""}`);
     project.lastUpdate = new Date().toISOString().split("T")[0];
 
     await writeFile(

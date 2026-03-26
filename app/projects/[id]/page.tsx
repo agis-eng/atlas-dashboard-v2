@@ -896,10 +896,26 @@ export default function ProjectDetailPage({
   const [deleting, setDeleting] = useState(false);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const [webpageMode, setWebpageMode] = useState<"quick" | "guided">("quick");
   const [webpagePrompt, setWebpagePrompt] = useState("");
+  const [webpageReferenceUrl, setWebpageReferenceUrl] = useState("");
   const [webpagePreferredConcept, setWebpagePreferredConcept] = useState("");
   const [webpageCompetitorQuery, setWebpageCompetitorQuery] = useState("");
   const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
+  const [webpageGuidedAnswers, setWebpageGuidedAnswers] = useState({
+    siteType: "",
+    audience: "",
+    goal: "",
+    style: "",
+    pages: "",
+    cta: "",
+    mustHave: "",
+    brand: "",
+    content: "",
+    notes: "",
+  });
+  const [webpageInspirationImages, setWebpageInspirationImages] = useState<string[]>([]);
+  const [uploadingWebpageImages, setUploadingWebpageImages] = useState(false);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
   const [seoUrl, setSeoUrl] = useState("");
@@ -925,6 +941,7 @@ export default function ProjectDetailPage({
     affiliate: false,
   });
   const screenshotInputRef = useRef<HTMLInputElement>(null);
+  const webpageImagesInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -1071,15 +1088,48 @@ export default function ProjectDetailPage({
     [draft]
   );
 
+  const updateWebpageGuidedAnswer = useCallback((field: string, value: string) => {
+    setWebpageGuidedAnswers((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const uploadWebpageInspirationImages = useCallback(async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploadingWebpageImages(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).slice(0, 8).forEach((file) => formData.append('files', file));
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage/inspiration-upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to upload inspiration images');
+      setWebpageInspirationImages((prev) => [...prev, ...(data.urls || [])]);
+      setToast({ message: 'Inspiration images uploaded', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to upload inspiration images', type: 'error' });
+    } finally {
+      setUploadingWebpageImages(false);
+      if (webpageImagesInputRef.current) webpageImagesInputRef.current.value = '';
+    }
+  }, [id]);
+
   const generateWebpageDraft = useCallback(async () => {
-    if (!webpagePrompt.trim()) return;
+    const hasQuickPrompt = webpagePrompt.trim();
+    const hasGuidedInput = Object.values(webpageGuidedAnswers).some((value) => String(value || '').trim());
+    if (webpageMode === 'quick' && !hasQuickPrompt) return;
+    if (webpageMode === 'guided' && !hasGuidedInput && !webpageReferenceUrl.trim() && webpageInspirationImages.length === 0) return;
     setGeneratingWebpage(true);
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: webpagePrompt,
+          mode: webpageMode,
+          prompt: webpageMode === 'quick' ? webpagePrompt : '',
+          guidedAnswers: webpageMode === 'guided' ? webpageGuidedAnswers : {},
+          referenceUrl: webpageReferenceUrl,
+          inspirationImages: webpageInspirationImages,
           preferredConcept: webpagePreferredConcept,
           competitorQuery: webpageCompetitorQuery,
           researchCompetitors: webpageResearchCompetitors,
@@ -1089,8 +1139,11 @@ export default function ProjectDetailPage({
       if (!res.ok) throw new Error(data.error || 'Failed to generate webpage draft');
       setLatestWebpageDraft(data.page);
       setWebpagePrompt('');
+      setWebpageReferenceUrl('');
       setWebpagePreferredConcept('');
       setWebpageCompetitorQuery('');
+      setWebpageGuidedAnswers({ siteType: '', audience: '', goal: '', style: '', pages: '', cta: '', mustHave: '', brand: '', content: '', notes: '' });
+      setWebpageInspirationImages([]);
       setToast({ message: 'Website draft created', type: 'success' });
       const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`, { cache: "no-store" });
       if (refreshed.ok) {
@@ -1102,7 +1155,7 @@ export default function ProjectDetailPage({
     } finally {
       setGeneratingWebpage(false);
     }
-  }, [id, webpagePrompt, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
+  }, [id, webpageMode, webpagePrompt, webpageGuidedAnswers, webpageReferenceUrl, webpageInspirationImages, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
 
   const generateSeoAudit = useCallback(async () => {
     const targetUrl = seoUrl.trim() || project?.liveUrl || project?.previewUrl || '';
@@ -1757,12 +1810,82 @@ export default function ProjectDetailPage({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <textarea
-            value={webpagePrompt}
-            onChange={(e) => setWebpagePrompt(e.target.value)}
-            placeholder="Example: Create a polished behavioral health clinic homepage focused on trust, insurance-friendly messaging, and a clear intake CTA."
-            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <div className="inline-flex rounded-lg border border-border bg-muted/30 p-1">
+            <button
+              type="button"
+              onClick={() => setWebpageMode('quick')}
+              className={`px-3 py-1.5 text-sm rounded-md ${webpageMode === 'quick' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+            >
+              Quick Prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setWebpageMode('guided')}
+              className={`px-3 py-1.5 text-sm rounded-md ${webpageMode === 'guided' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+            >
+              Guided Intake
+            </button>
+          </div>
+
+          {webpageMode === 'quick' ? (
+            <textarea
+              value={webpagePrompt}
+              onChange={(e) => setWebpagePrompt(e.target.value)}
+              placeholder="Example: Build a modern local service website for an Atlanta roofing company with financing CTA, trust badges, before/after photos, and a quote form."
+              className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input value={webpageGuidedAnswers.siteType} onChange={(e) => updateWebpageGuidedAnswer('siteType', e.target.value)} placeholder="Site type, e.g. medspa, roofer, agency, SaaS" />
+              <Input value={webpageGuidedAnswers.audience} onChange={(e) => updateWebpageGuidedAnswer('audience', e.target.value)} placeholder="Target audience" />
+              <Input value={webpageGuidedAnswers.goal} onChange={(e) => updateWebpageGuidedAnswer('goal', e.target.value)} placeholder="Primary goal, e.g. book calls, generate leads, sell" />
+              <Input value={webpageGuidedAnswers.style} onChange={(e) => updateWebpageGuidedAnswer('style', e.target.value)} placeholder="Style/vibe, e.g. premium, modern, clinical, bold" />
+              <Input value={webpageGuidedAnswers.pages} onChange={(e) => updateWebpageGuidedAnswer('pages', e.target.value)} placeholder="Pages needed, e.g. home, about, services, contact" />
+              <Input value={webpageGuidedAnswers.cta} onChange={(e) => updateWebpageGuidedAnswer('cta', e.target.value)} placeholder="Main CTA, e.g. book now, get quote, apply" />
+              <Input value={webpageGuidedAnswers.mustHave} onChange={(e) => updateWebpageGuidedAnswer('mustHave', e.target.value)} placeholder="Must-have sections/features" className="md:col-span-2" />
+              <Input value={webpageGuidedAnswers.brand} onChange={(e) => updateWebpageGuidedAnswer('brand', e.target.value)} placeholder="Brand/colors/logo notes" className="md:col-span-2" />
+              <Input value={webpageGuidedAnswers.content} onChange={(e) => updateWebpageGuidedAnswer('content', e.target.value)} placeholder="Existing content/assets available" className="md:col-span-2" />
+              <textarea value={webpageGuidedAnswers.notes} onChange={(e) => updateWebpageGuidedAnswer('notes', e.target.value)} placeholder="Extra notes, constraints, differentiators, service areas, offers, etc." className="md:col-span-2 w-full min-h-[96px] rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+          )}
+
+          <Input
+            value={webpageReferenceUrl}
+            onChange={(e) => setWebpageReferenceUrl(e.target.value)}
+            placeholder="Optional reference URL for structure/style inspiration"
           />
+
+          <div className="rounded-md border border-border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium">Inspiration images</div>
+                <div className="text-xs text-muted-foreground">Upload logos, moodboards, screenshots, or photos to steer the website draft.</div>
+              </div>
+              <input
+                ref={webpageImagesInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                className="hidden"
+                onChange={(e) => uploadWebpageInspirationImages(e.target.files)}
+              />
+              <Button type="button" variant="outline" size="sm" disabled={uploadingWebpageImages} onClick={() => webpageImagesInputRef.current?.click()}>
+                {uploadingWebpageImages ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                {uploadingWebpageImages ? 'Uploading…' : 'Upload Images'}
+              </Button>
+            </div>
+            {webpageInspirationImages.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {webpageInspirationImages.map((url) => (
+                  <div key={url} className="rounded-md border border-border p-2 bg-muted/20 space-y-2">
+                    <img src={url} alt="Inspiration" className="h-24 w-full object-cover rounded" />
+                    <button type="button" className="text-xs text-red-400 hover:underline" onClick={() => setWebpageInspirationImages((prev) => prev.filter((item) => item !== url))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <Input
             value={webpagePreferredConcept}
             onChange={(e) => setWebpagePreferredConcept(e.target.value)}
@@ -1790,7 +1913,7 @@ export default function ProjectDetailPage({
             <p className="text-xs text-muted-foreground">
               This creates a saved website draft record tied to the project with concepts, copy guidance, and optional competitor inspiration. No deploy happens here.
             </p>
-            <Button onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
+            <Button onClick={generateWebpageDraft} disabled={generatingWebpage || (webpageMode === 'quick' ? !webpagePrompt.trim() : (!Object.values(webpageGuidedAnswers).some((value) => String(value || '').trim()) && !webpageReferenceUrl.trim() && webpageInspirationImages.length === 0))}>
               {generatingWebpage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {generatingWebpage ? 'Generating Draft…' : (p.liveUrl || p.previewUrl ? 'Create Separate Redesign Draft' : 'Generate Website Draft')}
             </Button>
@@ -1802,6 +1925,9 @@ export default function ProjectDetailPage({
               {latestWebpageDraft.designDirection && <div><span className="font-medium">Direction:</span> {latestWebpageDraft.designDirection}</div>}
               {latestWebpageDraft.headline && <div><span className="font-medium">Headline:</span> {latestWebpageDraft.headline}</div>}
               {latestWebpageDraft.cta && <div><span className="font-medium">CTA:</span> {latestWebpageDraft.cta}</div>}
+              {latestWebpageDraft.mode && <div><span className="font-medium">Mode:</span> {latestWebpageDraft.mode}</div>}
+              {latestWebpageDraft.referenceUrl && <div><span className="font-medium">Reference:</span> <a href={latestWebpageDraft.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebpageDraft.referenceUrl}</a></div>}
+              {Array.isArray(latestWebpageDraft.inspirationImages) && latestWebpageDraft.inspirationImages.length > 0 && <div><span className="font-medium">Inspiration images:</span> {latestWebpageDraft.inspirationImages.length}</div>}
               {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between gap-2">
