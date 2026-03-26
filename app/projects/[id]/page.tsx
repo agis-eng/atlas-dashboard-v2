@@ -1529,7 +1529,7 @@ export default function ProjectDetailPage({
         <CardHeader>
           <CardTitle className="text-base">Create Webpage Draft</CardTitle>
           <CardDescription>
-            Prompt a starter webpage concept for this client/project and save it to project pages.
+            Generate a richer webpage concept using project/client context plus Atlas design-pattern references, then save it to project pages.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -1549,9 +1549,22 @@ export default function ProjectDetailPage({
             </Button>
           </div>
           {latestWebpageDraft && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-1">
+            <div className="rounded-md border border-border p-3 text-sm space-y-2">
               <div><span className="font-medium">Saved draft:</span> {latestWebpageDraft.name}</div>
+              {latestWebpageDraft.concept && <div><span className="font-medium">Concept:</span> {latestWebpageDraft.concept}</div>}
+              {latestWebpageDraft.designDirection && <div><span className="font-medium">Direction:</span> {latestWebpageDraft.designDirection}</div>}
               {latestWebpageDraft.headline && <div><span className="font-medium">Headline:</span> {latestWebpageDraft.headline}</div>}
+              {latestWebpageDraft.cta && <div><span className="font-medium">CTA:</span> {latestWebpageDraft.cta}</div>}
+              {Array.isArray(latestWebpageDraft.sections) && latestWebpageDraft.sections.length > 0 && (
+                <div>
+                  <span className="font-medium">Sections:</span>
+                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
+                    {latestWebpageDraft.sections.slice(0, 5).map((section: string, idx: number) => (
+                      <li key={idx}>{section}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}
             </div>
           )}
