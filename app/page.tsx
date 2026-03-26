@@ -30,15 +30,36 @@ interface StatsData {
   completionPct: number;
 }
 
+interface DeployStatusData {
+  build: {
+    commit: string;
+    builtAt: string;
+  };
+  railway: {
+    projectName: string | null;
+    environment: string | null;
+    serviceName: string | null;
+    publicDomain: string | null;
+  };
+  health: {
+    reachable: boolean;
+    status: string;
+    statusCode: number | null;
+  };
+  versionText: string;
+}
+
 export default function Home() {
   const [greeting, setGreeting] = useState("");
   const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [deployStatus, setDeployStatus] = useState<DeployStatusData | null>(null);
 
   useEffect(() => {
     setGreeting(getGreeting());
     setMounted(true);
     loadStats();
+    loadDeployStatus();
   }, []);
 
   async function loadStats() {
@@ -82,6 +103,17 @@ export default function Home() {
       });
     } catch {
       console.error("Failed to load stats");
+    }
+  }
+
+  async function loadDeployStatus() {
+    try {
+      const res = await fetch("/api/deploy-status", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setDeployStatus(data);
+    } catch {
+      console.error("Failed to load deploy status");
     }
   }
 
@@ -171,6 +203,50 @@ export default function Home() {
           );
         })}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Deploy Status</CardTitle>
+          <CardDescription>
+            Confirms which dashboard build is currently live without opening Railway.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {deployStatus ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Build</div>
+                <div className="text-sm font-medium mt-1">{deployStatus.build.commit}</div>
+                <div className="text-xs text-muted-foreground mt-1">{new Date(deployStatus.build.builtAt).toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Railway</div>
+                <div className="text-sm font-medium mt-1">{deployStatus.railway.projectName || "Atlas Dashboard"}</div>
+                <div className="text-xs text-muted-foreground mt-1">{deployStatus.railway.environment || "production"} • {deployStatus.railway.serviceName || "service"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Live Status</div>
+                <div className="text-sm font-medium mt-1">{deployStatus.health.reachable ? "Live" : "Not reachable"}</div>
+                <div className="text-xs text-muted-foreground mt-1">{deployStatus.health.status}{deployStatus.health.statusCode ? ` • HTTP ${deployStatus.health.statusCode}` : ""}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Open</div>
+                <div className="mt-1">
+                  {deployStatus.railway.publicDomain ? (
+                    <Link href={`https://${deployStatus.railway.publicDomain}`} className="inline-flex items-center gap-1 text-sm font-medium text-orange-600 hover:underline">
+                      Open live app <ArrowUpRight className="h-3.5 w-3.5" />
+                    </Link>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">No public domain found</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">Loading deploy status…</div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Bottom Section */}
       <div className="grid gap-6 lg:grid-cols-2">
