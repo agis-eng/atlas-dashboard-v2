@@ -1249,7 +1249,7 @@ export default function ProjectDetailPage({
 
   if (loading) {
     return (
-      <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
+      <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-32 w-full" />
@@ -1259,7 +1259,7 @@ export default function ProjectDetailPage({
 
   if (error || !project) {
     return (
-      <div className="p-6 md:p-10 max-w-4xl mx-auto">
+      <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto">
         <Link
           href="/projects"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
@@ -1287,7 +1287,7 @@ export default function ProjectDetailPage({
       (p.brain.notes && p.brain.notes.length > 0));
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto space-y-6">
       {toast && (
         <Toast
           message={toast.message}
@@ -1465,7 +1465,7 @@ export default function ProjectDetailPage({
       </div>
 
       {/* Details grid */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         {/* Info */}
         <Card>
           <CardHeader>
@@ -1745,211 +1745,7 @@ export default function ProjectDetailPage({
         />
       )}
 
-      {/* Brain section - always show in edit mode, or when brain has content */}
-      {(hasBrain || editing) && (
-        <BrainSection
-          brain={(editing && draft ? draft.brain : project.brain) || {}}
-          editing={editing}
-          onChange={(brain) => updateDraft("brain", brain)}
-          projectId={id}
-        />
-      )}
-
-      {/* Affiliate section */}
-      {(hasAffiliate || editing) && (
-        <AffiliateSection
-          affiliate={
-            (editing && draft ? draft.affiliate : project.affiliate) || {}
-          }
-          editing={editing}
-          onChange={(aff) => updateDraft("affiliate", aff)}
-        />
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">SEO + AISO Audit</CardTitle>
-          <CardDescription>
-            Run a combined traditional SEO and AI-search audit from the project page and generate a dark client-ready report with fix prompts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            value={seoUrl}
-            onChange={(e) => setSeoUrl(e.target.value)}
-            placeholder={p.liveUrl || p.previewUrl || 'https://example.com'}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Uses the project site by default if available. Current phase generates the audit report and fix prompts; selective/apply-all fixes will be the next phase.
-            </p>
-            <div className="flex items-center gap-2">
-              <Link href="/seo" className="text-sm text-cyan-400 hover:underline">Open standalone page</Link>
-              <Button onClick={generateSeoAudit} disabled={generatingSeo || !(seoUrl.trim() || p.liveUrl || p.previewUrl)}>
-                {generatingSeo ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-                {generatingSeo ? 'Running Audit…' : 'Run SEO Audit'}
-              </Button>
-            </div>
-          </div>
-          {latestSeoReport && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-2">
-              <div><span className="font-medium">Latest report:</span> {latestSeoReport.title}</div>
-              <div><span className="font-medium">Score:</span> {latestSeoReport.combinedScore}/100 ({latestSeoReport.combinedGrade})</div>
-              <div><span className="font-medium">SEO:</span> {latestSeoReport.seoScore} • <span className="font-medium">AISO:</span> {latestSeoReport.aisoScore}</div>
-              {latestSeoReport.summary && <div className="text-muted-foreground">{latestSeoReport.summary}</div>}
-              {Array.isArray(latestSeoReport.quickWins) && latestSeoReport.quickWins.length > 0 && (
-                <div><span className="font-medium">Quick wins:</span> {latestSeoReport.quickWins.slice(0, 4).join(' • ')}</div>
-              )}
-              {Array.isArray(latestSeoReport.findings) && latestSeoReport.findings.length > 0 && (
-                <div><span className="font-medium">Top findings:</span> {latestSeoReport.findings.slice(0, 4).map((f) => `[${f.priority}] ${f.issue}`).join(' • ')}</div>
-              )}
-              <div className="flex items-center gap-3 pt-1">
-                <Link href={latestSeoReport.shareUrl || `/seo-reports/${latestSeoReport.id}`} className="text-cyan-400 hover:underline">Open report</Link>
-                <span className="text-xs text-muted-foreground">here.now publishing pending integration</span>
-              </div>
-            </div>
-          )}
-          {seoReports.length > 1 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Recent project reports</div>
-              {seoReports.slice(0, 5).map((report) => (
-                <div key={report.id} className="rounded-md border border-border p-2 text-sm flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{report.title}</div>
-                    <div className="text-xs text-muted-foreground">{report.combinedScore}/100 • {report.createdAt || ''}</div>
-                  </div>
-                  <Link href={report.shareUrl || `/seo-reports/${report.id}`} className="text-cyan-400 hover:underline">View</Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Create Deck Draft</CardTitle>
-          <CardDescription>
-            Build a source-selectable slide-deck outline from project, brain, client, and webpage context.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input value={deckType} onChange={(e) => setDeckType(e.target.value)} placeholder="Deck type, e.g. pitch-deck, client-proposal, investor-summary, project-update" />
-          <textarea
-            value={deckPrompt}
-            onChange={(e) => setDeckPrompt(e.target.value)}
-            placeholder="Example: Create a concise investor-style deck for this project focused on opportunity, differentiation, traction, and next step."
-            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-          <div className="grid gap-2 md:grid-cols-2 text-sm text-muted-foreground">
-            {Object.entries(deckSources).map(([key, value]) => (
-              <label key={key} className="flex items-center gap-2">
-                <input type="checkbox" checked={value} onChange={(e) => setDeckSources((prev) => ({ ...prev, [key]: e.target.checked }))} />
-                {key.replace(/([A-Z])/g, ' $1').trim()}
-              </label>
-            ))}
-          </div>
-          <Input value={deckVisualStylePreset} onChange={(e) => setDeckVisualStylePreset(e.target.value)} placeholder="Visual style preset, e.g. dark modern strategic, premium minimal, cinematic technical" />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Phase 3 adds saved visual prompts: a cover prompt plus per-slide image prompts you can use for later slide rendering.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={reuseDeckSettings} disabled={!latestDeck}>
-                Reuse Latest Settings
-              </Button>
-              <Button variant="outline" onClick={generateDeckVisualPrompts} disabled={generatingDeckVisuals || !latestDeck}>
-                {generatingDeckVisuals ? 'Generating Visuals…' : 'Generate Visual Prompts'}
-              </Button>
-              <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
-                {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
-                {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
-              </Button>
-            </div>
-          </div>
-          {latestDeck && activeDeck && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div><span className="font-medium">Deck:</span> {activeDeck.title}</div>
-                <div className="flex items-center gap-2">
-                  {!editingDeck ? (
-                    <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(true); }}>
-                      Edit Deck
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(false); }}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={saveDeckDraft} disabled={savingDeck}>
-                        {savingDeck ? 'Saving…' : 'Save Deck'}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-              {editingDeck ? (
-                <>
-                  <Input value={deckDraft?.title || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, title: e.target.value } : prev)} placeholder="Deck title" />
-                  <Input value={deckDraft?.subtitle || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, subtitle: e.target.value } : prev)} placeholder="Deck subtitle" />
-                  <Input value={deckDraft?.audience || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, audience: e.target.value } : prev)} placeholder="Audience" />
-                  <textarea value={deckDraft?.objective || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, objective: e.target.value } : prev)} className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Objective" />
-                </>
-              ) : (
-                <>
-                  {activeDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {activeDeck.subtitle}</div>}
-                  {activeDeck.deckType && <div><span className="font-medium">Type:</span> {activeDeck.deckType}</div>}
-                  {activeDeck.audience && <div><span className="font-medium">Audience:</span> {activeDeck.audience}</div>}
-                  {activeDeck.objective && <div><span className="font-medium">Objective:</span> {activeDeck.objective}</div>}
-                </>
-              )}
-              {activeDeck.visualStylePreset && <div><span className="font-medium">Visual style:</span> {activeDeck.visualStylePreset}</div>}
-              {activeDeck.coverImagePrompt && <div><span className="font-medium">Cover prompt:</span> <span className="text-muted-foreground">{activeDeck.coverImagePrompt}</span></div>}
-              {Array.isArray(activeDeck.chosenSources) && activeDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {activeDeck.chosenSources.join(' • ')}</div>}
-              {Array.isArray(activeDeck.narrativeArc) && activeDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {activeDeck.narrativeArc.join(' → ')}</div>}
-              {Array.isArray(activeDeck.slides) && activeDeck.slides.length > 0 && (
-                <div>
-                  <span className="font-medium">Slides:</span>
-                  <div className="mt-2 space-y-2">
-                    {(activeDeck.slides || []).slice(0, 12).map((slide, idx) => (
-                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{idx + 1}. {slide.title}</div>
-                          {editingDeck && (
-                            <div className="flex items-center gap-1">
-                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, -1)} disabled={idx === 0}>↑</Button>
-                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, 1)} disabled={idx === ((deckDraft?.slides?.length || 1) - 1)}>↓</Button>
-                              <Button size="sm" variant="outline" onClick={() => removeDeckSlide(idx)}>Remove</Button>
-                            </div>
-                          )}
-                        </div>
-                        {editingDeck ? (
-                          <div className="space-y-2">
-                            <Input value={slide.title || ''} onChange={(e) => updateDeckSlide(idx, 'title', e.target.value)} placeholder="Slide title" />
-                            <Input value={slide.purpose || ''} onChange={(e) => updateDeckSlide(idx, 'purpose', e.target.value)} placeholder="Purpose" />
-                            <textarea value={Array.isArray(slide.bullets) ? slide.bullets.join('\n') : ''} onChange={(e) => updateDeckSlide(idx, 'bullets', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="One bullet per line" />
-                            <Input value={slide.visualIdea || ''} onChange={(e) => updateDeckSlide(idx, 'visualIdea', e.target.value)} placeholder="Visual idea" />
-                            <textarea value={slide.speakerNotes || ''} onChange={(e) => updateDeckSlide(idx, 'speakerNotes', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Speaker notes" />
-                          </div>
-                        ) : (
-                          <>
-                            {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
-                            {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
-                            {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
-                            {slide.speakerNotes && <div className="text-xs mt-2 text-muted-foreground">Notes: {slide.speakerNotes}</div>}
-                            {slide.imagePrompt && <div className="text-xs mt-2 text-cyan-300">Image prompt: {slide.imagePrompt}</div>}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+      {/* Website draft first, then SEO + deck tools on wider desktop layouts */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Create Webpage Draft</CardTitle>
@@ -2136,6 +1932,217 @@ export default function ProjectDetailPage({
         </CardContent>
       </Card>
 
+
+
+      <div className="grid gap-6 2xl:grid-cols-[1fr_1.1fr] items-start">
+        <Card>
+        <CardHeader>
+          <CardTitle className="text-base">SEO + AISO Audit</CardTitle>
+          <CardDescription>
+            Run a combined traditional SEO and AI-search audit from the project page and generate a dark client-ready report with fix prompts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            value={seoUrl}
+            onChange={(e) => setSeoUrl(e.target.value)}
+            placeholder={p.liveUrl || p.previewUrl || 'https://example.com'}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Uses the project site by default if available. Current phase generates the audit report and fix prompts; selective/apply-all fixes will be the next phase.
+            </p>
+            <div className="flex items-center gap-2">
+              <Link href="/seo" className="text-sm text-cyan-400 hover:underline">Open standalone page</Link>
+              <Button onClick={generateSeoAudit} disabled={generatingSeo || !(seoUrl.trim() || p.liveUrl || p.previewUrl)}>
+                {generatingSeo ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+                {generatingSeo ? 'Running Audit…' : 'Run SEO Audit'}
+              </Button>
+            </div>
+          </div>
+          {latestSeoReport && (
+            <div className="rounded-md border border-border p-3 text-sm space-y-2">
+              <div><span className="font-medium">Latest report:</span> {latestSeoReport.title}</div>
+              <div><span className="font-medium">Score:</span> {latestSeoReport.combinedScore}/100 ({latestSeoReport.combinedGrade})</div>
+              <div><span className="font-medium">SEO:</span> {latestSeoReport.seoScore} • <span className="font-medium">AISO:</span> {latestSeoReport.aisoScore}</div>
+              {latestSeoReport.summary && <div className="text-muted-foreground">{latestSeoReport.summary}</div>}
+              {Array.isArray(latestSeoReport.quickWins) && latestSeoReport.quickWins.length > 0 && (
+                <div><span className="font-medium">Quick wins:</span> {latestSeoReport.quickWins.slice(0, 4).join(' • ')}</div>
+              )}
+              {Array.isArray(latestSeoReport.findings) && latestSeoReport.findings.length > 0 && (
+                <div><span className="font-medium">Top findings:</span> {latestSeoReport.findings.slice(0, 4).map((f) => `[${f.priority}] ${f.issue}`).join(' • ')}</div>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                <Link href={latestSeoReport.shareUrl || `/seo-reports/${latestSeoReport.id}`} className="text-cyan-400 hover:underline">Open report</Link>
+                <span className="text-xs text-muted-foreground">here.now publishing pending integration</span>
+              </div>
+            </div>
+          )}
+          {seoReports.length > 1 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Recent project reports</div>
+              {seoReports.slice(0, 5).map((report) => (
+                <div key={report.id} className="rounded-md border border-border p-2 text-sm flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{report.title}</div>
+                    <div className="text-xs text-muted-foreground">{report.combinedScore}/100 • {report.createdAt || ''}</div>
+                  </div>
+                  <Link href={report.shareUrl || `/seo-reports/${report.id}`} className="text-cyan-400 hover:underline">View</Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+        </Card>
+
+
+        <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Create Deck Draft</CardTitle>
+          <CardDescription>
+            Build a source-selectable slide-deck outline from project, brain, client, and webpage context.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input value={deckType} onChange={(e) => setDeckType(e.target.value)} placeholder="Deck type, e.g. pitch-deck, client-proposal, investor-summary, project-update" />
+          <textarea
+            value={deckPrompt}
+            onChange={(e) => setDeckPrompt(e.target.value)}
+            placeholder="Example: Create a concise investor-style deck for this project focused on opportunity, differentiation, traction, and next step."
+            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <div className="grid gap-2 md:grid-cols-2 text-sm text-muted-foreground">
+            {Object.entries(deckSources).map(([key, value]) => (
+              <label key={key} className="flex items-center gap-2">
+                <input type="checkbox" checked={value} onChange={(e) => setDeckSources((prev) => ({ ...prev, [key]: e.target.checked }))} />
+                {key.replace(/([A-Z])/g, ' $1').trim()}
+              </label>
+            ))}
+          </div>
+          <Input value={deckVisualStylePreset} onChange={(e) => setDeckVisualStylePreset(e.target.value)} placeholder="Visual style preset, e.g. dark modern strategic, premium minimal, cinematic technical" />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Phase 3 adds saved visual prompts: a cover prompt plus per-slide image prompts you can use for later slide rendering.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={reuseDeckSettings} disabled={!latestDeck}>
+                Reuse Latest Settings
+              </Button>
+              <Button variant="outline" onClick={generateDeckVisualPrompts} disabled={generatingDeckVisuals || !latestDeck}>
+                {generatingDeckVisuals ? 'Generating Visuals…' : 'Generate Visual Prompts'}
+              </Button>
+              <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
+                {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+                {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
+              </Button>
+            </div>
+          </div>
+          {latestDeck && activeDeck && (
+            <div className="rounded-md border border-border p-3 text-sm space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div><span className="font-medium">Deck:</span> {activeDeck.title}</div>
+                <div className="flex items-center gap-2">
+                  {!editingDeck ? (
+                    <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(true); }}>
+                      Edit Deck
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(false); }}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={saveDeckDraft} disabled={savingDeck}>
+                        {savingDeck ? 'Saving…' : 'Save Deck'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {editingDeck ? (
+                <>
+                  <Input value={deckDraft?.title || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, title: e.target.value } : prev)} placeholder="Deck title" />
+                  <Input value={deckDraft?.subtitle || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, subtitle: e.target.value } : prev)} placeholder="Deck subtitle" />
+                  <Input value={deckDraft?.audience || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, audience: e.target.value } : prev)} placeholder="Audience" />
+                  <textarea value={deckDraft?.objective || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, objective: e.target.value } : prev)} className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Objective" />
+                </>
+              ) : (
+                <>
+                  {activeDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {activeDeck.subtitle}</div>}
+                  {activeDeck.deckType && <div><span className="font-medium">Type:</span> {activeDeck.deckType}</div>}
+                  {activeDeck.audience && <div><span className="font-medium">Audience:</span> {activeDeck.audience}</div>}
+                  {activeDeck.objective && <div><span className="font-medium">Objective:</span> {activeDeck.objective}</div>}
+                </>
+              )}
+              {activeDeck.visualStylePreset && <div><span className="font-medium">Visual style:</span> {activeDeck.visualStylePreset}</div>}
+              {activeDeck.coverImagePrompt && <div><span className="font-medium">Cover prompt:</span> <span className="text-muted-foreground">{activeDeck.coverImagePrompt}</span></div>}
+              {Array.isArray(activeDeck.chosenSources) && activeDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {activeDeck.chosenSources.join(' • ')}</div>}
+              {Array.isArray(activeDeck.narrativeArc) && activeDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {activeDeck.narrativeArc.join(' → ')}</div>}
+              {Array.isArray(activeDeck.slides) && activeDeck.slides.length > 0 && (
+                <div>
+                  <span className="font-medium">Slides:</span>
+                  <div className="mt-2 space-y-2">
+                    {(activeDeck.slides || []).slice(0, 12).map((slide, idx) => (
+                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium">{idx + 1}. {slide.title}</div>
+                          {editingDeck && (
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, -1)} disabled={idx === 0}>↑</Button>
+                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, 1)} disabled={idx === ((deckDraft?.slides?.length || 1) - 1)}>↓</Button>
+                              <Button size="sm" variant="outline" onClick={() => removeDeckSlide(idx)}>Remove</Button>
+                            </div>
+                          )}
+                        </div>
+                        {editingDeck ? (
+                          <div className="space-y-2">
+                            <Input value={slide.title || ''} onChange={(e) => updateDeckSlide(idx, 'title', e.target.value)} placeholder="Slide title" />
+                            <Input value={slide.purpose || ''} onChange={(e) => updateDeckSlide(idx, 'purpose', e.target.value)} placeholder="Purpose" />
+                            <textarea value={Array.isArray(slide.bullets) ? slide.bullets.join('\n') : ''} onChange={(e) => updateDeckSlide(idx, 'bullets', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="One bullet per line" />
+                            <Input value={slide.visualIdea || ''} onChange={(e) => updateDeckSlide(idx, 'visualIdea', e.target.value)} placeholder="Visual idea" />
+                            <textarea value={slide.speakerNotes || ''} onChange={(e) => updateDeckSlide(idx, 'speakerNotes', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Speaker notes" />
+                          </div>
+                        ) : (
+                          <>
+                            {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
+                            {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
+                            {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
+                            {slide.speakerNotes && <div className="text-xs mt-2 text-muted-foreground">Notes: {slide.speakerNotes}</div>}
+                            {slide.imagePrompt && <div className="text-xs mt-2 text-cyan-300">Image prompt: {slide.imagePrompt}</div>}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+        </Card>
+
+      </div>
+
+      {/* Brain section - always show in edit mode, or when brain has content */}
+      {(hasBrain || editing) && (
+        <BrainSection
+          brain={(editing && draft ? draft.brain : project.brain) || {}}
+          editing={editing}
+          onChange={(brain) => updateDraft("brain", brain)}
+          projectId={id}
+        />
+      )}
+
+      {/* Affiliate section */}
+      {(hasAffiliate || editing) && (
+        <AffiliateSection
+          affiliate={
+            (editing && draft ? draft.affiliate : project.affiliate) || {}
+          }
+          editing={editing}
+          onChange={(aff) => updateDraft("affiliate", aff)}
+        />
+      )}
+
       {/* Changelog */}
       <ChangelogSection projectId={id} />
 
@@ -2250,7 +2257,7 @@ function LivePreview({
   const iframeWidth = currentPreset.width;
   
   // Calculate scale to fit smaller devices in the container
-  const maxContainerWidth = 1200; // Approximate max width of card content
+  const maxContainerWidth = 1500; // Wider desktop layout for larger project workspace
   const baseScale = device === 'desktop' 
     ? 1 
     : Math.min(1, maxContainerWidth / iframeWidth);
