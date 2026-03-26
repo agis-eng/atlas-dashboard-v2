@@ -111,12 +111,13 @@ export async function POST(
       return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
 
-    const [projectsData, clientsData, pagePatterns, antiPatterns, visualMotifs] = await Promise.all([
+    const [projectsData, clientsData, pagePatterns, antiPatterns, visualMotifs, patterns21st] = await Promise.all([
       loadYaml<{ projects: any[] }>(PROJECTS_PATH, { projects: [] }),
       loadYaml<{ clients: any[] }>(CLIENTS_PATH, { clients: [] }),
       loadReference("page-patterns.md"),
       loadReference("anti-patterns.md"),
       loadReference("visual-motifs.md"),
+      loadReference("21st-patterns.md"),
     ]);
 
     const project = (projectsData.projects || []).find((item) => item.id === id);
@@ -138,7 +139,7 @@ export async function POST(
           messages: [
             {
               role: "user",
-              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 3200)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 2200)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 2200)}\n\nReturn strict JSON with keys:\npageName, concept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
+              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 3200)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 2200)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 2200)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 2200)}\n\nReturn strict JSON with keys:\npageName, concept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
             },
           ],
         });
