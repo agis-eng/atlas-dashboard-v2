@@ -48,7 +48,7 @@ async function handleVoice(request: Request) {
     );
   }
 
-  const actionUrl = new URL("/api/twilio/voice", request.url).toString();
+  const actionUrl = "/api/twilio/voice";
 
   return xmlResponse(
     twiml([
