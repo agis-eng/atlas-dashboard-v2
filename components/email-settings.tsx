@@ -123,6 +123,24 @@ function newRule(): Partial<CategorizationRule> {
   };
 }
 
+function normalizeSettings(input: any): EmailSettings {
+  return {
+    accounts: Array.isArray(input?.accounts) ? input.accounts : [],
+    digest: {
+      enabled: input?.digest?.enabled ?? true,
+      times: Array.isArray(input?.digest?.times) ? input.digest.times : ["6am", "9am"],
+      delivery_method: input?.digest?.delivery_method || "dashboard",
+      categorization_rules: Array.isArray(input?.digest?.categorization_rules) ? input.digest.categorization_rules : [],
+    },
+    updated_at: input?.updated_at || new Date().toISOString(),
+  };
+}
+
+function emptySettings(): EmailSettings {
+  return normalizeSettings({});
+}
+
+
 // ── Section Wrapper ────────────────────────────────────────────────
 
 function SettingsSection({
@@ -532,12 +550,20 @@ export function EmailSettingsSheet() {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/email-settings");
-      if (res.ok) {
-        setSettings(await res.json());
+      const res = await fetch("/api/email-settings", { cache: "no-store" });
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok) {
+        const errData = contentType.includes("application/json") ? await res.json().catch(() => ({})) : {};
+        setSaveError(errData.details || errData.error || `Failed to load settings (${res.status})`);
+        setSettings(emptySettings());
+        return;
       }
+      const payload = contentType.includes("application/json") ? await res.json() : {};
+      setSettings(normalizeSettings(payload));
     } catch (err) {
       console.error("Failed to fetch email settings", err);
+      setSaveError("Could not load email settings");
+      setSettings(emptySettings());
     } finally {
       setLoading(false);
     }
@@ -560,7 +586,8 @@ export function EmailSettingsSheet() {
         body: JSON.stringify(updated),
       });
       if (res.ok) {
-        setSettings(await res.json());
+        const data = await res.json().catch(() => ({}));
+        setSettings(normalizeSettings(data));
       } else {
         // Revert on failure
         const errData = await res.json().catch(() => ({}));
@@ -733,6 +760,11 @@ export function EmailSettingsSheet() {
           </div>
         ) : settings ? (
           <div className="px-4 space-y-4 pb-4">
+            {saveError && (
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
+                {saveError}
+              </div>
+            )}
             {/* ── Email Accounts ── */}
             <SettingsSection title="Email Accounts" icon={Mail}>
               {settings.accounts.map((account) =>
