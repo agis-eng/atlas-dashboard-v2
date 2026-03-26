@@ -108,16 +108,26 @@ interface ProjectDetail {
   brain?: ProjectBrain;
 }
 
+interface ProjectDeckSlide {
+  title: string;
+  purpose?: string;
+  bullets?: string[];
+  visualIdea?: string;
+  speakerNotes?: string;
+}
+
 interface ProjectDeck {
   id: string;
   title: string;
   subtitle?: string;
   deckType?: string;
+  prompt?: string;
   audience?: string;
   objective?: string;
   narrativeArc?: string[];
   chosenSources?: string[];
-  slides?: { title: string; purpose?: string; bullets?: string[]; visualIdea?: string; speakerNotes?: string }[];
+  selectedSources?: Record<string, boolean>;
+  slides?: ProjectDeckSlide[];
 }
 
 // ── Constants ──
@@ -877,6 +887,9 @@ export default function ProjectDetailPage({
   const [deckType, setDeckType] = useState("project-update");
   const [generatingDeck, setGeneratingDeck] = useState(false);
   const [latestDeck, setLatestDeck] = useState<ProjectDeck | null>(null);
+  const [editingDeck, setEditingDeck] = useState(false);
+  const [deckDraft, setDeckDraft] = useState<ProjectDeck | null>(null);
+  const [savingDeck, setSavingDeck] = useState(false);
   const [deckSources, setDeckSources] = useState<Record<string, boolean>>({
     projectMeta: true,
     clientInfo: true,
@@ -922,6 +935,7 @@ export default function ProjectDetailPage({
           if (deckRes.ok) {
             const deckData = await deckRes.json();
             setLatestDeck(deckData.deck || null);
+            setDeckDraft(deckData.deck ? JSON.parse(JSON.stringify(deckData.deck)) : null);
           }
         } catch (err) {
           console.error('Failed to load project deck:', err);
@@ -1068,6 +1082,8 @@ export default function ProjectDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate deck draft');
       setLatestDeck(data.deck);
+      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
+      setEditingDeck(false);
       setDeckPrompt('');
       setToast({ message: 'Deck draft created', type: 'success' });
     } catch (err: any) {
@@ -1076,6 +1092,76 @@ export default function ProjectDetailPage({
       setGeneratingDeck(false);
     }
   }, [id, deckPrompt, deckType, deckSources]);
+
+  const reuseDeckSettings = useCallback(() => {
+    if (!latestDeck) return;
+    setDeckPrompt(latestDeck.prompt || "");
+    setDeckType(latestDeck.deckType || "project-update");
+    if (latestDeck.selectedSources) setDeckSources(latestDeck.selectedSources);
+  }, [latestDeck]);
+
+  const updateDeckSlide = useCallback((index: number, field: keyof ProjectDeckSlide, value: string) => {
+    setDeckDraft((prev) => {
+      if (!prev?.slides) return prev;
+      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
+      if (field === 'bullets') next.slides![index].bullets = value.split('\n').map((x) => x.trim()).filter(Boolean);
+      else (next.slides![index] as any)[field] = value;
+      return next;
+    });
+  }, []);
+
+  const moveDeckSlide = useCallback((index: number, dir: -1 | 1) => {
+    setDeckDraft((prev) => {
+      if (!prev?.slides) return prev;
+      const target = index + dir;
+      if (target < 0 || target >= prev.slides.length) return prev;
+      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
+      const [item] = next.slides!.splice(index, 1);
+      next.slides!.splice(target, 0, item);
+      return next;
+    });
+  }, []);
+
+  const removeDeckSlide = useCallback((index: number) => {
+    setDeckDraft((prev) => {
+      if (!prev?.slides) return prev;
+      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
+      next.slides = next.slides!.filter((_, i) => i !== index);
+      return next;
+    });
+  }, []);
+
+  const saveDeckDraft = useCallback(async () => {
+    if (!deckDraft?.id) return;
+    setSavingDeck(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deckId: deckDraft.id,
+          updates: {
+            title: deckDraft.title,
+            subtitle: deckDraft.subtitle,
+            audience: deckDraft.audience,
+            objective: deckDraft.objective,
+            narrativeArc: deckDraft.narrativeArc,
+            slides: deckDraft.slides,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save deck draft');
+      setLatestDeck(data.deck);
+      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
+      setEditingDeck(false);
+      setToast({ message: 'Deck draft saved', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to save deck draft', type: 'error' });
+    } finally {
+      setSavingDeck(false);
+    }
+  }, [id, deckDraft]);
 
   if (loading) {
     return (
@@ -1108,6 +1194,7 @@ export default function ProjectDetailPage({
   }
 
   const p = editing && draft ? draft : project;
+  const activeDeck = (editingDeck ? deckDraft : latestDeck) || null;
   const hasAffiliate =
     p.affiliate && Object.keys(p.affiliate).length > 0;
   const hasBrain =
@@ -1620,32 +1707,88 @@ export default function ProjectDetailPage({
           </div>
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Phase 1 generates a saved deck outline with narrative arc, slide titles, bullets, visual ideas, and speaker notes.
+              Phase 2 supports regeneration from saved settings plus manual editing, reordering, and saving of slide drafts.
             </p>
-            <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
-              {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
-              {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={reuseDeckSettings} disabled={!latestDeck}>
+                Reuse Latest Settings
+              </Button>
+              <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
+                {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+                {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
+              </Button>
+            </div>
           </div>
-          {latestDeck && (
+          {latestDeck && activeDeck && (
             <div className="rounded-md border border-border p-3 text-sm space-y-3">
-              <div><span className="font-medium">Deck:</span> {latestDeck.title}</div>
-              {latestDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {latestDeck.subtitle}</div>}
-              {latestDeck.deckType && <div><span className="font-medium">Type:</span> {latestDeck.deckType}</div>}
-              {latestDeck.audience && <div><span className="font-medium">Audience:</span> {latestDeck.audience}</div>}
-              {latestDeck.objective && <div><span className="font-medium">Objective:</span> {latestDeck.objective}</div>}
-              {Array.isArray(latestDeck.chosenSources) && latestDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {latestDeck.chosenSources.join(' • ')}</div>}
-              {Array.isArray(latestDeck.narrativeArc) && latestDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {latestDeck.narrativeArc.join(' → ')}</div>}
-              {Array.isArray(latestDeck.slides) && latestDeck.slides.length > 0 && (
+              <div className="flex items-center justify-between gap-2">
+                <div><span className="font-medium">Deck:</span> {activeDeck.title}</div>
+                <div className="flex items-center gap-2">
+                  {!editingDeck ? (
+                    <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(true); }}>
+                      Edit Deck
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(false); }}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={saveDeckDraft} disabled={savingDeck}>
+                        {savingDeck ? 'Saving…' : 'Save Deck'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {editingDeck ? (
+                <>
+                  <Input value={deckDraft?.title || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, title: e.target.value } : prev)} placeholder="Deck title" />
+                  <Input value={deckDraft?.subtitle || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, subtitle: e.target.value } : prev)} placeholder="Deck subtitle" />
+                  <Input value={deckDraft?.audience || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, audience: e.target.value } : prev)} placeholder="Audience" />
+                  <textarea value={deckDraft?.objective || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, objective: e.target.value } : prev)} className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Objective" />
+                </>
+              ) : (
+                <>
+                  {activeDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {activeDeck.subtitle}</div>}
+                  {activeDeck.deckType && <div><span className="font-medium">Type:</span> {activeDeck.deckType}</div>}
+                  {activeDeck.audience && <div><span className="font-medium">Audience:</span> {activeDeck.audience}</div>}
+                  {activeDeck.objective && <div><span className="font-medium">Objective:</span> {activeDeck.objective}</div>}
+                </>
+              )}
+              {Array.isArray(activeDeck.chosenSources) && activeDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {activeDeck.chosenSources.join(' • ')}</div>}
+              {Array.isArray(activeDeck.narrativeArc) && activeDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {activeDeck.narrativeArc.join(' → ')}</div>}
+              {Array.isArray(activeDeck.slides) && activeDeck.slides.length > 0 && (
                 <div>
                   <span className="font-medium">Slides:</span>
                   <div className="mt-2 space-y-2">
-                    {latestDeck.slides.slice(0, 8).map((slide, idx) => (
-                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3">
-                        <div className="font-medium">{idx + 1}. {slide.title}</div>
-                        {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
-                        {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
-                        {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
+                    {(activeDeck.slides || []).slice(0, 12).map((slide, idx) => (
+                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium">{idx + 1}. {slide.title}</div>
+                          {editingDeck && (
+                            <div className="flex items-center gap-1">
+                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, -1)} disabled={idx === 0}>↑</Button>
+                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, 1)} disabled={idx === ((deckDraft?.slides?.length || 1) - 1)}>↓</Button>
+                              <Button size="sm" variant="outline" onClick={() => removeDeckSlide(idx)}>Remove</Button>
+                            </div>
+                          )}
+                        </div>
+                        {editingDeck ? (
+                          <div className="space-y-2">
+                            <Input value={slide.title || ''} onChange={(e) => updateDeckSlide(idx, 'title', e.target.value)} placeholder="Slide title" />
+                            <Input value={slide.purpose || ''} onChange={(e) => updateDeckSlide(idx, 'purpose', e.target.value)} placeholder="Purpose" />
+                            <textarea value={Array.isArray(slide.bullets) ? slide.bullets.join('\n') : ''} onChange={(e) => updateDeckSlide(idx, 'bullets', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="One bullet per line" />
+                            <Input value={slide.visualIdea || ''} onChange={(e) => updateDeckSlide(idx, 'visualIdea', e.target.value)} placeholder="Visual idea" />
+                            <textarea value={slide.speakerNotes || ''} onChange={(e) => updateDeckSlide(idx, 'speakerNotes', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Speaker notes" />
+                          </div>
+                        ) : (
+                          <>
+                            {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
+                            {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
+                            {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
+                            {slide.speakerNotes && <div className="text-xs mt-2 text-muted-foreground">Notes: {slide.speakerNotes}</div>}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

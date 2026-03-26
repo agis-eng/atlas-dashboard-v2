@@ -107,6 +107,36 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { deckId, updates } = await request.json();
+    if (!deckId || !updates || typeof updates !== "object") {
+      return Response.json({ error: "deckId and updates are required" }, { status: 400 });
+    }
+
+    const decksData = await loadYaml<{ projectDecks: any[] }>(PROJECT_DECKS_PATH, { projectDecks: [] });
+    const deckIndex = (decksData.projectDecks || []).findIndex((d) => d.projectId === id && d.id === deckId);
+    if (deckIndex === -1) {
+      return Response.json({ error: "Deck not found" }, { status: 404 });
+    }
+
+    decksData.projectDecks[deckIndex] = {
+      ...decksData.projectDecks[deckIndex],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await writeFile(PROJECT_DECKS_PATH, yaml.dump(decksData, { lineWidth: -1, noRefs: true, quotingType: '"', forceQuotes: false }), "utf8");
+    return Response.json({ success: true, deck: decksData.projectDecks[deckIndex] });
+  } catch (error: any) {
+    return Response.json({ error: error.message || "Failed to update project deck" }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
