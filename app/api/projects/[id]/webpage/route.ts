@@ -157,6 +157,65 @@ function fallbackConcepts(project: any, client: any, prompt: string) {
   ];
 }
 
+function buildFallbackPageCode(project: any, draft: any) {
+  const hero = draft?.pageDraft?.hero || {};
+  const services = Array.isArray(draft?.pageDraft?.services) ? draft.pageDraft.services : [];
+  const proofItems = Array.isArray(draft?.pageDraft?.proofItems) ? draft.pageDraft.proofItems : [];
+  const steps = Array.isArray(draft?.pageDraft?.processSteps) ? draft.pageDraft.processSteps : [];
+  const faq = Array.isArray(draft?.pageDraft?.faq) ? draft.pageDraft.faq : [];
+  const finalCta = draft?.pageDraft?.finalCta || {};
+
+  return `export default function ${String(project.name || 'Project').replace(/[^a-zA-Z0-9]+/g, '')}LandingPage() {
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <section className="mx-auto max-w-6xl px-6 py-24 md:py-32">
+        <div className="max-w-3xl space-y-6">
+          <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">${hero.eyebrow || project.stage || 'Trusted service'}</p>
+          <h1 className="text-4xl font-semibold tracking-tight md:text-6xl">${hero.headline || draft.headline || project.name}</h1>
+          <p className="max-w-2xl text-lg text-muted-foreground">${hero.subheadline || draft.subheadline || ''}</p>
+          <div className="flex flex-wrap gap-3">
+            <button className="rounded-full bg-foreground px-5 py-3 text-background">${hero.primaryCta || draft.cta || 'Get Started'}</button>
+            <button className="rounded-full border border-border px-5 py-3">${hero.secondaryCta || 'Learn More'}</button>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pb-12">
+        <div className="grid gap-4 md:grid-cols-3">
+          ${proofItems.map((item: string) => `<div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">${item}</div>`).join('\n          ')}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
+        <div className="grid gap-6 md:grid-cols-3">
+          ${services.map((item: string) => `<div className="rounded-3xl border border-border bg-card p-6"><h3 className="font-medium">${item}</h3></div>`).join('\n          ')}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
+        <div className="space-y-4">
+          ${steps.map((item: string, idx: number) => `<div className="flex gap-4 rounded-2xl border border-border p-5"><div className="text-sm text-muted-foreground">0${idx + 1}</div><div>${item}</div></div>`).join('\n          ')}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
+        <div className="space-y-4">
+          ${faq.map((item: string) => `<div className="rounded-2xl border border-border p-5">${item}</div>`).join('\n          ')}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
+        <div className="rounded-3xl border border-border bg-card p-8 md:p-12">
+          <h2 className="text-3xl font-semibold tracking-tight">${finalCta.headline || `Ready to move forward with ${project.name}?`}</h2>
+          <p className="mt-3 text-muted-foreground">${finalCta.reassurance || 'Clear next steps.'}</p>
+          <button className="mt-6 rounded-full bg-foreground px-5 py-3 text-background">${finalCta.action || draft.cta || 'Get Started'}</button>
+        </div>
+      </section>
+    </main>
+  );
+}`;
+}
+
 function fallbackDraft(project: any, client: any, prompt: string, competitors: CompetitorResult[] = []) {
   const designDirection = pickDesignDirection(project, client, prompt);
   const audience = client?.name ? `Prospective customers of ${client.name}` : `Prospective customers for ${project.name}`;
@@ -287,7 +346,8 @@ export async function POST(
     const derivedCompetitorQuery = String(competitorQuery || "").trim() || [client?.name, project?.name, project?.summary].filter(Boolean).join(" ");
     const competitorResults = researchCompetitors ? await searchCompetitors(derivedCompetitorQuery, 6) : [];
 
-    let draft = fallbackDraft(project, client, String(prompt).trim(), competitorResults);
+    let draft: any = fallbackDraft(project, client, String(prompt).trim(), competitorResults);
+    draft.pageCodeDraft = buildFallbackPageCode(project, draft);
 
     if (anthropic) {
       try {
@@ -301,7 +361,7 @@ export async function POST(
           messages: [
             {
               role: "user",
-              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts. If competitor inspiration is present, borrow only structural and messaging ideas that are broadly useful; do not imitate or reproduce any site's unique branding or copy.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 2600)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 1800)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 1800)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 1800)}\n\nReference: section copy formulas\n${sectionCopyFormulas.slice(0, 1600)}\n\nCompetitor inspiration query:\n${derivedCompetitorQuery || "None"}\n\nCompetitor inspiration results:\n${competitorBlock}\n\nReturn strict JSON with keys:\npageName, concept, concepts (array of exactly 3 objects with keys: name, direction, signatureMove, headline, whyItCouldWork), audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), sectionCopy (object with keys hero, proof, services, process, cta; each value is an array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), competitorIdeas (array of strings), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
+              content: `You are generating a high-quality webpage draft from project context. Use the reference material as pattern intelligence, not something to copy literally. Avoid generic SaaS copy and generic three-card layouts. If competitor inspiration is present, borrow only structural and messaging ideas that are broadly useful; do not imitate or reproduce any site's unique branding or copy.\n\nProject context:\n- Project: ${project.name}\n- Stage: ${project.stage || "Unknown"}\n- Status: ${project.status || "Unknown"}\n- Priority: ${project.priority || "Unknown"}\n- Owner: ${project.owner || "Unknown"}\n- Summary: ${project.summary || "None"}\n- Tags: ${(project.tags || []).join(", ") || "None"}\n- Client: ${client?.name || "None"}\n- Client summary: ${client?.summary || "None"}\n- Client notes: ${client?.notes || "None"}\n- Client contact: ${client?.contact || client?.email || "None"}\n- Request URL: ${client?.requestUrl || "None"}\n\nUser prompt:\n${String(prompt).trim()}\n\nReference: page patterns\n${pagePatterns.slice(0, 2600)}\n\nReference: anti-patterns\n${antiPatterns.slice(0, 1800)}\n\nReference: visual motifs\n${visualMotifs.slice(0, 1800)}\n\nReference: 21st.dev interaction patterns\n${patterns21st.slice(0, 1800)}\n\nReference: section copy formulas\n${sectionCopyFormulas.slice(0, 1600)}\n\nCompetitor inspiration query:\n${derivedCompetitorQuery || "None"}\n\nCompetitor inspiration results:\n${competitorBlock}\n\nReturn strict JSON with keys:\npageName, concept, concepts (array of exactly 3 objects with keys: name, direction, signatureMove, headline, whyItCouldWork), recommendedConcept, audience, goal, designDirection, signatureMove, headline, subheadline, sections (array of strings), sectionCopy (object with keys hero, proof, services, process, cta; each value is an array of strings), trustSignals (array of strings), visualMotifs (array of strings), cta, copyNotes (array of strings), competitorIdeas (array of strings), competitorSummary (object with keys marketPatterns, trustSignals, contentIdeas, differentiationAngles; each value is an array of strings), pageDraft (object with keys hero, proofItems, services, processSteps, faq, finalCta, componentSuggestions), pageCodeDraft (string containing a Next.js/Tailwind page scaffold based on the recommended concept), critique (array of strings), notes.\n\nKeep it believable, specific, and useful for implementation.`
             },
           ],
         });
@@ -321,6 +381,7 @@ export async function POST(
             competitorIdeas: Array.isArray(parsed.competitorIdeas) ? parsed.competitorIdeas : draft.competitorIdeas,
             competitorSummary: typeof parsed.competitorSummary === "object" && parsed.competitorSummary ? parsed.competitorSummary : draft.competitorSummary,
             pageDraft: typeof parsed.pageDraft === "object" && parsed.pageDraft ? parsed.pageDraft : draft.pageDraft,
+            pageCodeDraft: typeof parsed.pageCodeDraft === "string" && parsed.pageCodeDraft.trim() ? parsed.pageCodeDraft : draft.pageCodeDraft,
             critique: Array.isArray(parsed.critique) ? parsed.critique : draft.critique,
             sectionCopy: typeof parsed.sectionCopy === "object" && parsed.sectionCopy ? parsed.sectionCopy : draft.sectionCopy,
           };
@@ -359,6 +420,7 @@ export async function POST(
       competitorIdeas: draft.competitorIdeas,
       competitorSummary: draft.competitorSummary,
       pageDraft: draft.pageDraft,
+      pageCodeDraft: draft.pageCodeDraft,
       critique: draft.critique,
       notes: draft.notes,
       createdAt: new Date().toISOString(),

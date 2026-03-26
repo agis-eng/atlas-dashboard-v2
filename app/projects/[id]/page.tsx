@@ -1685,6 +1685,14 @@ export default function ProjectDetailPage({
                   </div>
                 </div>
               )}
+              {latestWebpageDraft.pageCodeDraft && (
+                <div>
+                  <span className="font-medium">Code draft:</span>
+                  <pre className="mt-2 max-h-80 overflow-auto rounded-md border border-border bg-black/90 p-3 text-xs text-green-200 whitespace-pre-wrap">
+{latestWebpageDraft.pageCodeDraft}
+                  </pre>
+                </div>
+              )}
               {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}
             </div>
           )}
