@@ -109,7 +109,15 @@ function SitePreview({ url, projectId }: { url: string; projectId: string }) {
 }
 
 function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPriorityChange: (id: string, priority: string) => void }) {
+  const [priorityOpen, setPriorityOpen] = useState(false);
+  const priorityColors: Record<string, string> = {
+    high: "text-red-500 bg-red-500/10",
+    medium: "text-yellow-500 bg-yellow-500/10",
+    low: "text-muted-foreground bg-muted",
+  };
+
   return (
+    <div className="relative">
     <Link href={`/projects/${project.id}`} className="block">
       <Card className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
         {(project.liveUrl || project.previewUrl) && (
@@ -170,29 +178,35 @@ function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPr
                   : "No update date"}
               </span>
             </div>
-            <select
-              value={project.priority || "low"}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                onPriorityChange(project.id, e.target.value);
-              }}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase border border-transparent bg-transparent ${
-                project.priority === "high"
-                  ? "bg-red-500/10 text-red-500"
-                  : project.priority === "medium"
-                    ? "bg-yellow-500/10 text-yellow-500"
-                    : "bg-muted text-muted-foreground"
-              }`}
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPriorityOpen((v) => !v); }}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${priorityColors[project.priority || 'low'] || priorityColors.low}`}
             >
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
-            </select>
+              {project.priority || "low"} ▾
+            </button>
           </div>
         </CardContent>
       </Card>
     </Link>
+    {priorityOpen && (
+      <div
+        className="absolute bottom-10 right-3 z-50 w-28 rounded-md border border-border bg-popover shadow-lg text-sm text-popover-foreground"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {["high", "medium", "low"].map((pr) => (
+          <button
+            key={pr}
+            type="button"
+            className="w-full text-left px-3 py-1.5 hover:bg-muted capitalize"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPriorityChange(project.id, pr); setPriorityOpen(false); }}
+          >
+            {pr}
+          </button>
+        ))}
+      </div>
+    )}
+    </div>
   );
 }
 

@@ -246,11 +246,11 @@ function EditableField({
           <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="h-8 w-full rounded-lg border border-input bg-background text-foreground px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <option value="">None</option>
+            <option value="" className="bg-background text-foreground">None</option>
             {options.map((o) => (
-              <option key={o} value={o}>
+              <option key={o} value={o} className="bg-background text-foreground">
                 {o}
               </option>
             ))}
@@ -1364,11 +1364,11 @@ export default function ProjectDetailPage({
                   <select
                     value={draft?.stage || ""}
                     onChange={(e) => updateDraft("stage", e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-transparent outline-none"
+                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-background text-foreground outline-none"
                   >
-                    <option value="">Stage...</option>
+                    <option value="" className="bg-background text-foreground">Stage...</option>
                     {STAGES.map((s) => (
-                      <option key={s} value={s}>
+                      <option key={s} value={s} className="bg-background text-foreground">
                         {s}
                       </option>
                     ))}
@@ -1376,11 +1376,11 @@ export default function ProjectDetailPage({
                   <select
                     value={draft?.priority || ""}
                     onChange={(e) => updateDraft("priority", e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-transparent outline-none uppercase"
+                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-background text-foreground outline-none uppercase"
                   >
-                    <option value="">Priority...</option>
+                    <option value="" className="bg-background text-foreground">Priority...</option>
                     {PRIORITIES.map((pr) => (
-                      <option key={pr} value={pr}>
+                      <option key={pr} value={pr} className="bg-background text-foreground uppercase">
                         {pr}
                       </option>
                     ))}
@@ -2114,6 +2114,20 @@ export default function ProjectDetailPage({
                   <pre className="mt-2 max-h-80 overflow-auto rounded-md border border-border bg-black/90 p-3 text-xs text-green-200 whitespace-pre-wrap">
 {latestWebpageDraft.pageCodeDraft}
                   </pre>
+                </div>
+              )}
+              {latestWebpageDraft.seoLayer && (
+                <div>
+                  <span className="font-medium">SEO + AISO layer:</span>
+                  <div className="mt-2 rounded-md border border-border bg-muted/20 p-3 space-y-2 text-muted-foreground text-xs">
+                    {latestWebpageDraft.seoLayer.suggestedTitle && <div><span className="font-medium text-foreground">Title:</span> {latestWebpageDraft.seoLayer.suggestedTitle}</div>}
+                    {latestWebpageDraft.seoLayer.suggestedMeta && <div><span className="font-medium text-foreground">Meta:</span> {latestWebpageDraft.seoLayer.suggestedMeta}</div>}
+                    {latestWebpageDraft.seoLayer.h1 && <div><span className="font-medium text-foreground">H1:</span> {latestWebpageDraft.seoLayer.h1}</div>}
+                    {Array.isArray(latestWebpageDraft.seoLayer.h2s) && latestWebpageDraft.seoLayer.h2s.length > 0 && <div><span className="font-medium text-foreground">H2s:</span> {latestWebpageDraft.seoLayer.h2s.join(' • ')}</div>}
+                    {latestWebpageDraft.seoLayer.schemaType && <div><span className="font-medium text-foreground">Schema:</span> {latestWebpageDraft.seoLayer.schemaType}</div>}
+                    {Array.isArray(latestWebpageDraft.seoLayer.faqQuestions) && latestWebpageDraft.seoLayer.faqQuestions.length > 0 && <div><span className="font-medium text-foreground">FAQ:</span> {latestWebpageDraft.seoLayer.faqQuestions.join(' • ')}</div>}
+                    {Array.isArray(latestWebpageDraft.seoLayer.internalLinkOpportunities) && latestWebpageDraft.seoLayer.internalLinkOpportunities.length > 0 && <div><span className="font-medium text-foreground">Internal links:</span> {latestWebpageDraft.seoLayer.internalLinkOpportunities.join(' • ')}</div>}
+                  </div>
                 </div>
               )}
               {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}
