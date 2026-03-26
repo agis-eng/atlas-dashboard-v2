@@ -1271,7 +1271,9 @@ export default function ProjectDetailPage({
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground mb-1">Client Contact</p>
                   {clientContact.name && (
-                    <p className="text-sm font-medium mb-1">{clientContact.name}</p>
+                    <Link href={`/clients/${encodeURIComponent(p.clientId || '')}`} className="text-sm font-medium mb-1 inline-block hover:underline">
+                      {clientContact.name}
+                    </Link>
                   )}
                   {clientContact.email && (
                     <a
