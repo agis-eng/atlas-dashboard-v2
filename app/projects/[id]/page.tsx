@@ -1890,13 +1890,12 @@ export default function ProjectDetailPage({
       )}
 
       {/* Website draft first, then SEO + deck tools on wider desktop layouts */}
+      {!p.liveUrl && !p.previewUrl && (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{p.liveUrl || p.previewUrl ? "Create Separate Website Redesign Draft" : "Create Website Draft"}</CardTitle>
+          <CardTitle className="text-base">Create Website Draft</CardTitle>
           <CardDescription>
-            {p.liveUrl || p.previewUrl
-              ? "Generate a separate redesign draft for planning only. This does not replace, deploy over, or modify the current site."
-              : "Generate a richer website concept using project/client context plus Atlas design-pattern references, then save it as a planning draft."}
+            Generate a richer website concept using project/client context plus Atlas design-pattern references, then save it as a planning draft.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -2189,8 +2188,7 @@ export default function ProjectDetailPage({
           )}
         </CardContent>
       </Card>
-
-
+      )}
 
       <div className="grid gap-6 2xl:grid-cols-[1fr_1.1fr] items-start">
         <Card>
@@ -2379,16 +2377,6 @@ export default function ProjectDetailPage({
         </Card>
 
       </div>
-
-      {/* Brain section - always show in edit mode, or when brain has content */}
-      {(hasBrain || editing) && (
-        <BrainSection
-          brain={(editing && draft ? draft.brain : project.brain) || {}}
-          editing={editing}
-          onChange={(brain) => updateDraft("brain", brain)}
-          projectId={id}
-        />
-      )}
 
       {/* Affiliate section */}
       {(hasAffiliate || editing) && (
