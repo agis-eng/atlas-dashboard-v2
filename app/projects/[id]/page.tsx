@@ -855,6 +855,9 @@ export default function ProjectDetailPage({
   const [deleting, setDeleting] = useState(false);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const [webpagePrompt, setWebpagePrompt] = useState("");
+  const [generatingWebpage, setGeneratingWebpage] = useState(false);
+  const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -977,6 +980,32 @@ export default function ProjectDetailPage({
     },
     [draft]
   );
+
+  const generateWebpageDraft = useCallback(async () => {
+    if (!webpagePrompt.trim()) return;
+    setGeneratingWebpage(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: webpagePrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate webpage draft');
+      setLatestWebpageDraft(data.page);
+      setWebpagePrompt('');
+      setToast({ message: 'Website draft created', type: 'success' });
+      const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (refreshed.ok) {
+        const refreshedData = await refreshed.json();
+        setProject(refreshedData.project);
+      }
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to generate webpage draft', type: 'error' });
+    } finally {
+      setGeneratingWebpage(false);
+    }
+  }, [id, webpagePrompt]);
 
   if (loading) {
     return (
@@ -1180,10 +1209,16 @@ export default function ProjectDetailPage({
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" onClick={startEditing}>
-              <Pencil className="h-3.5 w-3.5 mr-1" />
-              Edit
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
+                {generatingWebpage ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                {generatingWebpage ? 'Generating…' : 'Create Webpage'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={startEditing}>
+                <Pencil className="h-3.5 w-3.5 mr-1" />
+                Edit
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1487,6 +1522,39 @@ export default function ProjectDetailPage({
           onChange={(aff) => updateDraft("affiliate", aff)}
         />
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Create Webpage Draft</CardTitle>
+          <CardDescription>
+            Prompt a starter webpage concept for this client/project and save it to project pages.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <textarea
+            value={webpagePrompt}
+            onChange={(e) => setWebpagePrompt(e.target.value)}
+            placeholder="Example: Create a polished behavioral health clinic homepage focused on trust, insurance-friendly messaging, and a clear intake CTA."
+            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              This creates a saved website draft record tied to the project.
+            </p>
+            <Button onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
+              {generatingWebpage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              {generatingWebpage ? 'Generating Draft…' : 'Generate Webpage Draft'}
+            </Button>
+          </div>
+          {latestWebpageDraft && (
+            <div className="rounded-md border border-border p-3 text-sm space-y-1">
+              <div><span className="font-medium">Saved draft:</span> {latestWebpageDraft.name}</div>
+              {latestWebpageDraft.headline && <div><span className="font-medium">Headline:</span> {latestWebpageDraft.headline}</div>}
+              {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Changelog */}
       <ChangelogSection projectId={id} />

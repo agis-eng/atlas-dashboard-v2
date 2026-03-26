@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import {
   ExternalLink,
@@ -17,6 +18,7 @@ import {
   Search,
   Filter,
   CheckCircle2,
+  Plus,
 } from "lucide-react";
 
 interface ProjectItem {
@@ -106,7 +108,7 @@ function SitePreview({ url, projectId }: { url: string; projectId: string }) {
   );
 }
 
-function ProjectCard({ project }: { project: ProjectItem }) {
+function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPriorityChange: (id: string, priority: string) => void }) {
   return (
     <Link href={`/projects/${project.id}`} className="block">
       <Card className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
@@ -168,19 +170,25 @@ function ProjectCard({ project }: { project: ProjectItem }) {
                   : "No update date"}
               </span>
             </div>
-            {project.priority && (
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${
-                  project.priority === "high"
-                    ? "bg-red-500/10 text-red-500"
-                    : project.priority === "medium"
-                      ? "bg-yellow-500/10 text-yellow-500"
-                      : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {project.priority}
-              </span>
-            )}
+            <select
+              value={project.priority || "low"}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onPriorityChange(project.id, e.target.value);
+              }}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase border border-transparent bg-transparent ${
+                project.priority === "high"
+                  ? "bg-red-500/10 text-red-500"
+                  : project.priority === "medium"
+                    ? "bg-yellow-500/10 text-yellow-500"
+                    : "bg-muted text-muted-foreground"
+              }`}
+            >
+              <option value="high">high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -194,6 +202,17 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newProject, setNewProject] = useState({
+    name: "",
+    clientId: "",
+    owner: "Erik",
+    stage: "Lead",
+    status: "New project",
+    summary: "",
+    priority: "medium",
+  });
 
   useEffect(() => {
     loadProjects();
@@ -208,6 +227,54 @@ export default function ProjectsPage() {
       console.error("Failed to load projects");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function updateProjectPriority(id: string, priority: string) {
+    const previous = projects;
+    setProjects((current) =>
+      current
+        .map((project) => (project.id === id ? { ...project, priority } : project))
+        .sort((a, b) => {
+          const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+          return (order[a.priority || 'low'] ?? 3) - (order[b.priority || 'low'] ?? 3);
+        })
+    );
+
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      });
+      if (!res.ok) throw new Error('Priority update failed');
+      await loadProjects();
+    } catch (error) {
+      console.error(error);
+      setProjects(previous);
+    }
+  }
+
+  async function createProject() {
+    if (!newProject.name.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProject),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create project');
+      setShowCreate(false);
+      setNewProject({
+        name: '', clientId: '', owner: 'Erik', stage: 'Lead', status: 'New project', summary: '', priority: 'medium'
+      });
+      await loadProjects();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -248,7 +315,7 @@ export default function ProjectsPage() {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((project) => (
-          <ProjectCard key={project.id} project={project} />
+          <ProjectCard key={project.id} project={project} onPriorityChange={updateProjectPriority} />
         ))}
       </div>
     );
@@ -257,7 +324,7 @@ export default function ProjectsPage() {
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Projects</h1>
           <p className="text-muted-foreground mt-1">
@@ -266,7 +333,45 @@ export default function ProjectsPage() {
               : `${filtered.length} of ${projects.length} projects`}
           </p>
         </div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Project
+        </Button>
       </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background border rounded-lg shadow-lg w-full max-w-lg p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Create Project</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input placeholder="Project name" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} className="sm:col-span-2" />
+              <Input placeholder="Client ID" value={newProject.clientId} onChange={(e) => setNewProject({ ...newProject, clientId: e.target.value })} />
+              <select value={newProject.owner} onChange={(e) => setNewProject({ ...newProject, owner: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="Erik">Erik</option>
+                <option value="Anton">Anton</option>
+              </select>
+              <select value={newProject.stage} onChange={(e) => setNewProject({ ...newProject, stage: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="Lead">Lead</option>
+                <option value="Client">Client</option>
+                <option value="Internal">Internal</option>
+                <option value="Contractor">Contractor</option>
+                <option value="Live">Live</option>
+              </select>
+              <select value={newProject.priority} onChange={(e) => setNewProject({ ...newProject, priority: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <Input placeholder="Status" value={newProject.status} onChange={(e) => setNewProject({ ...newProject, status: e.target.value })} className="sm:col-span-2" />
+              <textarea placeholder="Summary" value={newProject.summary} onChange={(e) => setNewProject({ ...newProject, summary: e.target.value })} className="sm:col-span-2 min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+              <Button onClick={createProject} disabled={creating || !newProject.name.trim()}>{creating ? 'Creating...' : 'Create Project'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-8">
         {/* Search & Filters */}
