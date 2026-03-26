@@ -108,6 +108,18 @@ interface ProjectDetail {
   brain?: ProjectBrain;
 }
 
+interface ProjectDeck {
+  id: string;
+  title: string;
+  subtitle?: string;
+  deckType?: string;
+  audience?: string;
+  objective?: string;
+  narrativeArc?: string[];
+  chosenSources?: string[];
+  slides?: { title: string; purpose?: string; bullets?: string[]; visualIdea?: string; speakerNotes?: string }[];
+}
+
 // ── Constants ──
 
 const stageColors: Record<string, string> = {
@@ -861,6 +873,19 @@ export default function ProjectDetailPage({
   const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
+  const [deckPrompt, setDeckPrompt] = useState("");
+  const [deckType, setDeckType] = useState("project-update");
+  const [generatingDeck, setGeneratingDeck] = useState(false);
+  const [latestDeck, setLatestDeck] = useState<ProjectDeck | null>(null);
+  const [deckSources, setDeckSources] = useState<Record<string, boolean>>({
+    projectMeta: true,
+    clientInfo: true,
+    brainNotes: true,
+    brainLinks: true,
+    webpageDraft: true,
+    competitorInsights: true,
+    affiliate: false,
+  });
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -890,6 +915,16 @@ export default function ProjectDetailPage({
           } catch (err) {
             console.error('Failed to load client contact:', err);
           }
+        }
+
+        try {
+          const deckRes = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`);
+          if (deckRes.ok) {
+            const deckData = await deckRes.json();
+            setLatestDeck(deckData.deck || null);
+          }
+        } catch (err) {
+          console.error('Failed to load project deck:', err);
         }
       } catch {
         setError("Failed to load project");
@@ -1015,7 +1050,32 @@ export default function ProjectDetailPage({
     } finally {
       setGeneratingWebpage(false);
     }
-  }, [id, webpagePrompt]);
+  }, [id, webpagePrompt, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
+
+  const generateDeckDraft = useCallback(async () => {
+    if (!deckPrompt.trim()) return;
+    setGeneratingDeck(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: deckPrompt,
+          deckType,
+          selectedSources: deckSources,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate deck draft');
+      setLatestDeck(data.deck);
+      setDeckPrompt('');
+      setToast({ message: 'Deck draft created', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to generate deck draft', type: 'error' });
+    } finally {
+      setGeneratingDeck(false);
+    }
+  }, [id, deckPrompt, deckType, deckSources]);
 
   if (loading) {
     return (
@@ -1534,6 +1594,67 @@ export default function ProjectDetailPage({
           onChange={(aff) => updateDraft("affiliate", aff)}
         />
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Create Deck Draft</CardTitle>
+          <CardDescription>
+            Build a source-selectable slide-deck outline from project, brain, client, and webpage context.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input value={deckType} onChange={(e) => setDeckType(e.target.value)} placeholder="Deck type, e.g. pitch-deck, client-proposal, investor-summary, project-update" />
+          <textarea
+            value={deckPrompt}
+            onChange={(e) => setDeckPrompt(e.target.value)}
+            placeholder="Example: Create a concise investor-style deck for this project focused on opportunity, differentiation, traction, and next step."
+            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <div className="grid gap-2 md:grid-cols-2 text-sm text-muted-foreground">
+            {Object.entries(deckSources).map(([key, value]) => (
+              <label key={key} className="flex items-center gap-2">
+                <input type="checkbox" checked={value} onChange={(e) => setDeckSources((prev) => ({ ...prev, [key]: e.target.checked }))} />
+                {key.replace(/([A-Z])/g, ' $1').trim()}
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Phase 1 generates a saved deck outline with narrative arc, slide titles, bullets, visual ideas, and speaker notes.
+            </p>
+            <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
+              {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+              {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
+            </Button>
+          </div>
+          {latestDeck && (
+            <div className="rounded-md border border-border p-3 text-sm space-y-3">
+              <div><span className="font-medium">Deck:</span> {latestDeck.title}</div>
+              {latestDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {latestDeck.subtitle}</div>}
+              {latestDeck.deckType && <div><span className="font-medium">Type:</span> {latestDeck.deckType}</div>}
+              {latestDeck.audience && <div><span className="font-medium">Audience:</span> {latestDeck.audience}</div>}
+              {latestDeck.objective && <div><span className="font-medium">Objective:</span> {latestDeck.objective}</div>}
+              {Array.isArray(latestDeck.chosenSources) && latestDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {latestDeck.chosenSources.join(' • ')}</div>}
+              {Array.isArray(latestDeck.narrativeArc) && latestDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {latestDeck.narrativeArc.join(' → ')}</div>}
+              {Array.isArray(latestDeck.slides) && latestDeck.slides.length > 0 && (
+                <div>
+                  <span className="font-medium">Slides:</span>
+                  <div className="mt-2 space-y-2">
+                    {latestDeck.slides.slice(0, 8).map((slide, idx) => (
+                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3">
+                        <div className="font-medium">{idx + 1}. {slide.title}</div>
+                        {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
+                        {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
+                        {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
