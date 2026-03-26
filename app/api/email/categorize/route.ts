@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
+function normalizeSender(sender: string) {
+  const match = sender.match(/<([^>]+)>/);
+  return (match?.[1] || sender).trim().toLowerCase();
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get logged-in user
@@ -12,8 +17,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { sender, category } = await request.json();
+    const normalizedSender = normalizeSender(sender || "");
     
-    if (!sender || !category) {
+    if (!normalizedSender || !category) {
       return NextResponse.json(
         { error: "sender and category are required" },
         { status: 400 }
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
     // Remove sender from all categories first (to prevent duplicates)
     Object.keys(emailSettings.categorization).forEach(cat => {
       emailSettings.categorization[cat] = emailSettings.categorization[cat].filter(
-        (s: string) => s !== sender
+        (s: string) => normalizeSender(s) !== normalizedSender
       );
     });
     
@@ -47,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (!emailSettings.categorization[category]) {
       emailSettings.categorization[category] = [];
     }
-    emailSettings.categorization[category].push(sender);
+    emailSettings.categorization[category].push(normalizedSender);
     
     // Save updated settings
     await redis.set(REDIS_KEYS.emailSettings(user.profile), emailSettings);
@@ -57,7 +63,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ 
       success: true, 
-      sender,
+      sender: normalizedSender,
       category,
       rules: emailSettings.categorization
     });

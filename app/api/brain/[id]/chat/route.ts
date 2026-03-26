@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getRedis } from "@/lib/redis";
 
+function normalizeSender(sender: string) {
+  const match = sender.match(/<([^>]+)>/);
+  return (match?.[1] || sender).trim().toLowerCase();
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || "",
 });
@@ -19,7 +24,7 @@ async function readBrains(userId: string) {
   return data as { brains: any[] };
 }
 
-function loadBrainContext(brainId: string, brain: any) {
+async function loadBrainContext(userId: string, brain: any) {
   let context = `You are an AI assistant with access to the "${brain.name}" knowledge Brain.
 Description: ${brain.description}
 
@@ -42,6 +47,16 @@ You have access to the following information:
     brain.summaries.slice(0, 5).forEach((summary: any) => {
       context += `### ${summary.date}:\n${summary.content}\n\n`;
     });
+  }
+
+  // Load recent captured emails from brain sources
+  if (brain.recent_emails && brain.recent_emails.length > 0) {
+    context += `## Recent Emails From Brain Sources:\n`;
+    brain.recent_emails.slice(0, 10).forEach((email: any) => {
+      context += `- ${email.date} | From: ${email.from} | Subject: ${email.subject}\n`;
+      if (email.snippet) context += `  Snippet: ${email.snippet}\n`;
+    });
+    context += '\n';
   }
 
   // Load links
@@ -114,7 +129,7 @@ export async function POST(
     }
 
     // Build context
-    const systemContext = loadBrainContext(id, brain);
+    const systemContext = await loadBrainContext(user.profile, brain);
 
     // Build messages
     const messages: Anthropic.MessageParam[] = [];

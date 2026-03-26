@@ -185,17 +185,19 @@ export default function EmailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           type: "email",
-          sender: selectedEmail.from 
+          sender: normalizeSender(selectedEmail.from) 
         }),
       });
       
       setShowBrainSelector(false);
+      sessionStorage.removeItem('emails-cache');
       await loadBrains();
+      await loadEmails(true);
       
       // Auto-dismiss toast after 2 seconds
       const toast = document.createElement('div');
       toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      toast.textContent = `Added ${selectedEmail.from} to brain`;
+      toast.textContent = `Added ${normalizeSender(selectedEmail.from)} to brain`;
       document.body.appendChild(toast);
       
       setTimeout(() => {
@@ -478,6 +480,8 @@ export default function EmailPage() {
       
       // Clear cache to force refresh with new categorization
       sessionStorage.removeItem('emails-cache');
+      await loadCategorizationRules();
+      await loadEmails(true);
     } catch (err) {
       console.error("Categorize failed:", err);
       // Show toast instead of alert
@@ -570,6 +574,11 @@ export default function EmailPage() {
       e.from.toLowerCase().includes(search.toLowerCase())
   );
 
+  function normalizeSender(sender: string) {
+    const match = sender.match(/<([^>]+)>/);
+    return (match?.[1] || sender).trim().toLowerCase();
+  }
+
   function asComposeEmail(email: Email): ComposeEmail {
     return {
       id: email.id,
@@ -611,7 +620,8 @@ export default function EmailPage() {
 
   // Helper to check if email sender matches any rule
   const matchesSender = (email: Email, senders: string[]) => {
-    return senders.some(sender => email.from.includes(sender));
+    const normalizedEmailSender = normalizeSender(email.from);
+    return senders.some(sender => normalizeSender(sender) === normalizedEmailSender);
   };
 
   // Categorize emails for digest view
@@ -1184,7 +1194,7 @@ export default function EmailPage() {
                     ) : (
                       <div className="grid grid-cols-2 gap-2">
                         {brains.map(brain => {
-                          const alreadyAdded = brain.email_sources?.includes(selectedEmail?.from || '');
+                          const alreadyAdded = brain.email_sources?.some((source: string) => normalizeSender(source) === normalizeSender(selectedEmail?.from || ''));
                           return (
                             <Button
                               key={brain.id}

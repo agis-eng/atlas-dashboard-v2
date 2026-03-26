@@ -4,6 +4,15 @@ import Imap from "imap";
 import { simpleParser } from "mailparser";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
+function getBrainsKey(userId: string) {
+  return `brains:${userId}`;
+}
+
+function normalizeSender(sender: string) {
+  const match = sender.match(/<([^>]+)>/);
+  return (match?.[1] || sender).trim().toLowerCase();
+}
+
 interface EmailMessage {
   id: string;
   uid: number;
@@ -21,6 +30,62 @@ interface EmailMessage {
   starred: boolean;
   labels: string[];
   account: string;
+  brainMatches?: string[];
+}
+
+async function archiveEmailsViaIMAP(config: {
+  user: string;
+  password: string;
+  host: string;
+  port: number;
+  tls: boolean;
+}, uids: number[]) {
+  if (uids.length === 0) return;
+
+  return new Promise<void>((resolve, reject) => {
+    const imap = new Imap({
+      user: config.user,
+      password: config.password,
+      host: config.host,
+      port: config.port,
+      tls: config.tls,
+      tlsOptions: { rejectUnauthorized: false },
+    });
+
+    imap.once("ready", () => {
+      imap.openBox("INBOX", false, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        imap.move(uids, "Archive", (moveErr) => {
+          if (!moveErr) {
+            imap.end();
+            resolve();
+            return;
+          }
+
+          imap.addBox("Archive", (addErr) => {
+            if (addErr) {
+              imap.end();
+              reject(moveErr);
+              return;
+            }
+
+            imap.move(uids, "Archive", (retryErr) => {
+              imap.end();
+              if (retryErr) reject(retryErr);
+              else resolve();
+            });
+          });
+        });
+      });
+    });
+
+    imap.once("error", reject);
+    imap.connect();
+  });
 }
 
 async function fetchEmailsViaIMAP(config: {
@@ -166,6 +231,7 @@ export async function GET(request: NextRequest) {
     }
     
     const settings = await redis.get(REDIS_KEYS.emailSettings(user.profile));
+    const brainsData = await redis.get(getBrainsKey(user.profile));
     
     if (!settings || typeof settings !== "object") {
       return Response.json({ 
@@ -177,6 +243,17 @@ export async function GET(request: NextRequest) {
 
     const emailSettings = settings as any;
     const accounts = emailSettings.accounts || [];
+    const brains = (brainsData && typeof brainsData === 'object' ? (brainsData as any).brains || [] : []) as any[];
+    let brainsUpdated = false;
+    const normalizedBrainSources = new Map<string, string[]>();
+    brains.forEach((brain: any) => {
+      (brain.email_sources || []).forEach((source: string) => {
+        const normalized = normalizeSender(source);
+        const existing = normalizedBrainSources.get(normalized) || [];
+        existing.push(brain.name);
+        normalizedBrainSources.set(normalized, existing);
+      });
+    });
 
     if (accounts.length === 0) {
       return Response.json({ 
@@ -197,15 +274,58 @@ export async function GET(request: NextRequest) {
       if (account.type !== "smtp") continue; // Skip Google for now
 
       try {
-        const emails = await fetchEmailsViaIMAP({
+        const config = {
           user: account.email,
           password: account.smtp?.password || "",
           host: account.smtp?.host || "mail.privateemail.com",
-          port: 993, // IMAP always uses 993, not SMTP port
-          tls: true, // IMAP always uses TLS
-        });
+          port: 993,
+          tls: true,
+        };
 
-        allEmails.push(...emails);
+        const emails = await fetchEmailsViaIMAP(config);
+        const autoArchiveUids: number[] = [];
+        const visibleEmails: EmailMessage[] = [];
+
+        for (const email of emails) {
+          const normalizedFrom = normalizeSender(email.from);
+          const matches = normalizedBrainSources.get(normalizedFrom) || [];
+          if (matches.length > 0) {
+            email.brainMatches = matches;
+            autoArchiveUids.push(email.uid);
+
+            brains.forEach((brain: any) => {
+              const brainSources = (brain.email_sources || []).map((source: string) => normalizeSender(source));
+              if (!brainSources.includes(normalizedFrom)) return;
+
+              if (!brain.recent_emails) brain.recent_emails = [];
+              const recentEmail = {
+                id: email.id,
+                from: email.from,
+                subject: email.subject,
+                date: email.date,
+                snippet: email.snippet,
+                body: email.body,
+                account: email.account,
+              };
+              brain.recent_emails = [recentEmail, ...brain.recent_emails.filter((item: any) => item.id !== email.id)].slice(0, 50);
+              brain.lastUpdated = new Date().toISOString().split('T')[0];
+              brainsUpdated = true;
+            });
+          } else {
+            visibleEmails.push(email);
+          }
+        }
+
+        if (autoArchiveUids.length > 0) {
+          try {
+            await archiveEmailsViaIMAP(config, autoArchiveUids);
+          } catch (archiveErr) {
+            console.error(`Failed to auto-archive brain-linked emails for ${account.email}:`, archiveErr);
+            visibleEmails.push(...emails.filter((email) => autoArchiveUids.includes(email.uid)));
+          }
+        }
+
+        allEmails.push(...visibleEmails);
       } catch (err) {
         console.error(`Failed to fetch from ${account.email}:`, err);
       }
@@ -213,6 +333,10 @@ export async function GET(request: NextRequest) {
 
     // Sort by date (newest first)
     allEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (brainsUpdated) {
+      await redis.set(getBrainsKey(user.profile), { brains });
+    }
 
     // Cache in Redis for 1 hour (3600 seconds)
     await redis.set(cacheKey, allEmails, { ex: 3600 });

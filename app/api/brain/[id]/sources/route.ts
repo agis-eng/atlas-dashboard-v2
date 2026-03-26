@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 
+function normalizeSender(sender: string) {
+  const match = sender.match(/<([^>]+)>/);
+  return (match?.[1] || sender).trim().toLowerCase();
+}
+
 function getBrainsKey(userId: string) { return `brains:${userId}`; }
 
 async function readBrains(userId: string) {
@@ -33,6 +38,7 @@ export async function POST(
 
     const { id } = await params;
     const { type, sender } = await request.json();
+    const normalizedSender = normalizeSender(sender || "");
 
     const data = await readBrains(user.profile);
     const brain = data.brains.find((b: any) => b.id === id);
@@ -45,13 +51,13 @@ export async function POST(
     }
 
     // Add email source if not already present
-    if (type === "email" && sender) {
+    if (type === "email" && normalizedSender) {
       if (!brain.email_sources) {
         brain.email_sources = [];
       }
       
-      if (!brain.email_sources.includes(sender)) {
-        brain.email_sources.push(sender);
+      if (!brain.email_sources.some((s: string) => normalizeSender(s) === normalizedSender)) {
+        brain.email_sources.push(normalizedSender);
         brain.lastUpdated = new Date().toISOString().split('T')[0];
         await writeBrains(user.profile, data);
       }
@@ -81,6 +87,7 @@ export async function DELETE(
 
     const { id } = await params;
     const { sender } = await request.json();
+    const normalizedSender = normalizeSender(sender || "");
 
     const data = await readBrains(user.profile);
     const brain = data.brains.find((b: any) => b.id === id);
@@ -93,7 +100,7 @@ export async function DELETE(
     }
 
     if (brain.email_sources) {
-      brain.email_sources = brain.email_sources.filter((s: string) => s !== sender);
+      brain.email_sources = brain.email_sources.filter((s: string) => normalizeSender(s) !== normalizedSender);
       brain.lastUpdated = new Date().toISOString().split('T')[0];
       await writeBrains(user.profile, data);
     }
