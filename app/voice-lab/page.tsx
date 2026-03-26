@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Play, Power, Send, Volume2 } from "lucide-react";
+import { Loader2, Mic, MicOff, Play, Power, Send, Volume2 } from "lucide-react";
 
 type SessionHandle = any;
 
@@ -44,11 +44,22 @@ export default function VoiceLabPage() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [sessionMeta, setSessionMeta] = useState<{ expiresAt?: string | null; voiceName?: string; model?: string } | null>(null);
   const sessionRef = useRef<SessionHandle | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackChainRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    return () => {
+      try { mediaRecorderRef.current?.stop(); } catch {}
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      try { sessionRef.current?.close?.(); } catch {}
+    };
+  }, []);
 
   const statusBadge = useMemo(() => {
     if (connected) return <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30">Connected</Badge>;
@@ -149,6 +160,11 @@ export default function VoiceLabPage() {
   }
 
   async function disconnect() {
+    try { mediaRecorderRef.current?.stop(); } catch {}
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    setRecording(false);
     try {
       sessionRef.current?.close?.();
     } catch {}
@@ -162,13 +178,61 @@ export default function VoiceLabPage() {
     setSending(true);
     try {
       pushLog("user", prompt.trim());
-      await sessionRef.current.sendRealtimeInput({ text: prompt.trim() });
+      await sessionRef.current.sendClientContent({ turns: [{ role: "user", parts: [{ text: prompt.trim() }] }], turnComplete: true });
       setPrompt("");
     } catch (error: any) {
       pushLog("error", error.message || "Failed to send prompt");
     } finally {
       setSending(false);
     }
+  }
+
+  async function startMic() {
+    if (!sessionRef.current || recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const preferredMime = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+      ].find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type));
+
+      const recorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : undefined);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = async (event) => {
+        if (!event.data || event.data.size === 0 || !sessionRef.current) return;
+        try {
+          await sessionRef.current.sendRealtimeInput({ audio: event.data });
+        } catch (error: any) {
+          pushLog("error", error.message || "Failed to send audio chunk");
+        }
+      };
+
+      recorder.onerror = (event: any) => {
+        pushLog("error", event?.error?.message || "Mic recorder error");
+      };
+
+      recorder.start(250);
+      setRecording(true);
+      pushLog("status", `Mic streaming started${preferredMime ? ` (${preferredMime})` : ""}`);
+    } catch (error: any) {
+      pushLog("error", error.message || "Failed to access microphone");
+    }
+  }
+
+  async function stopMic() {
+    try { mediaRecorderRef.current?.stop(); } catch {}
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    try {
+      await sessionRef.current?.sendRealtimeInput?.({ audioStreamEnd: true });
+    } catch {}
+    setRecording(false);
+    pushLog("status", "Mic streaming stopped");
   }
 
   return (
@@ -225,7 +289,7 @@ export default function VoiceLabPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Live Test</CardTitle>
-            <CardDescription>Type a message, send it to Gemini Live, and hear the audio response.</CardDescription>
+            <CardDescription>Type a message or stream your mic into Gemini Live, then hear the audio response.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
@@ -241,6 +305,15 @@ export default function VoiceLabPage() {
                 {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                 Send prompt
               </Button>
+              {!recording ? (
+                <Button variant="secondary" onClick={startMic} disabled={!connected}>
+                  <Mic className="h-4 w-4 mr-2" /> Start mic
+                </Button>
+              ) : (
+                <Button variant="destructive" onClick={stopMic}>
+                  <MicOff className="h-4 w-4 mr-2" /> Stop mic
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setPrompt("Say hello, introduce yourself, and explain what voice you are using.") }>
                 <Play className="h-4 w-4 mr-2" /> Reset sample
               </Button>
@@ -249,6 +322,7 @@ export default function VoiceLabPage() {
               </div>
             </div>
 
+            <div className="text-xs text-muted-foreground">Rough cost guide: about <span className="font-medium text-foreground">2.9¢/min</span> for two-way live audio, plus minor text/thinking overhead.</div>
             <div className="rounded-lg border border-border bg-muted/20 p-4 min-h-[360px] space-y-3 overflow-auto">
               {logs.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No events yet. Connect, then send a prompt.</div>
