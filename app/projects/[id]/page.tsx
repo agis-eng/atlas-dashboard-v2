@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Sparkles,
   Zap,
+  Search,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 
@@ -131,6 +132,21 @@ interface ProjectDeck {
   visualStylePreset?: string;
   coverImagePrompt?: string;
   slides?: ProjectDeckSlide[];
+}
+
+interface SeoReport {
+  id: string;
+  title: string;
+  url: string;
+  createdAt?: string;
+  seoScore: number;
+  aisoScore: number;
+  combinedScore: number;
+  combinedGrade: string;
+  summary?: string;
+  quickWins?: string[];
+  shareUrl?: string;
+  findings?: { priority: string; issue: string }[];
 }
 
 // ── Constants ──
@@ -886,6 +902,10 @@ export default function ProjectDetailPage({
   const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
   const [generatingWebpage, setGeneratingWebpage] = useState(false);
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
+  const [seoUrl, setSeoUrl] = useState("");
+  const [generatingSeo, setGeneratingSeo] = useState(false);
+  const [seoReports, setSeoReports] = useState<SeoReport[]>([]);
+  const [latestSeoReport, setLatestSeoReport] = useState<SeoReport | null>(null);
   const [deckPrompt, setDeckPrompt] = useState("");
   const [deckType, setDeckType] = useState("project-update");
   const [generatingDeck, setGeneratingDeck] = useState(false);
@@ -945,6 +965,17 @@ export default function ProjectDetailPage({
           }
         } catch (err) {
           console.error('Failed to load project deck:', err);
+        }
+
+        try {
+          const seoRes = await fetch(`/api/seo-audit?projectId=${encodeURIComponent(id)}`);
+          if (seoRes.ok) {
+            const seoData = await seoRes.json();
+            setSeoReports(seoData.reports || []);
+            setLatestSeoReport((seoData.reports || [])[0] || null);
+          }
+        } catch (err) {
+          console.error('Failed to load SEO reports:', err);
         }
       } catch {
         setError("Failed to load project");
@@ -1071,6 +1102,31 @@ export default function ProjectDetailPage({
       setGeneratingWebpage(false);
     }
   }, [id, webpagePrompt, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
+
+  const generateSeoAudit = useCallback(async () => {
+    const targetUrl = seoUrl.trim() || project?.liveUrl || project?.previewUrl || '';
+    if (!targetUrl) {
+      setToast({ message: 'Add a live or preview URL first', type: 'error' });
+      return;
+    }
+    setGeneratingSeo(true);
+    try {
+      const res = await fetch('/api/seo-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl, projectId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate SEO audit');
+      setLatestSeoReport(data.report);
+      setSeoReports((prev) => [data.report, ...prev.filter((x) => x.id !== data.report.id)]);
+      setToast({ message: 'SEO audit created', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to generate SEO audit', type: 'error' });
+    } finally {
+      setGeneratingSeo(false);
+    }
+  }, [seoUrl, project?.liveUrl, project?.previewUrl, id]);
 
   const generateDeckDraft = useCallback(async () => {
     if (!deckPrompt.trim()) return;
@@ -1709,6 +1765,66 @@ export default function ProjectDetailPage({
           onChange={(aff) => updateDraft("affiliate", aff)}
         />
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">SEO + AISO Audit</CardTitle>
+          <CardDescription>
+            Run a combined traditional SEO and AI-search audit from the project page and generate a dark client-ready report with fix prompts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            value={seoUrl}
+            onChange={(e) => setSeoUrl(e.target.value)}
+            placeholder={p.liveUrl || p.previewUrl || 'https://example.com'}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Uses the project site by default if available. Current phase generates the audit report and fix prompts; selective/apply-all fixes will be the next phase.
+            </p>
+            <div className="flex items-center gap-2">
+              <Link href="/seo" className="text-sm text-cyan-400 hover:underline">Open standalone page</Link>
+              <Button onClick={generateSeoAudit} disabled={generatingSeo || !(seoUrl.trim() || p.liveUrl || p.previewUrl)}>
+                {generatingSeo ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+                {generatingSeo ? 'Running Audit…' : 'Run SEO Audit'}
+              </Button>
+            </div>
+          </div>
+          {latestSeoReport && (
+            <div className="rounded-md border border-border p-3 text-sm space-y-2">
+              <div><span className="font-medium">Latest report:</span> {latestSeoReport.title}</div>
+              <div><span className="font-medium">Score:</span> {latestSeoReport.combinedScore}/100 ({latestSeoReport.combinedGrade})</div>
+              <div><span className="font-medium">SEO:</span> {latestSeoReport.seoScore} • <span className="font-medium">AISO:</span> {latestSeoReport.aisoScore}</div>
+              {latestSeoReport.summary && <div className="text-muted-foreground">{latestSeoReport.summary}</div>}
+              {Array.isArray(latestSeoReport.quickWins) && latestSeoReport.quickWins.length > 0 && (
+                <div><span className="font-medium">Quick wins:</span> {latestSeoReport.quickWins.slice(0, 4).join(' • ')}</div>
+              )}
+              {Array.isArray(latestSeoReport.findings) && latestSeoReport.findings.length > 0 && (
+                <div><span className="font-medium">Top findings:</span> {latestSeoReport.findings.slice(0, 4).map((f) => `[${f.priority}] ${f.issue}`).join(' • ')}</div>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                <Link href={latestSeoReport.shareUrl || `/seo-reports/${latestSeoReport.id}`} className="text-cyan-400 hover:underline">Open report</Link>
+                <span className="text-xs text-muted-foreground">here.now publishing pending integration</span>
+              </div>
+            </div>
+          )}
+          {seoReports.length > 1 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Recent project reports</div>
+              {seoReports.slice(0, 5).map((report) => (
+                <div key={report.id} className="rounded-md border border-border p-2 text-sm flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{report.title}</div>
+                    <div className="text-xs text-muted-foreground">{report.combinedScore}/100 • {report.createdAt || ''}</div>
+                  </div>
+                  <Link href={report.shareUrl || `/seo-reports/${report.id}`} className="text-cyan-400 hover:underline">View</Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
