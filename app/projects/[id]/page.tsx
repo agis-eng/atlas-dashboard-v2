@@ -158,6 +158,13 @@ interface WebsiteBuild {
   createdAt?: string;
 }
 
+interface WebsiteDeployStatus {
+  configured: boolean;
+  teamConfigured?: boolean;
+  vercelUrl?: string;
+  previewUrl?: string;
+}
+
 // ── Constants ──
 
 const stageColors: Record<string, string> = {
@@ -929,6 +936,8 @@ export default function ProjectDetailPage({
   const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
   const [creatingWebsiteBuild, setCreatingWebsiteBuild] = useState(false);
   const [latestWebsiteBuild, setLatestWebsiteBuild] = useState<WebsiteBuild | null>(null);
+  const [deployingWebsite, setDeployingWebsite] = useState(false);
+  const [websiteDeployStatus, setWebsiteDeployStatus] = useState<WebsiteDeployStatus | null>(null);
   const [seoUrl, setSeoUrl] = useState("");
   const [generatingSeo, setGeneratingSeo] = useState(false);
   const [seoReports, setSeoReports] = useState<SeoReport[]>([]);
@@ -1013,6 +1022,16 @@ export default function ProjectDetailPage({
           }
         } catch (err) {
           console.error('Failed to load site build:', err);
+        }
+
+        try {
+          const deployRes = await fetch(`/api/projects/${encodeURIComponent(id)}/website-deploy`, { cache: "no-store" });
+          if (deployRes.ok) {
+            const deployData = await deployRes.json();
+            setWebsiteDeployStatus(deployData);
+          }
+        } catch (err) {
+          console.error('Failed to load website deploy status:', err);
         }
 
         try {
@@ -1203,6 +1222,28 @@ export default function ProjectDetailPage({
       setToast({ message: err.message || 'Failed to create website repo', type: 'error' });
     } finally {
       setCreatingWebsiteBuild(false);
+    }
+  }, [id]);
+
+  const deployWebsiteBuild = useCallback(async () => {
+    setDeployingWebsite(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/website-deploy`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start website deploy');
+      setWebsiteDeployStatus({
+        configured: true,
+        vercelUrl: data.deploy?.vercelUrl || '',
+        previewUrl: data.deploy?.previewUrl || '',
+      });
+      setProject((prev) => prev ? { ...prev, previewUrl: data.deploy?.previewUrl || prev.previewUrl, vercelUrl: data.deploy?.vercelUrl || prev.vercelUrl } : prev);
+      setToast({ message: 'Vercel deploy started', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to start deploy', type: 'error' });
+    } finally {
+      setDeployingWebsite(false);
     }
   }, [id]);
 
@@ -1981,9 +2022,26 @@ export default function ProjectDetailPage({
                 <div className="rounded-md border border-cyan-500/20 bg-cyan-500/10 p-3 space-y-3">
                   <div className="text-sm text-cyan-100">This project has no live site yet. You can now create a real GitHub-backed website repo from this draft.</div>
                   {latestWebsiteBuild ? (
-                    <div className="space-y-1 text-sm">
-                      <div><span className="font-medium text-foreground">Repo:</span> <a href={latestWebsiteBuild.repoUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebsiteBuild.repoUrl}</a></div>
-                      <div><span className="font-medium text-foreground">Status:</span> {latestWebsiteBuild.status}</div>
+                    <div className="space-y-3 text-sm">
+                      <div className="space-y-1">
+                        <div><span className="font-medium text-foreground">Repo:</span> <a href={latestWebsiteBuild.repoUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebsiteBuild.repoUrl}</a></div>
+                        <div><span className="font-medium text-foreground">Status:</span> {latestWebsiteBuild.status}</div>
+                      </div>
+                      {websiteDeployStatus?.previewUrl && (
+                        <div className="space-y-1">
+                          <div><span className="font-medium text-foreground">Preview:</span> <a href={websiteDeployStatus.previewUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{websiteDeployStatus.previewUrl}</a></div>
+                          {websiteDeployStatus.vercelUrl && <div><span className="font-medium text-foreground">Vercel:</span> <a href={websiteDeployStatus.vercelUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{websiteDeployStatus.vercelUrl}</a></div>}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button onClick={deployWebsiteBuild} disabled={deployingWebsite || !websiteDeployStatus?.configured}>
+                          {deployingWebsite ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                          {deployingWebsite ? 'Starting Deploy…' : 'Deploy to Vercel'}
+                        </Button>
+                        {!websiteDeployStatus?.configured && (
+                          <span className="text-xs text-amber-300">Needs VERCEL_TOKEN in Railway env</span>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <Button onClick={createWebsiteBuild} disabled={creatingWebsiteBuild}>
@@ -1991,7 +2049,7 @@ export default function ProjectDetailPage({
                       {creatingWebsiteBuild ? 'Creating Repo…' : 'Create Real Website Repo'}
                     </Button>
                   )}
-                  <div className="text-xs text-muted-foreground">This creates the actual site codebase in GitHub. Vercel auto-deploy wiring is the next step.</div>
+                  <div className="text-xs text-muted-foreground">This creates the actual site codebase in GitHub, then can deploy it to Vercel once the dashboard has a Vercel token configured.</div>
                 </div>
               )}
               {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
