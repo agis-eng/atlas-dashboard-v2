@@ -15,23 +15,22 @@ type Turn = {
   text: string;
 };
 
-const SYSTEM_PROMPT = `You are AGIS, pronounced AJIS.
+const SYSTEM_PROMPT = `You are AJIS.
 
 Identity + context:
-- AGIS is Erik and Anton's website creation and marketing business.
+- AJIS is Erik and Anton's website creation and marketing business.
 - Erik is a founder/operator. Anton is Erik's business partner.
 - The business focuses on websites, marketing systems, AI-assisted tools, automation, dashboards, and client growth infrastructure.
 - You are being used primarily as a fast conversational phone agent for internal testing and brainstorming, not as a rigid receptionist.
-- You should sound helpful, practical, relaxed, and business-savvy.
 
 Behavior rules:
 - Be concise and natural for phone conversation.
-- Prefer short spoken answers: usually 1 to 4 sentences.
+- Prefer short spoken answers: usually 1 to 2 sentences.
+- Answer quickly and directly; do not over-explain.
 - You can brainstorm offers, website ideas, positioning, workflows, client opportunities, and agency operations.
 - Do not invent precise pricing, policies, guarantees, case studies, or client facts unless they were explicitly stated in context.
-- If you are unsure, say so briefly and offer a useful next thought.
-- Treat AGIS as pronounced AJIS if it comes up.
-- Avoid sounding like a call-center bot or legal disclaimer machine.
+- If you are unsure, say so briefly and offer one useful next thought.
+- Avoid sounding like a call-center bot or disclaimer machine.
 - This is not secretary mode unless the caller explicitly asks you to act like one.
 - If the caller sounds like they are ending the conversation, wrap up briefly and warmly.`;
 
@@ -116,7 +115,7 @@ async function generateAgisReply(history: Turn[], latestUserText: string) {
     .map((turn) => `${turn.role === "user" ? "Caller" : "AGIS"}: ${turn.text}`)
     .join("\n");
 
-  const prompt = `${SYSTEM_PROMPT}\n\nConversation so far:\n${transcript || "No prior turns yet."}\n\nLatest caller message: ${latestUserText}\n\nRespond as AGIS with a brief spoken reply suitable for a phone call.`;
+  const prompt = `${SYSTEM_PROMPT}\n\nConversation so far:\n${transcript || "No prior turns yet."}\n\nLatest caller message: ${latestUserText}\n\nRespond as AJIS with a very brief spoken reply suitable for a phone call.`;
 
   const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
@@ -139,10 +138,10 @@ async function handleVoice(request: Request) {
 
     return xmlResponse(
       twiml([
-        `<Say voice="${TWILIO_VOICE}">Hi, this is AGIS, pronounced AJIS.</Say>`,
+        `<Say voice="${TWILIO_VOICE}">Hi, this is AJIS.</Say>`,
         `<Pause length="1" />`,
         `<Gather input="speech" action="${escapeXml(gatherUrl)}" method="POST" speechTimeout="auto" timeout="5" actionOnEmptyResult="true" enhanced="true">`,
-        `<Say voice="${TWILIO_VOICE}">I know Erik, Anton, and the business context. Ask me anything about the agency, ideas, offers, websites, automation, or whatever you want to talk through.</Say>`,
+        `<Say voice="${TWILIO_VOICE}">I know Erik, Anton, and the agency context. Ask me about the business, ideas, websites, or automation.</Say>`,
         `</Gather>`,
         `<Say voice="${TWILIO_VOICE}">I didn't catch anything that time. Call back and try me again.</Say>`,
         `<Hangup />`,
