@@ -36,14 +36,7 @@ export async function POST(request: Request) {
         liveConnectConstraints: {
           model,
           config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName,
-                },
-              },
-            },
+            responseModalities: [Modality.TEXT, Modality.AUDIO],
             systemInstruction: {
               parts: [{ text: systemInstruction }],
             },

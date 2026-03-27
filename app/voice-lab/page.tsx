@@ -97,7 +97,7 @@ function pcm16ToAudioBuffer(buffer: ArrayBuffer, audioContext: AudioContext, sam
 }
 
 export default function VoiceLabPage() {
-  const [model, setModel] = useState(MODEL_OPTIONS[0]);
+  const [model, setModel] = useState("gemini-3.1-flash-live-preview");
   const [voiceName, setVoiceName] = useState("Kore");
   const [personaPreset, setPersonaPreset] = useState("atlas");
   const [systemInstruction, setSystemInstruction] = useState(
@@ -183,13 +183,9 @@ export default function VoiceLabPage() {
       const session = await ai.live.connect({
         model: data.model,
         config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: data.voiceName,
-              },
-            },
+          responseModalities: [Modality.TEXT, Modality.AUDIO],
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
           },
         },
         callbacks: {
@@ -215,7 +211,8 @@ export default function VoiceLabPage() {
             }
           },
           onerror: (error: any) => {
-            pushLog("error", error?.message || "Voice Lab session error");
+            const detail = error?.message || error?.error?.message || JSON.stringify(error) || "Voice Lab session error";
+            pushLog("error", detail);
           },
           onclose: (event: any) => {
             setConnected(false);
@@ -253,7 +250,9 @@ export default function VoiceLabPage() {
     setSending(true);
     try {
       pushLog("user", prompt.trim());
-      await sessionRef.current.sendClientContent({ turns: [{ role: "user", parts: [{ text: prompt.trim() }] }], turnComplete: true });
+      await sessionRef.current.sendClientContent({
+        turns: [prompt.trim()],
+      });
       setPrompt("");
     } catch (error: any) {
       pushLog("error", error.message || "Failed to send prompt");

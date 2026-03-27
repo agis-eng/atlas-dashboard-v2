@@ -13,7 +13,7 @@ const GOOGLE_API_KEY =
   process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
   '';
 
-const GEMINI_MODEL = process.env.TWILIO_GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.TWILIO_GEMINI_MODEL || 'gemini-3.1-flash';
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
