@@ -39,7 +39,7 @@ async function handleVoice(request: Request) {
   return xmlResponse(
     twiml([
       `<Connect>`,
-      `<ConversationRelay url="${escapeXml(relayUrl)}" welcomeGreeting="Hi, this is AJIS. Ask me anything about the agency, ideas, websites, or automation." welcomeGreetingInterruptible="any" language="en-US" ttsLanguage="en-US" ttsProvider="Google" voice="en-US-Journey-O" />`,
+      `<ConversationRelay url="${escapeXml(relayUrl)}" welcomeGreeting="Hi, this is AJIS. Ask me anything about the agency, ideas, websites, or automation." welcomeGreetingInterruptible="any" language="en-US" ttsLanguage="en-US" ttsProvider="Google" voice="en-US-Journey-D" />`,
       `</Connect>`,
     ])
   );
