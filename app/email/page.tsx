@@ -26,7 +26,8 @@ import {
   Brain,
   Sparkles,
   Ban,
-  Zap,
+  FolderOpen,
+  ChevronDown,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
@@ -73,6 +74,14 @@ export default function EmailPage() {
   const [showAI, setShowAI] = useState(false);
   const [unsubscribing, setUnsubscribing] = useState(false);
   const [showBrainSelector, setShowBrainSelector] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [customFolder, setCustomFolder] = useState("");
+  const [movingToFolder, setMovingToFolder] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiSummarizing, setAiSummarizing] = useState(false);
+  const [showSnooze, setShowSnooze] = useState(false);
+  const [extractedTasks, setExtractedTasks] = useState<string[]>([]);
+  const [extractingTasks, setExtractingTasks] = useState(false);
 
   useEffect(() => {
     // Load categorization rules and brains
@@ -136,9 +145,15 @@ export default function EmailPage() {
   }
 
   function handleOpenEmail(email: Email) {
+    // Reset AI state for new email
+    setAiSummary(null);
+    setExtractedTasks([]);
+    setShowSnooze(false);
+    setShowFolderPicker(false);
+    setShowBrainSelector(false);
     // Mark as read when opened
     if (!email.read) {
-      const updatedEmails = emails.map(e => 
+      const updatedEmails = emails.map(e =>
         e.id === email.id ? { ...e, read: true } : e
       );
       setEmails(updatedEmails);
@@ -287,77 +302,13 @@ export default function EmailPage() {
       sectionEmails.length > 0 &&
       sectionEmails.every((e) => newSelected.has(e.id));
     if (allSelected) {
+      // Deselect all in this section only
       sectionEmails.forEach((e) => newSelected.delete(e.id));
     } else {
+      // Select all in this section
       sectionEmails.forEach((e) => newSelected.add(e.id));
     }
     setSelected(newSelected);
-  }
-
-  async function deleteSectionEmails(sectionEmails: Email[]) {
-    const sectionIds = sectionEmails.filter((e) => selected.has(e.id)).map((e) => e.id);
-    if (sectionIds.length === 0) return;
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: sectionIds, action: "delete" }),
-      });
-      const idsToRemove = new Set(sectionIds);
-      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
-      setEmails(newEmails);
-      const newSelected = new Set(selected);
-      sectionIds.forEach((id) => newSelected.delete(id));
-      setSelected(newSelected);
-      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
-    } catch (err) {
-      console.error("Delete failed:", err);
-      alert("Failed to delete emails");
-    }
-  }
-
-  async function archiveSectionEmails(sectionEmails: Email[]) {
-    const sectionIds = sectionEmails.filter((e) => selected.has(e.id)).map((e) => e.id);
-    if (sectionIds.length === 0) return;
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: sectionIds, action: "archive" }),
-      });
-      const idsToRemove = new Set(sectionIds);
-      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
-      setEmails(newEmails);
-      const newSelected = new Set(selected);
-      sectionIds.forEach((id) => newSelected.delete(id));
-      setSelected(newSelected);
-      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
-    } catch (err) {
-      console.error("Archive failed:", err);
-      alert("Failed to archive emails");
-    }
-  }
-
-  async function deleteAllInSection(sectionEmails: Email[]) {
-    const ids = sectionEmails.map((e) => e.id);
-    if (ids.length === 0) return;
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: ids, action: "delete" }),
-      });
-      const idsToRemove = new Set(ids);
-      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
-      setEmails(newEmails);
-      const newSelected = new Set(selected);
-      ids.forEach((id) => newSelected.delete(id));
-      setSelected(newSelected);
-      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
-    } catch (err) {
-      console.error("Delete all failed:", err);
-      alert("Failed to delete emails");
-    }
   }
 
   async function archiveSelected() {
@@ -626,7 +577,7 @@ export default function EmailPage() {
              !e.from.includes("noreply@");
     }),
     newsletters: filtered.filter((e) => {
-      // Exclude emails already in spam
+      // Exclude emails already in spam — same email can't be in both sections
       if (spamIds.has(e.id)) return false;
       return (
         matchesSender(e, categorizationRules.newsletter || []) ||
@@ -664,7 +615,6 @@ export default function EmailPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {emails.length} emails loaded
-            <span className="ml-2 text-xs opacity-50">· e=archive · #=delete · r=reply · Esc=close</span>
           </p>
         </div>
         <div className="flex gap-2">
@@ -691,9 +641,9 @@ export default function EmailPage() {
         />
       </div>
 
-      {/* Bulk Actions - Sticky */}
+      {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg sticky top-2 z-20 shadow-md border border-border">
+        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button size="sm" variant="ghost" onClick={markAsRead}>
             <Check className="h-4 w-4 mr-2" />
@@ -735,44 +685,6 @@ export default function EmailPage() {
                 <Star className="h-4 w-4 text-orange-500" />
                 Top of Mind
                 <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
-                {categorized.topOfMind.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
-                    title="Delete all in this section"
-                    onClick={() => {
-                      if (window.confirm(`Delete all ${categorized.topOfMind.length} Top of Mind emails?`)) {
-                        deleteAllInSection(categorized.topOfMind);
-                      }
-                    }}
-                  >
-                    <Zap className="h-3 w-3 mr-1" />
-                    Delete All
-                  </Button>
-                )}
-                {categorized.topOfMind.some((e) => selected.has(e.id)) && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-destructive"
-                      onClick={() => deleteSectionEmails(categorized.topOfMind)}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete ({categorized.topOfMind.filter((e) => selected.has(e.id)).length})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => archiveSectionEmails(categorized.topOfMind)}
-                    >
-                      <Archive className="h-3 w-3 mr-1" />
-                      Archive
-                    </Button>
-                  </>
-                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -800,44 +712,6 @@ export default function EmailPage() {
                 <Inbox className="h-4 w-4 text-blue-500" />
                 FYI
                 <Badge variant="secondary">{categorized.fyi.length}</Badge>
-                {categorized.fyi.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
-                    title="Delete all in this section"
-                    onClick={() => {
-                      if (window.confirm(`Delete all ${categorized.fyi.length} FYI emails?`)) {
-                        deleteAllInSection(categorized.fyi);
-                      }
-                    }}
-                  >
-                    <Zap className="h-3 w-3 mr-1" />
-                    Delete All
-                  </Button>
-                )}
-                {categorized.fyi.some((e) => selected.has(e.id)) && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-destructive"
-                      onClick={() => deleteSectionEmails(categorized.fyi)}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete ({categorized.fyi.filter((e) => selected.has(e.id)).length})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => archiveSectionEmails(categorized.fyi)}
-                    >
-                      <Archive className="h-3 w-3 mr-1" />
-                      Archive
-                    </Button>
-                  </>
-                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -869,22 +743,6 @@ export default function EmailPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
-                    title="Delete all in this section"
-                    onClick={() => {
-                      if (window.confirm(`Delete all ${categorized.newsletters.length} newsletter emails?`)) {
-                        deleteAllInSection(categorized.newsletters);
-                      }
-                    }}
-                  >
-                    <Zap className="h-3 w-3 mr-1" />
-                    Delete All
-                  </Button>
-                )}
-                {categorized.newsletters.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
                     className="ml-auto h-7 text-xs"
                     onClick={() => selectAllInSection(categorized.newsletters)}
                   >
@@ -892,28 +750,6 @@ export default function EmailPage() {
                       ? "Deselect All"
                       : "Select All"}
                   </Button>
-                )}
-                {categorized.newsletters.some((e) => selected.has(e.id)) && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-destructive"
-                      onClick={() => deleteSectionEmails(categorized.newsletters)}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete ({categorized.newsletters.filter((e) => selected.has(e.id)).length})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => archiveSectionEmails(categorized.newsletters)}
-                    >
-                      <Archive className="h-3 w-3 mr-1" />
-                      Archive
-                    </Button>
-                  </>
                 )}
               </CardTitle>
             </CardHeader>
@@ -946,22 +782,6 @@ export default function EmailPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
-                    title="Delete all in this section"
-                    onClick={() => {
-                      if (window.confirm(`Delete all ${categorized.spam.length} spam emails?`)) {
-                        deleteAllInSection(categorized.spam);
-                      }
-                    }}
-                  >
-                    <Zap className="h-3 w-3 mr-1" />
-                    Delete All
-                  </Button>
-                )}
-                {categorized.spam.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
                     className="ml-auto h-7 text-xs"
                     onClick={() => selectAllInSection(categorized.spam)}
                   >
@@ -969,28 +789,6 @@ export default function EmailPage() {
                       ? "Deselect All"
                       : "Select All"}
                   </Button>
-                )}
-                {categorized.spam.some((e) => selected.has(e.id)) && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-destructive"
-                      onClick={() => deleteSectionEmails(categorized.spam)}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete ({categorized.spam.filter((e) => selected.has(e.id)).length})
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => archiveSectionEmails(categorized.spam)}
-                    >
-                      <Archive className="h-3 w-3 mr-1" />
-                      Archive
-                    </Button>
-                  </>
                 )}
               </CardTitle>
             </CardHeader>
@@ -1074,9 +872,26 @@ export default function EmailPage() {
             <div className="p-6 border-b sticky top-0 bg-background">
               <div className="flex items-start justify-between mb-4">
                 <h2 className="text-xl font-semibold">{selectedEmail.subject}</h2>
-                <Button size="sm" variant="ghost" onClick={() => setSelectedEmail(null)}>
-                  ✕
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={selectedEmail.starred ? "text-yellow-500" : "text-muted-foreground"}
+                    onClick={async () => {
+                      const newStarred = !selectedEmail.starred;
+                      await fetch("/api/email-action", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ emailIds: [selectedEmail.id], action: newStarred ? "star" : "unstar" }),
+                      });
+                      setEmails(emails.map(e => e.id === selectedEmail.id ? { ...e, starred: newStarred } : e));
+                      setSelectedEmail({ ...selectedEmail, starred: newStarred });
+                    }}
+                  >
+                    <Star className={cn("h-4 w-4", selectedEmail.starred && "fill-yellow-500")} />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedEmail(null)}>✕</Button>
+                </div>
               </div>
               <div className="space-y-1 text-sm mb-4">
                 <p className="text-foreground"><strong>From:</strong> <span className="text-foreground">{selectedEmail.from}</span></p>
@@ -1144,7 +959,8 @@ export default function EmailPage() {
                   className="h-7 text-xs text-destructive"
                   onClick={async () => {
                     await handleCategorize(selectedEmail.from, 'spam');
-                    await loadEmails(true);
+                    await handleDeleteEmail(selectedEmail.id);
+                    setSelectedEmail(null);
                   }}
                 >
                   <Trash2 className="h-3 w-3 mr-1" />
@@ -1162,6 +978,71 @@ export default function EmailPage() {
                 >
                   <Brain className="h-4 w-4 mr-2" />
                   Add to Brain
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={aiSummarizing}
+                  className="text-blue-500 border-blue-500/30 hover:bg-blue-500/10"
+                  onClick={async () => {
+                    setAiSummarizing(true);
+                    try {
+                      const res = await fetch("/api/ai-summarize-email", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ subject: selectedEmail.subject, from: selectedEmail.from, body: selectedEmail.body }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setAiSummary(data.summary);
+                      } else {
+                        setAiSummary(selectedEmail.snippet);
+                      }
+                    } catch {
+                      setAiSummary(selectedEmail.snippet);
+                    } finally {
+                      setAiSummarizing(false);
+                    }
+                  }}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {aiSummarizing ? "Summarizing..." : "AI Summary"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={extractingTasks}
+                  className="text-green-600 border-green-600/30 hover:bg-green-600/10"
+                  onClick={async () => {
+                    setExtractingTasks(true);
+                    try {
+                      const res = await fetch("/api/ai-extract-tasks", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ subject: selectedEmail.subject, from: selectedEmail.from, body: selectedEmail.body }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setExtractedTasks(data.tasks || []);
+                      }
+                    } catch {
+                      setExtractedTasks(["Failed to extract tasks"]);
+                    } finally {
+                      setExtractingTasks(false);
+                    }
+                  }}
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  {extractingTasks ? "Extracting..." : "Extract Tasks"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-orange-500 border-orange-500/30 hover:bg-orange-500/10"
+                  onClick={() => setShowSnooze(!showSnooze)}
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Snooze
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => {
                   // Reply - open compose with prefilled data
@@ -1245,7 +1126,162 @@ export default function EmailPage() {
                   <Check className="h-4 w-4 mr-2" />
                   Mark {selectedEmail.read ? "Unread" : "Read"}
                 </Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowFolderPicker(!showFolderPicker); setCustomFolder(""); }}>
+                  <FolderOpen className="h-4 w-4 mr-2" />
+                  Move to Folder
+                  <ChevronDown className={cn("h-3 w-3 ml-1 transition-transform", showFolderPicker && "rotate-180")} />
+                </Button>
               </div>
+
+              {/* Move to Folder Picker */}
+              {showFolderPicker && (
+                <div className="mt-2 p-3 bg-muted/40 border border-border rounded-lg">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Select folder:</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {["Clients", "Amazon", "eBay", "Orders", "Follow-up", "Receipts", "Marketing", "Personal"].map((folder) => (
+                      <Button
+                        key={folder}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={movingToFolder}
+                        onClick={async () => {
+                          setMovingToFolder(true);
+                          try {
+                            await fetch("/api/email-action", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ emailIds: [selectedEmail.id], action: "move", folder }),
+                            });
+                            setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                            setSelectedEmail(null);
+                            setShowFolderPicker(false);
+                          } catch (err) {
+                            alert("Failed to move email");
+                          } finally {
+                            setMovingToFolder(false);
+                          }
+                        }}
+                      >
+                        {folder}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      className="h-7 text-xs"
+                      placeholder="Custom folder name..."
+                      value={customFolder}
+                      onChange={(e) => setCustomFolder(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter" && customFolder.trim()) {
+                          setMovingToFolder(true);
+                          try {
+                            await fetch("/api/email-action", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ emailIds: [selectedEmail.id], action: "move", folder: customFolder.trim() }),
+                            });
+                            setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                            setSelectedEmail(null);
+                            setShowFolderPicker(false);
+                          } catch (err) {
+                            alert("Failed to move email");
+                          } finally {
+                            setMovingToFolder(false);
+                          }
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={!customFolder.trim() || movingToFolder}
+                      onClick={async () => {
+                        if (!customFolder.trim()) return;
+                        setMovingToFolder(true);
+                        try {
+                          await fetch("/api/email-action", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ emailIds: [selectedEmail.id], action: "move", folder: customFolder.trim() }),
+                          });
+                          setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                          setSelectedEmail(null);
+                          setShowFolderPicker(false);
+                        } catch (err) {
+                          alert("Failed to move email");
+                        } finally {
+                          setMovingToFolder(false);
+                        }
+                      }}
+                    >
+                      {movingToFolder ? "Moving..." : "Move"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* AI Summary Panel */}
+              {aiSummary && (
+                <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                  <p className="text-xs font-semibold text-blue-400 mb-1 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> AI Summary
+                  </p>
+                  <p className="text-sm text-foreground">{aiSummary}</p>
+                </div>
+              )}
+
+              {/* Snooze Picker */}
+              {showSnooze && (
+                <div className="mt-3 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                  <p className="text-xs font-semibold text-orange-400 mb-2">Snooze until:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Later today (3h)", hours: 3 },
+                      { label: "Tomorrow 8am", hours: 20 },
+                      { label: "This weekend", hours: 48 },
+                      { label: "Next week", hours: 168 },
+                    ].map(({ label, hours }) => (
+                      <Button
+                        key={label}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-orange-500/30 hover:bg-orange-500/10"
+                        onClick={() => {
+                          const until = new Date(Date.now() + hours * 3600000).toISOString();
+                          // Store snooze in localStorage for now
+                          const snoozed = JSON.parse(localStorage.getItem('snoozed-emails') || '{}');
+                          snoozed[selectedEmail.id] = until;
+                          localStorage.setItem('snoozed-emails', JSON.stringify(snoozed));
+                          setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                          setSelectedEmail(null);
+                          setShowSnooze(false);
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Extracted Tasks */}
+              {extractedTasks.length > 0 && (
+                <div className="mt-3 p-3 bg-green-600/10 border border-green-600/30 rounded-lg">
+                  <p className="text-xs font-semibold text-green-500 mb-2 flex items-center gap-1">
+                    <Check className="h-3 w-3" /> Extracted Tasks
+                  </p>
+                  <ul className="space-y-1">
+                    {extractedTasks.map((task, i) => (
+                      <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">•</span>
+                        <span>{task}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Brain Selector Dropdown */}
               {showBrainSelector && (
