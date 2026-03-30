@@ -21,6 +21,8 @@ import {
   Calendar,
   Activity,
   Video,
+  Mic,
+  Film,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,8 @@ const navItems = [
   { icon: TrendingUp, label: "Trends", href: "/trends" },
   { icon: Mail, label: "Email", href: "/email" },
   { icon: Video, label: "Transcribe", href: "/transcribe" },
+  { icon: Mic, label: "Voice Memos", href: "/voice-memos" },
+  { icon: Film, label: "Recordings", href: "/recordings" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Activity, label: "Monitor", href: "/monitor" },
