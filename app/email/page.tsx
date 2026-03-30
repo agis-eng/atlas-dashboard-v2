@@ -280,6 +280,19 @@ export default function EmailPage() {
     setSelected(newSelected);
   }
 
+  function selectAllInSection(sectionEmails: Email[]) {
+    const newSelected = new Set(selected);
+    const allSelected =
+      sectionEmails.length > 0 &&
+      sectionEmails.every((e) => newSelected.has(e.id));
+    if (allSelected) {
+      sectionEmails.forEach((e) => newSelected.delete(e.id));
+    } else {
+      sectionEmails.forEach((e) => newSelected.add(e.id));
+    }
+    setSelected(newSelected);
+  }
+
   async function archiveSelected() {
     const ids = Array.from(selected);
     try {
@@ -304,7 +317,6 @@ export default function EmailPage() {
   }
 
   async function deleteSelected() {
-    if (!confirm(`Delete ${selected.size} email(s)?`)) return;
     const ids = Array.from(selected);
     try {
       await fetch("/api/email-action", {
@@ -515,9 +527,18 @@ export default function EmailPage() {
     return senders.some(sender => email.from.includes(sender));
   };
 
+  // Compute spam first so we can exclude those emails from newsletters
+  const spamEmails = filtered.filter(
+    (e) =>
+      matchesSender(e, categorizationRules.spam || []) ||
+      e.subject.toLowerCase().includes("spam") ||
+      e.from.includes("spam@")
+  );
+  const spamIds = new Set(spamEmails.map((e) => e.id));
+
   // Categorize emails for digest view
   const categorized = {
-    topOfMind: filtered.filter(e => 
+    topOfMind: filtered.filter(e =>
       matchesSender(e, categorizationRules.topOfMind || []) ||
       e.subject.toLowerCase().includes("urgent") ||
       e.subject.toLowerCase().includes("action required")
@@ -527,27 +548,27 @@ export default function EmailPage() {
       if (matchesSender(e, categorizationRules.topOfMind || [])) return false;
       if (matchesSender(e, categorizationRules.newsletter || [])) return false;
       if (matchesSender(e, categorizationRules.spam || [])) return false;
-      
+
       // Check if explicitly marked as FYI
       if (matchesSender(e, categorizationRules.fyi || [])) return true;
-      
+
       // Default FYI criteria
       return !e.subject.toLowerCase().includes("urgent") &&
              !e.subject.toLowerCase().includes("newsletter") &&
              !e.from.includes("newsletter@") &&
              !e.from.includes("noreply@");
     }),
-    newsletters: filtered.filter(e =>
-      matchesSender(e, categorizationRules.newsletter || []) ||
-      e.subject.toLowerCase().includes("newsletter") ||
-      e.from.includes("newsletter@") ||
-      e.from.includes("noreply@")
-    ),
-    spam: filtered.filter(e =>
-      matchesSender(e, categorizationRules.spam || []) ||
-      e.subject.toLowerCase().includes("spam") ||
-      e.from.includes("spam@")
-    ),
+    newsletters: filtered.filter((e) => {
+      // Exclude emails already in spam
+      if (spamIds.has(e.id)) return false;
+      return (
+        matchesSender(e, categorizationRules.newsletter || []) ||
+        e.subject.toLowerCase().includes("newsletter") ||
+        e.from.includes("newsletter@") ||
+        e.from.includes("noreply@")
+      );
+    }),
+    spam: spamEmails,
   };
 
   // Group by time for digest
@@ -700,6 +721,18 @@ export default function EmailPage() {
                 <FileText className="h-4 w-4 text-gray-500" />
                 Newsletters
                 <Badge variant="secondary">{categorized.newsletters.length}</Badge>
+                {categorized.newsletters.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto h-7 text-xs"
+                    onClick={() => selectAllInSection(categorized.newsletters)}
+                  >
+                    {categorized.newsletters.every((e) => selected.has(e.id))
+                      ? "Deselect All"
+                      : "Select All"}
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -727,6 +760,18 @@ export default function EmailPage() {
                 <Trash2 className="h-4 w-4 text-red-500" />
                 Spam
                 <Badge variant="secondary">{categorized.spam.length}</Badge>
+                {categorized.spam.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto h-7 text-xs"
+                    onClick={() => selectAllInSection(categorized.spam)}
+                  >
+                    {categorized.spam.every((e) => selected.has(e.id))
+                      ? "Deselect All"
+                      : "Select All"}
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
