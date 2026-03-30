@@ -293,6 +293,50 @@ export default function EmailPage() {
     setSelected(newSelected);
   }
 
+  async function deleteSectionEmails(sectionEmails: Email[]) {
+    const sectionIds = sectionEmails.filter((e) => selected.has(e.id)).map((e) => e.id);
+    if (sectionIds.length === 0) return;
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: sectionIds, action: "delete" }),
+      });
+      const idsToRemove = new Set(sectionIds);
+      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
+      setEmails(newEmails);
+      const newSelected = new Set(selected);
+      sectionIds.forEach((id) => newSelected.delete(id));
+      setSelected(newSelected);
+      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete emails");
+    }
+  }
+
+  async function archiveSectionEmails(sectionEmails: Email[]) {
+    const sectionIds = sectionEmails.filter((e) => selected.has(e.id)).map((e) => e.id);
+    if (sectionIds.length === 0) return;
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: sectionIds, action: "archive" }),
+      });
+      const idsToRemove = new Set(sectionIds);
+      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
+      setEmails(newEmails);
+      const newSelected = new Set(selected);
+      sectionIds.forEach((id) => newSelected.delete(id));
+      setSelected(newSelected);
+      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
+    } catch (err) {
+      console.error("Archive failed:", err);
+      alert("Failed to archive emails");
+    }
+  }
+
   async function archiveSelected() {
     const ids = Array.from(selected);
     try {
@@ -667,6 +711,28 @@ export default function EmailPage() {
                 <Star className="h-4 w-4 text-orange-500" />
                 Top of Mind
                 <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
+                {categorized.topOfMind.some((e) => selected.has(e.id)) && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => deleteSectionEmails(categorized.topOfMind)}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete ({categorized.topOfMind.filter((e) => selected.has(e.id)).length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => archiveSectionEmails(categorized.topOfMind)}
+                    >
+                      <Archive className="h-3 w-3 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -694,6 +760,28 @@ export default function EmailPage() {
                 <Inbox className="h-4 w-4 text-blue-500" />
                 FYI
                 <Badge variant="secondary">{categorized.fyi.length}</Badge>
+                {categorized.fyi.some((e) => selected.has(e.id)) && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => deleteSectionEmails(categorized.fyi)}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete ({categorized.fyi.filter((e) => selected.has(e.id)).length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => archiveSectionEmails(categorized.fyi)}
+                    >
+                      <Archive className="h-3 w-3 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -733,6 +821,28 @@ export default function EmailPage() {
                       : "Select All"}
                   </Button>
                 )}
+                {categorized.newsletters.some((e) => selected.has(e.id)) && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => deleteSectionEmails(categorized.newsletters)}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete ({categorized.newsletters.filter((e) => selected.has(e.id)).length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => archiveSectionEmails(categorized.newsletters)}
+                    >
+                      <Archive className="h-3 w-3 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
@@ -771,6 +881,28 @@ export default function EmailPage() {
                       ? "Deselect All"
                       : "Select All"}
                   </Button>
+                )}
+                {categorized.spam.some((e) => selected.has(e.id)) && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => deleteSectionEmails(categorized.spam)}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete ({categorized.spam.filter((e) => selected.has(e.id)).length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => archiveSectionEmails(categorized.spam)}
+                    >
+                      <Archive className="h-3 w-3 mr-1" />
+                      Archive
+                    </Button>
+                  </>
                 )}
               </CardTitle>
             </CardHeader>
