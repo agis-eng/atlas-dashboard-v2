@@ -26,6 +26,7 @@ import {
   Brain,
   Sparkles,
   Ban,
+  Zap,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
@@ -337,6 +338,28 @@ export default function EmailPage() {
     }
   }
 
+  async function deleteAllInSection(sectionEmails: Email[]) {
+    const ids = sectionEmails.map((e) => e.id);
+    if (ids.length === 0) return;
+    try {
+      await fetch("/api/email-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailIds: ids, action: "delete" }),
+      });
+      const idsToRemove = new Set(ids);
+      const newEmails = emails.filter((e) => !idsToRemove.has(e.id));
+      setEmails(newEmails);
+      const newSelected = new Set(selected);
+      ids.forEach((id) => newSelected.delete(id));
+      setSelected(newSelected);
+      sessionStorage.setItem("emails-cache", JSON.stringify({ emails: newEmails, timestamp: Date.now() }));
+    } catch (err) {
+      console.error("Delete all failed:", err);
+      alert("Failed to delete emails");
+    }
+  }
+
   async function archiveSelected() {
     const ids = Array.from(selected);
     try {
@@ -641,6 +664,7 @@ export default function EmailPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {emails.length} emails loaded
+            <span className="ml-2 text-xs opacity-50">· e=archive · #=delete · r=reply · Esc=close</span>
           </p>
         </div>
         <div className="flex gap-2">
@@ -667,9 +691,9 @@ export default function EmailPage() {
         />
       </div>
 
-      {/* Bulk Actions */}
+      {/* Bulk Actions - Sticky */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg sticky top-2 z-20 shadow-md border border-border">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button size="sm" variant="ghost" onClick={markAsRead}>
             <Check className="h-4 w-4 mr-2" />
@@ -711,6 +735,22 @@ export default function EmailPage() {
                 <Star className="h-4 w-4 text-orange-500" />
                 Top of Mind
                 <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
+                {categorized.topOfMind.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
+                    title="Delete all in this section"
+                    onClick={() => {
+                      if (window.confirm(`Delete all ${categorized.topOfMind.length} Top of Mind emails?`)) {
+                        deleteAllInSection(categorized.topOfMind);
+                      }
+                    }}
+                  >
+                    <Zap className="h-3 w-3 mr-1" />
+                    Delete All
+                  </Button>
+                )}
                 {categorized.topOfMind.some((e) => selected.has(e.id)) && (
                   <>
                     <Button
@@ -760,6 +800,22 @@ export default function EmailPage() {
                 <Inbox className="h-4 w-4 text-blue-500" />
                 FYI
                 <Badge variant="secondary">{categorized.fyi.length}</Badge>
+                {categorized.fyi.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
+                    title="Delete all in this section"
+                    onClick={() => {
+                      if (window.confirm(`Delete all ${categorized.fyi.length} FYI emails?`)) {
+                        deleteAllInSection(categorized.fyi);
+                      }
+                    }}
+                  >
+                    <Zap className="h-3 w-3 mr-1" />
+                    Delete All
+                  </Button>
+                )}
                 {categorized.fyi.some((e) => selected.has(e.id)) && (
                   <>
                     <Button
@@ -809,6 +865,22 @@ export default function EmailPage() {
                 <FileText className="h-4 w-4 text-gray-500" />
                 Newsletters
                 <Badge variant="secondary">{categorized.newsletters.length}</Badge>
+                {categorized.newsletters.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
+                    title="Delete all in this section"
+                    onClick={() => {
+                      if (window.confirm(`Delete all ${categorized.newsletters.length} newsletter emails?`)) {
+                        deleteAllInSection(categorized.newsletters);
+                      }
+                    }}
+                  >
+                    <Zap className="h-3 w-3 mr-1" />
+                    Delete All
+                  </Button>
+                )}
                 {categorized.newsletters.length > 0 && (
                   <Button
                     size="sm"
@@ -870,6 +942,22 @@ export default function EmailPage() {
                 <Trash2 className="h-4 w-4 text-red-500" />
                 Spam
                 <Badge variant="secondary">{categorized.spam.length}</Badge>
+                {categorized.spam.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:bg-destructive/10 font-medium"
+                    title="Delete all in this section"
+                    onClick={() => {
+                      if (window.confirm(`Delete all ${categorized.spam.length} spam emails?`)) {
+                        deleteAllInSection(categorized.spam);
+                      }
+                    }}
+                  >
+                    <Zap className="h-3 w-3 mr-1" />
+                    Delete All
+                  </Button>
+                )}
                 {categorized.spam.length > 0 && (
                   <Button
                     size="sm"
