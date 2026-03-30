@@ -5,8 +5,9 @@ import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
 interface EmailAction {
   emailIds: string[]; // Message IDs or UIDs
-  action: "delete" | "archive" | "mark-read" | "mark-unread" | "star" | "unstar";
+  action: "delete" | "archive" | "mark-read" | "mark-unread" | "star" | "unstar" | "move";
   accountId?: string;
+  folder?: string; // target folder for "move" action
 }
 
 async function performImapAction(config: {
@@ -117,6 +118,34 @@ async function performImapAction(config: {
               }
             });
             break;
+
+          case "move": {
+            const targetFolder = action.folder || "Archive";
+            imap.move(uids, targetFolder, (moveErr) => {
+              if (moveErr) {
+                // Try creating the folder first then move
+                imap.addBox(targetFolder, (addErr) => {
+                  if (addErr) {
+                    imap.end();
+                    reject(new Error(`Folder "${targetFolder}" doesn't exist and couldn't be created`));
+                  } else {
+                    imap.move(uids, targetFolder, (moveErr2) => {
+                      imap.end();
+                      if (moveErr2) {
+                        reject(moveErr2);
+                      } else {
+                        resolve({ success: true, message: `Moved ${uids.length} email(s) to ${targetFolder}` });
+                      }
+                    });
+                  }
+                });
+              } else {
+                imap.end();
+                resolve({ success: true, message: `Moved ${uids.length} email(s) to ${targetFolder}` });
+              }
+            });
+            break;
+          }
 
           default:
             imap.end();
