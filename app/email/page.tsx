@@ -29,12 +29,16 @@ import {
   ChevronDown,
   Command,
   ListChecks,
+  TrendingUp,
+  ShieldOff,
+  Bell,
 } from "lucide-react";
 import { EmailSettingsSheet } from "@/components/email-settings";
 import { EmailCompose } from "@/components/email-compose";
 import { EmailRow } from "@/components/email-row";
 import { EmailAI } from "@/components/email-ai";
 import { CommandPalette, type CommandAction } from "@/components/command-palette";
+import { EmailAnalytics } from "@/components/email-analytics";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -57,7 +61,7 @@ interface Email {
   }>;
 }
 
-type ViewTab = "digest" | "all";
+type ViewTab = "digest" | "all" | "analytics";
 
 // ── Helper: update cache ──────────────────────────────────────────
 function updateCache(emails: Email[]) {
@@ -101,6 +105,7 @@ export default function EmailPage() {
   const [extractedTasks, setExtractedTasks] = useState<string[]>([]);
   const [extractingTasks, setExtractingTasks] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [followUpsDue, setFollowUpsDue] = useState<any[]>([]);
 
   // Track focused email index for keyboard navigation
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -110,6 +115,7 @@ export default function EmailPage() {
   useEffect(() => {
     loadCategorizationRules();
     loadBrains();
+    loadFollowUps();
 
     const cached = sessionStorage.getItem("emails-cache");
     if (cached) {
@@ -271,6 +277,47 @@ export default function EmailPage() {
       setBrains(data.brains || []);
     } catch {
       console.error("Failed to load brains");
+    }
+  }
+
+  async function loadFollowUps() {
+    try {
+      const res = await fetch("/api/email/follow-ups");
+      if (res.ok) {
+        const data = await res.json();
+        setFollowUpsDue(data.due || []);
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  async function dismissFollowUp(emailId: string) {
+    try {
+      await fetch("/api/email/follow-ups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailId, action: "dismiss" }),
+      });
+      setFollowUpsDue((prev) => prev.filter((f) => f.emailId !== emailId));
+      toast.success("Follow-up dismissed");
+    } catch {
+      toast.error("Failed to dismiss follow-up");
+    }
+  }
+
+  async function blockSender(sender: string) {
+    try {
+      await fetch("/api/email/block-sender", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender }),
+      });
+      toast.success(`Blocked ${sender.split("<")[0].trim()}`, {
+        description: "Future emails will be automatically filtered to spam",
+      });
+    } catch {
+      toast.error("Failed to block sender");
     }
   }
 
@@ -942,6 +989,41 @@ export default function EmailPage() {
         </div>
       )}
 
+      {/* Follow-up Reminders Banner */}
+      {followUpsDue.length > 0 && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Bell className="h-4 w-4 text-yellow-500" />
+              <span className="text-sm font-medium">
+                {followUpsDue.length} follow-up{followUpsDue.length > 1 ? "s" : ""} due
+              </span>
+            </div>
+            <div className="space-y-2">
+              {followUpsDue.slice(0, 3).map((f: any) => (
+                <div
+                  key={f.emailId}
+                  className="flex items-center justify-between text-xs"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{f.subject}</span>
+                    <span className="text-muted-foreground ml-2">to {f.to}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs"
+                    onClick={() => dismissFollowUp(f.emailId)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tabs */}
       <Tabs
         value={activeTab}
@@ -955,6 +1037,10 @@ export default function EmailPage() {
           <TabsTrigger value="all">
             <FileText className="h-4 w-4 mr-2" />
             All Emails
+          </TabsTrigger>
+          <TabsTrigger value="analytics">
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Analytics
           </TabsTrigger>
         </TabsList>
 
@@ -1160,6 +1246,11 @@ export default function EmailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Analytics View */}
+        <TabsContent value="analytics" className="mt-6">
+          <EmailAnalytics />
         </TabsContent>
       </Tabs>
 
@@ -1376,6 +1467,19 @@ export default function EmailPage() {
                 >
                   <Ban className="h-4 w-4 mr-2" />
                   {unsubscribing ? "Unsubscribing..." : "Unsubscribe"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => {
+                    blockSender(selectedEmail.from);
+                    handleDeleteEmail(selectedEmail.id);
+                    setSelectedEmail(null);
+                  }}
+                >
+                  <Ban className="h-4 w-4 mr-2" />
+                  Block Sender
                 </Button>
                 <Button
                   size="sm"
