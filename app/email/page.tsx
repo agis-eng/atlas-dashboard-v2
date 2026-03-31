@@ -1057,6 +1057,29 @@ export default function EmailPage() {
 
         {/* Digest View */}
         <TabsContent value="digest" className="space-y-6 mt-6">
+          {/* AI Digest & Chat */}
+          <EmailDigestAI
+            emails={emails}
+            onAction={async (action, emailIds) => {
+              if (action === "archive") {
+                for (const id of emailIds) await handleArchiveEmail(id);
+              } else if (action === "delete") {
+                for (const id of emailIds) await handleDeleteEmail(id);
+              } else if (action === "mark-read") {
+                await fetch("/api/email-action", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ emailIds, action: "mark-read" }),
+                });
+                setEmails(
+                  emails.map((e) =>
+                    emailIds.includes(e.id) ? { ...e, read: true } : e
+                  )
+                );
+              }
+            }}
+          />
+
           {/* Top of Mind */}
           <Card>
             <CardHeader>
@@ -1785,28 +1808,7 @@ export default function EmailPage() {
                 </div>
               )}
             </div>
-            <style jsx>{`
-              .email-content {
-                font-size: 14px;
-                line-height: 1.6;
-              }
-              .email-content img {
-                max-width: 100%;
-                height: auto;
-              }
-              .email-content a {
-                color: #3b82f6;
-                text-decoration: underline;
-              }
-              .email-content table {
-                border-collapse: collapse;
-                width: 100%;
-              }
-              .email-content td,
-              .email-content th {
-                padding: 8px;
-              }
-            `}</style>
+            {/* Email content styles applied via globals.css */}
           </div>
         </div>
       )}
