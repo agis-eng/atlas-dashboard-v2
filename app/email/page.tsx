@@ -39,6 +39,7 @@ import { EmailRow } from "@/components/email-row";
 import { EmailAI } from "@/components/email-ai";
 import { CommandPalette, type CommandAction } from "@/components/command-palette";
 import { EmailAnalytics } from "@/components/email-analytics";
+import { EmailDigestAI } from "@/components/email-digest-ai";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -1263,8 +1264,29 @@ export default function EmailPage() {
         </TabsContent>
 
         {/* Analytics View */}
-        <TabsContent value="analytics" className="mt-6">
-          <EmailAnalytics />
+        <TabsContent value="analytics" className="mt-6 space-y-6">
+          <EmailDigestAI
+            emails={emails}
+            onAction={async (action, emailIds) => {
+              if (action === "archive") {
+                for (const id of emailIds) await handleArchiveEmail(id);
+              } else if (action === "delete") {
+                for (const id of emailIds) await handleDeleteEmail(id);
+              } else if (action === "mark-read") {
+                await fetch("/api/email-action", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ emailIds, action: "mark-read" }),
+                });
+                setEmails(
+                  emails.map((e) =>
+                    emailIds.includes(e.id) ? { ...e, read: true } : e
+                  )
+                );
+              }
+            }}
+          />
+          <EmailAnalytics emails={emails} />
         </TabsContent>
       </Tabs>
 

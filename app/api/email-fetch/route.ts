@@ -183,12 +183,12 @@ export async function GET(request: NextRequest) {
     // Fetch from specific account or all accounts
     const accountsToFetch = accountId
       ? accounts.filter((a: any) => a.id === accountId)
-      : accounts.filter((a: any) => a.type === "smtp"); // Only SMTP for now
+      : accounts.filter((a: any) => a.type === "smtp" || (a.type === "google" && a.smtp?.password));
 
     const allEmails: EmailMessage[] = [];
 
     for (const account of accountsToFetch) {
-      if (account.type !== "smtp") continue; // Skip Google for now
+      if (!account.smtp?.password) continue; // Skip accounts without credentials
 
       try {
         const emails = await fetchEmailsViaIMAP({

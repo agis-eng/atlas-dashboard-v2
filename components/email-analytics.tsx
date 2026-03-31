@@ -1,68 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   BarChart3,
   Mail,
   Clock,
-  Star,
   Users,
   TrendingUp,
-  Loader2,
   AlertCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-interface Analytics {
-  totalEmails: number;
-  unreadCount: number;
-  readRate: number;
-  starredCount: number;
-  topSenders: Array<{ sender: string; count: number }>;
-  volumeByDay: Array<{ day: string; count: number }>;
-  volumeByHour: Array<{ hour: number; count: number }>;
-  busiestHour: number;
-  avgPerDay: number;
-  oldestUnread: {
-    subject: string;
-    from: string;
-    date: string;
-    daysOld: number;
-  } | null;
+interface Email {
+  id: string;
+  from: string;
+  subject: string;
+  date: string;
+  read: boolean;
+  starred: boolean;
 }
 
-export function EmailAnalytics() {
-  const [data, setData] = useState<Analytics | null>(null);
-  const [loading, setLoading] = useState(true);
+interface EmailAnalyticsProps {
+  emails: Email[];
+}
 
-  useEffect(() => {
-    fetch("/api/email/analytics")
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+export function EmailAnalytics({ emails }: EmailAnalyticsProps) {
+  const data = useMemo(() => {
+    if (emails.length === 0) return null;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
+    const totalEmails = emails.length;
+    const unreadCount = emails.filter((e) => !e.read).length;
+    const readRate =
+      totalEmails > 0
+        ? Math.round(((totalEmails - unreadCount) / totalEmails) * 100)
+        : 0;
+    const starredCount = emails.filter((e) => e.starred).length;
+
+    // Top senders
+    const senderCount: Record<string, number> = {};
+    emails.forEach((e) => {
+      const sender = e.from?.split("<")[0]?.trim() || e.from || "Unknown";
+      senderCount[sender] = (senderCount[sender] || 0) + 1;
+    });
+    const topSenders = Object.entries(senderCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([sender, count]) => ({ sender, count }));
+
+    // Volume by day of week
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dayCount: Record<string, number> = {};
+    dayNames.forEach((d) => (dayCount[d] = 0));
+    emails.forEach((e) => {
+      const d = new Date(e.date);
+      if (!isNaN(d.getTime())) dayCount[dayNames[d.getDay()]]++;
+    });
+    const volumeByDay = dayNames.map((day) => ({ day, count: dayCount[day] }));
+
+    // Busiest hour
+    const hourCount: number[] = new Array(24).fill(0);
+    emails.forEach((e) => {
+      const d = new Date(e.date);
+      if (!isNaN(d.getTime())) hourCount[d.getHours()]++;
+    });
+    const busiestHour = hourCount.indexOf(Math.max(...hourCount));
+
+    // Average per day
+    const dateSet = new Set(
+      emails
+        .map((e) => new Date(e.date).toDateString())
+        .filter((d) => d !== "Invalid Date")
     );
-  }
+    const avgPerDay = dateSet.size > 0 ? Math.round(totalEmails / dateSet.size) : 0;
 
-  if (!data || data.totalEmails === 0) {
+    // Oldest unread
+    const unreadEmails = emails
+      .filter((e) => !e.read)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const oldestUnread = unreadEmails[0]
+      ? {
+          subject: unreadEmails[0].subject,
+          from: unreadEmails[0].from,
+          daysOld: Math.floor(
+            (Date.now() - new Date(unreadEmails[0].date).getTime()) / (1000 * 60 * 60 * 24)
+          ),
+        }
+      : null;
+
+    return {
+      totalEmails,
+      unreadCount,
+      readRate,
+      starredCount,
+      topSenders,
+      volumeByDay,
+      busiestHour,
+      avgPerDay,
+      oldestUnread,
+    };
+  }, [emails]);
+
+  if (!data) {
     return (
-      <p className="text-sm text-muted-foreground text-center py-4">
-        No email data available for analytics
+      <p className="text-sm text-muted-foreground text-center py-8">
+        No email data available. Load your emails first by refreshing the inbox.
       </p>
     );
   }
 
   const maxDayCount = Math.max(...data.volumeByDay.map((d) => d.count), 1);
-  const maxHourCount = Math.max(...data.volumeByHour.map((h) => h.count), 1);
 
   return (
     <div className="space-y-4">
@@ -83,9 +130,7 @@ export function EmailAnalytics() {
               <AlertCircle className="h-3.5 w-3.5" />
               Unread
             </div>
-            <p className="text-2xl font-bold text-orange-500">
-              {data.unreadCount}
-            </p>
+            <p className="text-2xl font-bold text-orange-500">{data.unreadCount}</p>
           </CardContent>
         </Card>
         <Card>
@@ -108,7 +153,6 @@ export function EmailAnalytics() {
         </Card>
       </div>
 
-      {/* Two columns: Day chart + Top Senders */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Volume by Day */}
         <Card>
@@ -123,23 +167,12 @@ export function EmailAnalytics() {
               {data.volumeByDay.map((d) => (
                 <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
                   <div
-                    className="w-full bg-blue-500/20 rounded-t"
+                    className="w-full bg-blue-500 rounded-t transition-all"
                     style={{
-                      height: `${(d.count / maxDayCount) * 80}px`,
-                      minHeight: d.count > 0 ? "4px" : "0px",
+                      height: `${Math.max((d.count / maxDayCount) * 80, d.count > 0 ? 4 : 0)}px`,
                     }}
-                  >
-                    <div
-                      className="w-full bg-blue-500 rounded-t transition-all"
-                      style={{
-                        height: `${(d.count / maxDayCount) * 80}px`,
-                        minHeight: d.count > 0 ? "4px" : "0px",
-                      }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">
-                    {d.day}
-                  </span>
+                  />
+                  <span className="text-[10px] text-muted-foreground">{d.day}</span>
                 </div>
               ))}
             </div>
@@ -158,13 +191,9 @@ export function EmailAnalytics() {
             <div className="space-y-2">
               {data.topSenders.slice(0, 5).map((s, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-4">
-                    {i + 1}.
-                  </span>
+                  <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
                   <span className="text-xs flex-1 truncate">{s.sender}</span>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {s.count}
-                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]">{s.count}</Badge>
                 </div>
               ))}
             </div>
@@ -172,13 +201,10 @@ export function EmailAnalytics() {
         </Card>
       </div>
 
-      {/* Busiest hour + Oldest unread */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">
-              Busiest Hour
-            </p>
+            <p className="text-xs text-muted-foreground mb-1">Busiest Hour</p>
             <p className="text-lg font-semibold">
               {data.busiestHour > 12
                 ? `${data.busiestHour - 12} PM`
@@ -195,12 +221,8 @@ export function EmailAnalytics() {
               <p className="text-xs text-orange-500 mb-1">
                 Oldest Unread ({data.oldestUnread.daysOld} days old)
               </p>
-              <p className="text-sm font-medium truncate">
-                {data.oldestUnread.subject}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">
-                {data.oldestUnread.from}
-              </p>
+              <p className="text-sm font-medium truncate">{data.oldestUnread.subject}</p>
+              <p className="text-xs text-muted-foreground truncate">{data.oldestUnread.from}</p>
             </CardContent>
           </Card>
         )}
