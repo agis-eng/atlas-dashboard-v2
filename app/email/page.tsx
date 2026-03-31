@@ -176,6 +176,8 @@ export default function EmailPage() {
             setSelectedEmail(null);
             break;
           case "#":
+          case "Delete":
+          case "Backspace":
             e.preventDefault();
             handleDeleteEmail(selectedEmail.id);
             toast.success("Email deleted");
@@ -231,6 +233,8 @@ export default function EmailPage() {
           }
           break;
         case "#":
+        case "Delete":
+        case "Backspace":
           if (selected.size > 0) {
             e.preventDefault();
             deleteSelected();
@@ -304,6 +308,12 @@ export default function EmailPage() {
     } catch {
       toast.error("Failed to dismiss follow-up");
     }
+  }
+
+  async function handleSpamEmail(email: Email) {
+    await handleCategorize(email.from, "spam");
+    await blockSender(email.from);
+    await handleDeleteEmail(email.id);
   }
 
   async function blockSender(sender: string) {
@@ -965,7 +975,7 @@ export default function EmailPage() {
 
       {/* Bulk Actions */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+        <div className="sticky top-0 z-30 flex items-center gap-2 p-3 bg-muted/95 backdrop-blur-sm rounded-lg border shadow-sm">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button size="sm" variant="ghost" onClick={markAsRead}>
             <Check className="h-4 w-4 mr-2" />
@@ -1072,6 +1082,7 @@ export default function EmailPage() {
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                   onArchive={handleArchiveEmail}
+                  onSpam={handleSpamEmail}
                 />
               ))}
             </CardContent>
@@ -1099,6 +1110,7 @@ export default function EmailPage() {
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                   onArchive={handleArchiveEmail}
+                  onSpam={handleSpamEmail}
                 />
               ))}
             </CardContent>
@@ -1140,6 +1152,7 @@ export default function EmailPage() {
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                   onArchive={handleArchiveEmail}
+                  onSpam={handleSpamEmail}
                 />
               ))}
             </CardContent>
@@ -1181,6 +1194,7 @@ export default function EmailPage() {
                   onOpen={handleOpenEmail}
                   onDelete={handleDeleteEmail}
                   onArchive={handleArchiveEmail}
+                  onSpam={handleSpamEmail}
                 />
               ))}
             </CardContent>
