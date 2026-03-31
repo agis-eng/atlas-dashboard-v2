@@ -39,20 +39,34 @@ async function performImapAction(config: {
 
         switch (action.action) {
           case "delete":
-            // Mark as deleted and expunge
-            imap.addFlags(uids, "\\Deleted", (flagErr) => {
-              if (flagErr) {
-                reject(flagErr);
-                return;
-              }
-              imap.expunge((expungeErr) => {
+            // Try to move to Trash first (more reliable than expunge on many servers)
+            imap.move(uids, "Trash", (moveErr) => {
+              if (moveErr) {
+                // Fallback: try [Gmail]/Trash, then mark deleted + expunge
+                imap.move(uids, "[Gmail]/Trash", (gmailErr) => {
+                  if (gmailErr) {
+                    // Last resort: flag as deleted and expunge
+                    imap.addFlags(uids, "\\Deleted", (flagErr) => {
+                      if (flagErr) {
+                        imap.end();
+                        reject(flagErr);
+                        return;
+                      }
+                      imap.expunge((expungeErr) => {
+                        imap.end();
+                        if (expungeErr) reject(expungeErr);
+                        else resolve({ success: true, message: `Deleted ${uids.length} email(s)` });
+                      });
+                    });
+                  } else {
+                    imap.end();
+                    resolve({ success: true, message: `Deleted ${uids.length} email(s)` });
+                  }
+                });
+              } else {
                 imap.end();
-                if (expungeErr) {
-                  reject(expungeErr);
-                } else {
-                  resolve({ success: true, message: `Deleted ${uids.length} email(s)` });
-                }
-              });
+                resolve({ success: true, message: `Deleted ${uids.length} email(s)` });
+              }
             });
             break;
 
@@ -215,6 +229,15 @@ export async function POST(request: NextRequest) {
     // Invalidate cache after successful action
     const cacheKey = `email:inbox:${user.profile}:${body.accountId || "all"}`;
     await redis.del(cacheKey);
+
+    // Track deleted/archived email IDs so they don't reappear on re-fetch
+    if (body.action === "delete" || body.action === "archive") {
+      const hiddenKey = `email:hidden:${user.profile}`;
+      const hidden = (await redis.get(hiddenKey) as string[] | null) || [];
+      const updated = [...new Set([...hidden, ...body.emailIds])];
+      // Keep last 500 hidden IDs, expire after 30 days
+      await redis.set(hiddenKey, updated.slice(-500), { ex: 30 * 24 * 3600 });
+    }
 
     return Response.json(result);
   } catch (error: any) {

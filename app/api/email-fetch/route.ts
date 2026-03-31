@@ -208,10 +208,25 @@ export async function GET(request: NextRequest) {
     // Sort by date (newest first)
     allEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Cache in Redis for 1 hour (3600 seconds)
-    await redis.set(cacheKey, allEmails, { ex: 3600 });
+    // Filter out previously deleted/archived emails
+    const hiddenKey = `email:hidden:${user.profile}`;
+    const hiddenIds = (await redis.get(hiddenKey) as string[] | null) || [];
+    const hiddenSet = new Set(hiddenIds);
+    const filteredEmails = hiddenIds.length > 0
+      ? allEmails.filter((e) => !hiddenSet.has(e.id))
+      : allEmails;
 
-    return Response.json({ emails: allEmails, count: allEmails.length, cached: false });
+    // Also filter out blocked senders
+    const settingsData = await redis.get(REDIS_KEYS.emailSettings(user.profile)) as any;
+    const blockedSenders: string[] = settingsData?.blockedSenders || [];
+    const finalEmails = blockedSenders.length > 0
+      ? filteredEmails.filter((e) => !blockedSenders.some((s) => e.from.includes(s)))
+      : filteredEmails;
+
+    // Cache in Redis for 1 hour (3600 seconds)
+    await redis.set(cacheKey, finalEmails, { ex: 3600 });
+
+    return Response.json({ emails: finalEmails, count: finalEmails.length, cached: false });
   } catch (error: any) {
     console.error("Email fetch error:", error);
     
