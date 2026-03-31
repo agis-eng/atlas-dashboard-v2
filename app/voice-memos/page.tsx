@@ -30,6 +30,8 @@ interface VoiceMemo {
   notionUrl: string;
   topics: string[];
   actionItems: string[];
+  source?: "processed" | "icloud";
+  fileSize?: number;
 }
 
 export default function VoiceMemosPage() {
@@ -163,6 +165,11 @@ export default function VoiceMemosPage() {
                         >
                           {memo.type}
                         </Badge>
+                        {memo.source === "icloud" && (
+                          <Badge variant="secondary" className="text-xs shrink-0 bg-orange-500/10 text-orange-600">
+                            New Recording
+                          </Badge>
+                        )}
                         {memo.projectMatch && (
                           <Badge variant="outline" className="text-xs shrink-0">
                             {memo.projectMatch}
