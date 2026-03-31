@@ -298,12 +298,15 @@ function RecordingCard({
 
           <div className="flex items-center gap-2 shrink-0">
             {recording.url && (
-              <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
-                <a href={recording.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-3 w-3 mr-1" />
-                  Open
-                </a>
-              </Button>
+              <a
+                href={recording.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center h-7 px-2 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                Open
+              </a>
             )}
           </div>
         </div>
@@ -370,3 +373,4 @@ function RecordingCard({
     </Card>
   );
 }
+
