@@ -691,7 +691,11 @@ export default function EmailPage() {
       });
       setShowBrainSelector(false);
       await loadBrains();
-      toast.success(`Added ${selectedEmail.from} to brain`);
+
+      // Auto-archive the email after adding to brain
+      await handleArchiveEmail(selectedEmail.id);
+      toast.success(`Added ${selectedEmail.from} to brain & archived email`);
+      setSelectedEmail(null);
     } catch {
       toast.error("Failed to add to brain");
     }
