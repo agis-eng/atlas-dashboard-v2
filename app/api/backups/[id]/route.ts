@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
-import { getSessionUserFromRequest } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 
@@ -12,6 +11,7 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -40,6 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -72,6 +73,7 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
