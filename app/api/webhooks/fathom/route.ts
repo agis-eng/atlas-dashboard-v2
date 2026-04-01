@@ -260,15 +260,26 @@ export async function POST(request: NextRequest) {
     let body: any;
     try {
       body = JSON.parse(rawBody.toString("utf8"));
-    } catch {
+    } catch (parseErr) {
+      console.error("Fathom webhook: invalid JSON", rawBody.toString("utf8").substring(0, 500));
       return Response.json({ error: "Invalid JSON" }, { status: 400 });
     }
+
+    // Log the full payload structure for debugging
+    console.log("Fathom webhook received:", JSON.stringify({
+      event: body?.event,
+      type: body?.type,
+      topLevelKeys: Object.keys(body || {}),
+      payloadKeys: Object.keys(body?.payload || body?.data || {}),
+      hasId: !!(body?.payload?.id || body?.payload?.data?.id || body?.id || body?.data?.id),
+    }));
 
     // Fathom payload: { event, payload: { id, title, ended_at, attendees, summary, transcript, action_items } }
     const payload = body?.payload || body;
     const d = payload?.data || payload;
 
     if (!d?.id) {
+      console.error("Fathom webhook: missing id. Full body keys:", JSON.stringify(Object.keys(body || {})), "payload keys:", JSON.stringify(Object.keys(payload || {})), "d keys:", JSON.stringify(Object.keys(d || {})));
       return Response.json({ error: "Invalid payload: missing id" }, { status: 400 });
     }
 
