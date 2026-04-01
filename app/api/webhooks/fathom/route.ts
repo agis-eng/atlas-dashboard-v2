@@ -265,14 +265,14 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    // Log the full payload structure for debugging
-    console.log("Fathom webhook received:", JSON.stringify({
-      event: body?.event,
-      type: body?.type,
-      topLevelKeys: Object.keys(body || {}),
-      payloadKeys: Object.keys(body?.payload || body?.data || {}),
-      hasId: !!(body?.payload?.id || body?.payload?.data?.id || body?.id || body?.data?.id),
-    }));
+    // Save raw payload to Redis for debugging
+    const redis2 = getRedis();
+    await redis2.set("fathom:debug:last_payload", {
+      receivedAt: new Date().toISOString(),
+      body,
+    }, { ex: 86400 });
+
+    console.log("Fathom webhook keys:", Object.keys(body || {}).join(","));
 
     // Fathom payload: { event, payload: { id, title, ended_at, attendees, summary, transcript, action_items } }
     const payload = body?.payload || body;
