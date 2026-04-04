@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
 
@@ -68,6 +68,63 @@ export async function GET(request: Request) {
     console.error("Projects API error:", error);
     return Response.json(
       { error: "Failed to load projects", projects: [], details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { name, clientId, owner, stage, status, summary, previewUrl, liveUrl, repoUrl, priority } = body;
+
+    if (!name) {
+      return Response.json({ error: "Name is required" }, { status: 400 });
+    }
+
+    // Generate an id from clientId and name (or just name)
+    const slug = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const id = clientId
+      ? `${slug(clientId)}-${slug(name)}`
+      : slug(name);
+
+    const newProject: YamlProject = {
+      id,
+      name,
+      ...(clientId && { clientId }),
+      ...(owner && { owner }),
+      ...(stage && { stage }),
+      ...(status && { status }),
+      ...(summary && { summary }),
+      ...(previewUrl && { previewUrl }),
+      ...(liveUrl && { liveUrl }),
+      ...(repoUrl && { repoUrl }),
+      ...(priority && { priority }),
+      lastUpdate: new Date().toISOString().split("T")[0],
+    };
+
+    const projectsPath = join(process.cwd(), "data", "projects.yaml");
+    const fileContents = await readFile(projectsPath, "utf8");
+    const data = yaml.load(fileContents) as { projects: YamlProject[] };
+
+    const projects = data.projects || [];
+
+    // Check for duplicate id
+    if (projects.some((p) => p.id === id)) {
+      return Response.json({ error: "A project with this ID already exists" }, { status: 409 });
+    }
+
+    projects.push(newProject);
+
+    const updatedYaml = yaml.dump({ projects }, { lineWidth: -1 });
+    await writeFile(projectsPath, updatedYaml, "utf8");
+
+    return Response.json(newProject, { status: 201 });
+  } catch (error: any) {
+    console.error("Create project error:", error);
+    return Response.json(
+      { error: "Failed to create project", details: error.message },
       { status: 500 }
     );
   }
