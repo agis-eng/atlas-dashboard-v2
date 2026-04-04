@@ -16,6 +16,7 @@ import {
   Users,
   ListChecks,
   Tag,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -46,9 +47,11 @@ export default function VoiceMemosPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<any[]>([]);
 
   useEffect(() => {
     loadMemos();
+    loadProjects();
   }, []);
 
   async function loadMemos() {
@@ -63,6 +66,43 @@ export default function VoiceMemosPage() {
       console.error("Failed to load voice memos:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadProjects() {
+    try {
+      const res = await fetch("/api/projects");
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.projects || []);
+      }
+    } catch {}
+  }
+
+  async function deleteMemo(id: string) {
+    try {
+      await fetch(`/api/voice-memos/${id}`, { method: "DELETE" });
+      setMemos((prev) => prev.filter((m) => m.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    } catch {
+      alert("Failed to delete memo");
+    }
+  }
+
+  async function assignProject(memoId: string, projectId: string) {
+    try {
+      await fetch(`/api/voice-memos/${memoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectMatch: projectId }),
+      });
+      setMemos((prev) =>
+        prev.map((m) =>
+          m.id === memoId ? { ...m, projectMatch: projectId } : m
+        )
+      );
+    } catch {
+      alert("Failed to assign project");
     }
   }
 
@@ -312,6 +352,38 @@ export default function VoiceMemosPage() {
                           </div>
                         </div>
                       )}
+
+                      {/* Actions: Assign Project + Delete */}
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <select
+                          className="h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground flex-1"
+                          value={memo.projectMatch || ""}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            assignProject(memo.id, e.target.value);
+                          }}
+                        >
+                          <option value="">Assign to project...</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteMemo(memo.id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
 
                       {/* Processing info */}
                       {memo.processedAt && (
