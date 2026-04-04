@@ -111,22 +111,41 @@ export async function GET(request: NextRequest) {
       // YAML file might not exist
     }
 
+    // Load AI-processed memos from Redis
+    const { getRedis } = await import("@/lib/redis");
+    const redis = getRedis();
+    const processedMemos = ((await redis.get("voice-memos:processed")) as any[]) || [];
+
     // Scan iCloud Drive for new recordings
     const icloudMemos = scanICloudRecordings();
 
-    // Merge: YAML memos + iCloud recordings not already in YAML
-    const yamlDates = new Set(
-      yamlMemos.map((m) => new Date(m.date).toDateString())
-    );
-    const newRecordings = icloudMemos.filter(
-      (r) => !yamlDates.has(new Date(r.date).toDateString())
-    );
+    // Build a set of all known IDs (YAML + processed)
+    const knownIds = new Set([
+      ...yamlMemos.map((m) => m.id),
+      ...processedMemos.map((m: any) => m.id),
+    ]);
 
-    const allMemos = [...yamlMemos, ...newRecordings].sort(
+    // iCloud recordings not yet processed or in YAML
+    const newRecordings = icloudMemos.filter((r) => !knownIds.has(r.id));
+
+    // Merge all sources: processed first (richest data), then YAML, then raw iCloud
+    const allMemos = [
+      ...processedMemos.map((m: any) => ({ ...m, source: "processed-local" })),
+      ...yamlMemos,
+      ...newRecordings,
+    ].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    return Response.json({ memos: allMemos });
+    // Deduplicate by ID
+    const seen = new Set<string>();
+    const deduped = allMemos.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+
+    return Response.json({ memos: deduped });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
