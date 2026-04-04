@@ -54,15 +54,27 @@ find "$ICLOUD_DIR" -name "*.m4a" -type f | while read -r file; do
 
   echo "🔊 Processing: $datedir/$filename ($(( filesize / 1024 ))KB)"
 
-  # Step 1: Transcribe with Whisper
+  # Step 1: Convert m4a to wav (Whisper needs wav/flac/mp3)
+  wav_file="$TRANSCRIPT_DIR/${memo_id}.wav"
+  echo "   🔄 Converting to WAV..."
+  ffmpeg -i "$file" -ar 16000 -ac 1 "$wav_file" -y 2>/dev/null
+  if [ ! -f "$wav_file" ]; then
+    echo "   ❌ Conversion failed, skipping"
+    continue
+  fi
+
+  # Step 2: Transcribe with Whisper
   echo "   📝 Transcribing..."
   "$WHISPER" \
-    --file-name "$file" \
+    --file-name "$wav_file" \
     --device-id mps \
     --transcript-path "$transcript_file" \
     --batch-size 4 \
     --timestamp chunk \
     2>/dev/null
+
+  # Clean up wav
+  rm -f "$wav_file"
 
   if [ ! -f "$transcript_file" ]; then
     echo "   ❌ Transcription failed, skipping"
