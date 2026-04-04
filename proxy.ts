@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { decryptSessionFromCookie } from "@/lib/session";
 
 const PUBLIC_PATHS = ["/login", "/register"];
-const PUBLIC_PREFIXES = ["/api/auth/", "/api/webhooks/", "/_next/", "/favicon.ico"];
+const PUBLIC_PREFIXES = ["/api/auth/", "/api/webhooks/", "/api/voice-memos/process", "/_next/", "/favicon.ico"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
