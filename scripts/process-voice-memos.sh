@@ -19,7 +19,14 @@ TRANSCRIPT_DIR="/tmp/atlas-transcripts"
 mkdir -p "$TRANSCRIPT_DIR"
 touch "$PROCESSED_LOG"
 
-echo "🎙️  Voice Memo Processor"
+# Only run between 9am-9pm EST
+EST_HOUR=$(TZ="America/New_York" date +%H)
+if [ "$EST_HOUR" -lt 9 ] || [ "$EST_HOUR" -ge 21 ]; then
+  echo "⏸️  Outside operating hours (9am-9pm EST). Current: ${EST_HOUR}:00 EST"
+  exit 0
+fi
+
+echo "🎙️  Voice Memo Processor ($(TZ='America/New_York' date '+%I:%M %p EST'))"
 echo "   Scanning: $ICLOUD_DIR"
 echo "   Dashboard: $DASHBOARD_URL"
 echo ""

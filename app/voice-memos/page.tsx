@@ -26,12 +26,18 @@ interface VoiceMemo {
   type: string;
   speakers: string;
   projectMatch: string | null;
+  clientMatch?: string | null;
   summary: string;
   notionUrl: string;
   topics: string[];
   actionItems: string[];
-  source?: "processed" | "icloud";
+  source?: "processed" | "processed-local" | "icloud";
   fileSize?: number;
+  transcript?: string;
+  sentiment?: string;
+  keyDecisions?: string[];
+  mentionedPeople?: string[];
+  processedAt?: string;
 }
 
 export default function VoiceMemosPage() {
@@ -167,7 +173,25 @@ export default function VoiceMemosPage() {
                         </Badge>
                         {memo.source === "icloud" && (
                           <Badge variant="secondary" className="text-xs shrink-0 bg-orange-500/10 text-orange-600">
-                            New Recording
+                            Unprocessed
+                          </Badge>
+                        )}
+                        {memo.source === "processed-local" && (
+                          <Badge variant="secondary" className="text-xs shrink-0 bg-purple-500/10 text-purple-600">
+                            AI Processed
+                          </Badge>
+                        )}
+                        {memo.clientMatch && (
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {memo.clientMatch}
+                          </Badge>
+                        )}
+                        {memo.sentiment && memo.sentiment !== "neutral" && (
+                          <Badge variant="secondary" className={cn(
+                            "text-xs shrink-0",
+                            memo.sentiment === "positive" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+                          )}>
+                            {memo.sentiment}
                           </Badge>
                         )}
                         {memo.projectMatch && (
@@ -248,6 +272,52 @@ export default function VoiceMemosPage() {
                             ))}
                           </ul>
                         </div>
+                      )}
+
+                      {/* Key Decisions */}
+                      {memo.keyDecisions && memo.keyDecisions.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium mb-1.5">Key Decisions</p>
+                          <ul className="space-y-1">
+                            {memo.keyDecisions.map((d, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex gap-2">
+                                <span className="text-green-500 shrink-0">-</span>
+                                {d}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* People Mentioned */}
+                      {memo.mentionedPeople && memo.mentionedPeople.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium mb-1.5">People Mentioned</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {memo.mentionedPeople.map((p, i) => (
+                              <Badge key={i} variant="outline" className="text-xs font-normal">
+                                {p}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Transcript */}
+                      {memo.transcript && (
+                        <div>
+                          <p className="text-xs font-medium mb-1.5">Transcript</p>
+                          <div className="text-xs text-muted-foreground bg-muted/40 rounded p-2 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                            {memo.transcript}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Processing info */}
+                      {memo.processedAt && (
+                        <p className="text-[10px] text-muted-foreground/50">
+                          Processed {new Date(memo.processedAt).toLocaleString()}
+                        </p>
                       )}
                     </div>
                   )}
