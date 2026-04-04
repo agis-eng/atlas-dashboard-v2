@@ -9,6 +9,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Link from "next/link";
 import {
   ExternalLink,
@@ -17,7 +27,9 @@ import {
   Search,
   Filter,
   CheckCircle2,
+  Plus,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ProjectItem {
   id: string;
@@ -188,12 +200,59 @@ function ProjectCard({ project }: { project: ProjectItem }) {
   );
 }
 
+const STAGE_OPTIONS = ["Client", "Internal", "Lead", "Contractor", "Live", "Design", "QA", "Partner", "Active", "Done"];
+const PRIORITY_OPTIONS = ["high", "medium", "low"];
+
+const emptyForm = {
+  name: "",
+  clientId: "",
+  owner: "",
+  stage: "",
+  status: "",
+  summary: "",
+  previewUrl: "",
+  liveUrl: "",
+  repoUrl: "",
+  priority: "",
+};
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [formData, setFormData] = useState(emptyForm);
+
+  async function handleCreateProject() {
+    if (!formData.name.trim()) {
+      toast.error("Project name is required");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        toast.success("Project created");
+        setDialogOpen(false);
+        setFormData(emptyForm);
+        await loadProjects();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to create project");
+      }
+    } catch {
+      toast.error("Failed to create project");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => {
     loadProjects();
@@ -266,6 +325,125 @@ export default function ProjectsPage() {
               : `${filtered.length} of ${projects.length} projects`}
           </p>
         </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Project
+          </Button>
+          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>New Project</DialogTitle>
+              <DialogDescription>
+                Add a new project to your dashboard.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Name *</label>
+                <Input
+                  placeholder="Project name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Client ID</label>
+                  <Input
+                    placeholder="e.g. john-doe"
+                    value={formData.clientId}
+                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Owner</label>
+                  <Input
+                    placeholder="e.g. Anton"
+                    value={formData.owner}
+                    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Stage</label>
+                  <select
+                    value={formData.stage}
+                    onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="">Select stage</option>
+                    {STAGE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Priority</label>
+                  <select
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="">None</option>
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Status</label>
+                <Input
+                  placeholder="e.g. Active Client"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Summary</label>
+                <Textarea
+                  placeholder="Brief project description"
+                  value={formData.summary}
+                  onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Preview URL</label>
+                <Input
+                  placeholder="https://..."
+                  value={formData.previewUrl}
+                  onChange={(e) => setFormData({ ...formData, previewUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Live URL</label>
+                <Input
+                  placeholder="https://..."
+                  value={formData.liveUrl}
+                  onChange={(e) => setFormData({ ...formData, liveUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Repo URL</label>
+                <Input
+                  placeholder="https://github.com/..."
+                  value={formData.repoUrl}
+                  onChange={(e) => setFormData({ ...formData, repoUrl: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateProject} disabled={creating}>
+                {creating ? "Creating..." : "Create Project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="space-y-8">
