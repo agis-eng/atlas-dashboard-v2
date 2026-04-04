@@ -63,6 +63,12 @@ export async function POST(request: NextRequest) {
       .join(", ");
 
     // AI analysis of the transcript
+    // Sanitize transcript for prompt (remove problematic chars)
+    const cleanTranscript = transcript
+      .substring(0, 8000)
+      .replace(/\\/g, "")
+      .replace(/`/g, "'");
+
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2000,
@@ -71,8 +77,9 @@ export async function POST(request: NextRequest) {
           role: "user",
           content: `Analyze this voice memo transcript and extract structured information. Return ONLY valid JSON.
 
-Transcript:
-"${transcript.substring(0, 8000)}"
+<transcript>
+${cleanTranscript}
+</transcript>
 
 Known clients: ${clientList.substring(0, 2000)}
 Known projects: ${projectList.substring(0, 2000)}
