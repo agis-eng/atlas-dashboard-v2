@@ -27,60 +27,36 @@ export async function POST(request: NextRequest) {
     const meetings = await fetchAllMeetings();
 
     let imported = 0;
-    let rematched = 0;
     const recordings: FathomRecording[] = [];
 
     // Build lookup of Fathom meetings by ID for backfilling summaries
     const meetingById = new Map(meetings.map((m) => [m.id, m]));
 
-    // Re-run matching on existing recordings and backfill missing summaries
+    // Clean up existing recordings: strip old transcripts, backfill summaries
+    // (Skip re-matching to avoid Vercel timeout — only match new recordings)
     let summariesBackfilled = 0;
     for (const rec of existing || []) {
-      const wasManuallyAssigned = rec.projectId && rec.projectId !== rec.suggestedProjectId;
+      // Strip legacy transcript field from old records
+      delete (rec as any).transcript;
 
-      // Clear any projectId that was wrongly set by auto-matching (projectId is for manual assignment only)
-      if (!wasManuallyAssigned && rec.projectId && rec.projectId === rec.suggestedProjectId) {
-        rec.projectId = null;
-        rec.projectName = null;
-      }
-
-      // Backfill missing summaries from the bulk-fetched meetings (which now include summaries)
-      if (!rec.summary) {
-        const fathomMeeting = meetingById.get(rec.id);
-        if (fathomMeeting) {
-          const summary = fathomMeeting.default_summary?.markdown_formatted
-            || fathomMeeting.default_summary?.plain_text
-            || null;
-          if (summary) {
-            rec.summary = summary;
-            summariesBackfilled++;
-          }
-          if ((!rec.actionItems || rec.actionItems.length === 0) && fathomMeeting.action_items) {
-            rec.actionItems = fathomMeeting.action_items
-              .map((a) => a.description || a.text || "")
-              .filter(Boolean);
-          }
+      // Backfill summaries and action items from the bulk-fetched meetings
+      const fathomMeeting = meetingById.get(rec.id);
+      if (fathomMeeting) {
+        const summary = fathomMeeting.default_summary?.markdown_formatted
+          || fathomMeeting.default_summary?.plain_text
+          || null;
+        if (summary && !rec.summary) {
+          rec.summary = summary;
+          summariesBackfilled++;
+        }
+        if ((!rec.actionItems || rec.actionItems.length === 0) && fathomMeeting.action_items) {
+          rec.actionItems = fathomMeeting.action_items
+            .map((a) => a.description || a.text || "")
+            .filter(Boolean);
         }
       }
 
-      if (wasManuallyAssigned) {
-        recordings.push(rec);
-      } else {
-        // Re-run matching with updated logic
-        const match = await suggestProjectForRecording(
-          rec.attendeeEmails,
-          rec.participants
-        );
-        console.log(`[matching] ${rec.title}: participants=${JSON.stringify(rec.participants)}, emails=${JSON.stringify(rec.attendeeEmails)}, match=${match?.projectName || "none"}`);
-        const updated: FathomRecording = {
-          ...rec,
-          suggestedProjectId: match?.projectId || null,
-          suggestedProjectName: match?.projectName || null,
-          matchConfidence: match?.confidence || null,
-        };
-        recordings.push(updated);
-        rematched++;
-      }
+      recordings.push(rec);
     }
 
     // Import new meetings (summaries now included from list API)
@@ -125,7 +101,6 @@ export async function POST(request: NextRequest) {
     return Response.json({
       success: true,
       imported,
-      rematched,
       summariesBackfilled,
       total: recordings.length,
       alreadyExisted: meetings.length - imported,
