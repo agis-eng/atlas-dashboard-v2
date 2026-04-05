@@ -23,9 +23,24 @@ const INTERNAL_NAMES = [
   "anton hocking",
 ];
 
+// Internal email domains — names that are emails from these domains get filtered
+const INTERNAL_DOMAINS = ["manifestbot.ai", "manifestic.com"];
+
 function isInternalName(name: string): boolean {
   const lower = name.toLowerCase().trim();
-  return INTERNAL_NAMES.some((internal) => lower === internal || lower.includes(internal) || internal.includes(lower));
+  // Filter known internal team members
+  if (INTERNAL_NAMES.some((internal) => lower === internal || lower.includes(internal) || internal.includes(lower))) {
+    return true;
+  }
+  // Filter names that are actually internal email addresses (Fathom sometimes uses email as name)
+  if (INTERNAL_DOMAINS.some((d) => lower.includes(d))) {
+    return true;
+  }
+  // Filter generic names like "Unknown"
+  if (lower === "unknown" || lower.length < 2) {
+    return true;
+  }
+  return false;
 }
 
 async function loadYaml<T>(filename: string): Promise<T> {

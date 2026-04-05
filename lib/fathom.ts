@@ -58,6 +58,20 @@ export async function listMeetings(options?: {
   return res.json();
 }
 
+export async function getMeeting(meetingId: string): Promise<FathomMeeting> {
+  const url = `${FATHOM_API_BASE}/meetings/${meetingId}`;
+  const res = await fetch(url, {
+    headers: { "X-Api-Key": getApiKey() },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Fathom API ${res.status}: ${text}`);
+  }
+
+  return res.json();
+}
+
 export async function fetchAllMeetings(options?: {
   createdAfter?: string;
   createdBefore?: string;

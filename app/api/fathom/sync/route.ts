@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
-import { fetchAllMeetings, normalizeMeeting } from "@/lib/fathom";
+import { fetchAllMeetings, getMeeting, normalizeMeeting } from "@/lib/fathom";
 import { suggestProjectForRecording } from "@/lib/matching";
 import type { FathomRecording, FathomSyncMeta } from "@/lib/redis";
 
@@ -30,22 +30,48 @@ export async function POST(request: NextRequest) {
     let rematched = 0;
     const recordings: FathomRecording[] = [];
 
-    // Re-run matching on existing recordings that were auto-suggested (not manually assigned)
+    // Re-run matching on existing recordings and backfill missing summaries
+    let summariesBackfilled = 0;
     for (const rec of existing || []) {
       const wasManuallyAssigned = rec.projectId && rec.projectId !== rec.suggestedProjectId;
+
+      // Clear any projectId that was wrongly set by auto-matching (projectId is for manual assignment only)
+      if (!wasManuallyAssigned && rec.projectId && rec.projectId === rec.suggestedProjectId) {
+        rec.projectId = null;
+        rec.projectName = null;
+      }
+
+      // Backfill missing summaries by fetching individual meeting details
+      if (!rec.summary) {
+        try {
+          const detail = await getMeeting(rec.id);
+          const summary = detail.default_summary?.markdown_formatted
+            || detail.default_summary?.plain_text
+            || null;
+          if (summary) {
+            rec.summary = summary;
+            summariesBackfilled++;
+          }
+          // Also backfill action items if missing
+          if ((!rec.actionItems || rec.actionItems.length === 0) && detail.action_items) {
+            rec.actionItems = detail.action_items
+              .map((a) => a.description || a.text || "")
+              .filter(Boolean);
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch details for meeting ${rec.id}:`, e);
+        }
+      }
+
       if (wasManuallyAssigned) {
         recordings.push(rec);
       } else {
-        // Clear any projectId that was wrongly set by auto-matching (projectId is for manual assignment only)
-        if (rec.projectId && rec.projectId === rec.suggestedProjectId) {
-          rec.projectId = null;
-          rec.projectName = null;
-        }
         // Re-run matching with updated logic
         const match = await suggestProjectForRecording(
           rec.attendeeEmails,
           rec.participants
         );
+        console.log(`[matching] ${rec.title}: participants=${JSON.stringify(rec.participants)}, emails=${JSON.stringify(rec.attendeeEmails)}, match=${match?.projectName || "none"}`);
         const updated: FathomRecording = {
           ...rec,
           suggestedProjectId: match?.projectId || null,
@@ -57,11 +83,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Import new meetings
+    // Import new meetings — fetch individually for full details (summaries, action items)
     for (const meeting of meetings) {
       if (existingIds.has(meeting.id)) continue;
 
-      const { recording, fullTranscript } = normalizeMeeting(meeting, "api-sync");
+      // Fetch full meeting details to get summary and action items
+      let fullMeeting = meeting;
+      if (!meeting.default_summary) {
+        try {
+          fullMeeting = await getMeeting(meeting.id);
+        } catch (e) {
+          console.warn(`Failed to fetch full details for meeting ${meeting.id}, using list data`);
+        }
+      }
+
+      const { recording, fullTranscript } = normalizeMeeting(fullMeeting, "api-sync");
 
       // Run auto-matching
       const match = await suggestProjectForRecording(
@@ -105,6 +141,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imported,
       rematched,
+      summariesBackfilled,
       total: recordings.length,
       alreadyExisted: meetings.length - imported,
     });
