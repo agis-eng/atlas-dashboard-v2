@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
-import { fetchAllMeetings, getMeeting, normalizeMeeting } from "@/lib/fathom";
+import { fetchAllMeetings, normalizeMeeting } from "@/lib/fathom";
 import { suggestProjectForRecording } from "@/lib/matching";
 import type { FathomRecording, FathomSyncMeta } from "@/lib/redis";
 
@@ -30,6 +30,9 @@ export async function POST(request: NextRequest) {
     let rematched = 0;
     const recordings: FathomRecording[] = [];
 
+    // Build lookup of Fathom meetings by ID for backfilling summaries
+    const meetingById = new Map(meetings.map((m) => [m.id, m]));
+
     // Re-run matching on existing recordings and backfill missing summaries
     let summariesBackfilled = 0;
     for (const rec of existing || []) {
@@ -41,25 +44,22 @@ export async function POST(request: NextRequest) {
         rec.projectName = null;
       }
 
-      // Backfill missing summaries by fetching individual meeting details
+      // Backfill missing summaries from the bulk-fetched meetings (which now include summaries)
       if (!rec.summary) {
-        try {
-          const detail = await getMeeting(rec.id);
-          const summary = detail.default_summary?.markdown_formatted
-            || detail.default_summary?.plain_text
+        const fathomMeeting = meetingById.get(rec.id);
+        if (fathomMeeting) {
+          const summary = fathomMeeting.default_summary?.markdown_formatted
+            || fathomMeeting.default_summary?.plain_text
             || null;
           if (summary) {
             rec.summary = summary;
             summariesBackfilled++;
           }
-          // Also backfill action items if missing
-          if ((!rec.actionItems || rec.actionItems.length === 0) && detail.action_items) {
-            rec.actionItems = detail.action_items
+          if ((!rec.actionItems || rec.actionItems.length === 0) && fathomMeeting.action_items) {
+            rec.actionItems = fathomMeeting.action_items
               .map((a) => a.description || a.text || "")
               .filter(Boolean);
           }
-        } catch (e) {
-          console.warn(`Failed to fetch details for meeting ${rec.id}:`, e);
         }
       }
 
@@ -83,21 +83,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Import new meetings — fetch individually for full details (summaries, action items)
+    // Import new meetings (summaries now included from list API)
     for (const meeting of meetings) {
       if (existingIds.has(meeting.id)) continue;
 
-      // Fetch full meeting details to get summary and action items
-      let fullMeeting = meeting;
-      if (!meeting.default_summary) {
-        try {
-          fullMeeting = await getMeeting(meeting.id);
-        } catch (e) {
-          console.warn(`Failed to fetch full details for meeting ${meeting.id}, using list data`);
-        }
-      }
-
-      const { recording, fullTranscript } = normalizeMeeting(fullMeeting, "api-sync");
+      const { recording, fullTranscript } = normalizeMeeting(meeting, "api-sync");
 
       // Run auto-matching
       const match = await suggestProjectForRecording(

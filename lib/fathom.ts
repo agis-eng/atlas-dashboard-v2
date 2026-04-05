@@ -36,12 +36,14 @@ function getApiKey(): string {
 export async function listMeetings(options?: {
   cursor?: string;
   includeTranscript?: boolean;
+  includeSummary?: boolean;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<FathomMeetingResponse> {
   const params = new URLSearchParams();
   if (options?.cursor) params.set("cursor", options.cursor);
   if (options?.includeTranscript) params.set("include_transcript", "true");
+  if (options?.includeSummary) params.set("include_summary", "true");
   if (options?.createdAfter) params.set("created_after", options.createdAfter);
   if (options?.createdBefore) params.set("created_before", options.createdBefore);
 
@@ -82,7 +84,7 @@ export async function fetchAllMeetings(options?: {
   do {
     const res = await listMeetings({
       cursor,
-      includeTranscript: true,
+      includeSummary: true,
       createdAfter: options?.createdAfter,
       createdBefore: options?.createdBefore,
     });
