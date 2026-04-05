@@ -52,6 +52,10 @@ export const REDIS_KEYS = {
   memoryDates: (profile: string) => `memory:dates:${profile}`,
   memoryByProject: (projectId: string) => `memory:project:${projectId}`,
   memoryTags: (profile: string) => `memory:tags:${profile}`,
+
+  // Listings
+  listings: "listings:all",
+  listing: (id: string) => `listing:${id}`,
 } as const;
 
 // Types
@@ -111,7 +115,6 @@ export interface FathomRecording {
   attendeeEmails: string[];
   summary: string | null;
   actionItems: string[];
-  transcript?: string; // truncated preview; full transcript stored separately
   url: string | null;
   projectId: string | null;
   projectName: string | null;
@@ -140,4 +143,30 @@ export interface MemoryEntry {
   projectIds: string[];
   tags: string[];
   type: "discussion" | "decision" | "update" | "note";
+}
+
+export interface ListingDraft {
+  id: string;
+  photos: string[];
+  title: string;
+  description: string;
+  price: number | null;
+  condition: string;
+  category: string;
+  platforms: ("ebay" | "mercari" | "facebook")[];
+  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
+  ebayListingId?: string;
+  mercariListingUrl?: string;
+  facebookListingUrl?: string;
+  aiAnalysis?: {
+    suggestedTitle: string;
+    suggestedDescription: string;
+    suggestedPrice: number;
+    suggestedCategory: string;
+    suggestedCondition: string;
+    confidence: string;
+  };
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 }

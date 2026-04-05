@@ -25,7 +25,6 @@ interface Recording {
   participants?: string[];
   summary?: string;
   actionItems?: string[];
-  transcript?: string;
   url?: string;
   projectId?: string;
   projectName?: string;
@@ -219,15 +218,6 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
                           </li>
                         ))}
                       </ul>
-                    </div>
-                  )}
-
-                  {rec.transcript && (
-                    <div>
-                      <p className="text-xs font-medium mb-1">Transcript</p>
-                      <div className="text-xs text-muted-foreground bg-muted/40 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                        {rec.transcript}
-                      </div>
                     </div>
                   )}
 

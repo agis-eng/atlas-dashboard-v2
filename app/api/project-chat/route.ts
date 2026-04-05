@@ -205,7 +205,7 @@ ${voiceMemos
 - **Summary:** ${m.summary}
 ${(m.actionItems as string[] || []).length ? `- **Action Items:** ${(m.actionItems as string[]).map((a) => `\n  - ${a}`).join("")}` : ""}
 ${(m.keyDecisions as string[] || []).length ? `- **Key Decisions:** ${(m.keyDecisions as string[]).map((d) => `\n  - ${d}`).join("")}` : ""}
-${m.transcript ? `- **Transcript excerpt:** ${(m.transcript as string).substring(0, 1000)}${(m.transcript as string).length > 1000 ? "..." : ""}` : ""}`
+`
   )
   .join("\n\n")}`
     : ""

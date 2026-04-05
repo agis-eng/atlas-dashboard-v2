@@ -135,7 +135,6 @@ async function updateCallStats(pageId: string, date: string) {
 // ── Build Notion toggle block with call content ───────────────────────────────
 function buildCallToggleBlock({
   summary,
-  transcript,
   actionItems,
   attendees,
   meetingDate,
@@ -143,7 +142,6 @@ function buildCallToggleBlock({
   recordingUrl,
 }: {
   summary: string;
-  transcript: string;
   actionItems: string[];
   attendees: Array<{ name?: string; email?: string }>;
   meetingDate: string;
@@ -216,24 +214,6 @@ function buildCallToggleBlock({
     }
   }
 
-  if (transcript) {
-    children.push({
-      object: "block",
-      type: "heading_3",
-      heading_3: { rich_text: [{ type: "text", text: { content: "Full Transcript" } }] },
-    });
-    // Chunk at 1900 chars (Notion 2000 char limit per rich_text block)
-    for (let i = 0; i < transcript.length; i += 1900) {
-      children.push({
-        object: "block",
-        type: "paragraph",
-        paragraph: {
-          rich_text: [{ type: "text", text: { content: transcript.slice(i, i + 1900) } }],
-        },
-      });
-    }
-  }
-
   return {
     object: "block",
     type: "toggle",
@@ -286,7 +266,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: err.message }, { status: 400 });
     }
 
-    const { recording, fullTranscript } = normalized;
+    const { recording } = normalized;
 
     // Run auto-matching for project suggestion
     const match = await suggestProjectForRecording(
@@ -311,11 +291,6 @@ export async function POST(request: NextRequest) {
       recordings.unshift(fullRecording);
       if (recordings.length > 500) recordings.splice(500);
       await redis.set(key, recordings);
-
-      // Store full transcript separately
-      if (fullTranscript && fullTranscript.length > 500) {
-        await redis.set(REDIS_KEYS.fathomTranscript(fullRecording.id), fullTranscript);
-      }
     }
 
     // ── Notion integration ────────────────────────────────────────────────────
@@ -326,7 +301,6 @@ export async function POST(request: NextRequest) {
     const meetingTitle = fullRecording.title;
     const meetingDate = (fullRecording.date || new Date().toISOString()).split("T")[0];
     const summary = fullRecording.summary || "";
-    const transcript = fullTranscript;
     const actionItems = fullRecording.actionItems;
     const recordingUrl = fullRecording.url || "";
 
@@ -344,7 +318,6 @@ export async function POST(request: NextRequest) {
 
       const toggleBlock = buildCallToggleBlock({
         summary,
-        transcript,
         actionItems,
         attendees,
         meetingDate,

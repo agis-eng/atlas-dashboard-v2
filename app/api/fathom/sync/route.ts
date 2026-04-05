@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     for (const meeting of meetings) {
       if (existingIds.has(meeting.id)) continue;
 
-      const { recording, fullTranscript } = normalizeMeeting(meeting, "api-sync");
+      const { recording } = normalizeMeeting(meeting, "api-sync");
 
       // Run auto-matching
       const match = await suggestProjectForRecording(
@@ -103,11 +103,6 @@ export async function POST(request: NextRequest) {
       };
 
       recordings.push(fullRecording);
-
-      // Store full transcript separately if it's long
-      if (fullTranscript && fullTranscript.length > 500) {
-        await redis.set(REDIS_KEYS.fathomTranscript(meeting.id), fullTranscript);
-      }
 
       imported++;
     }

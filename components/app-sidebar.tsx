@@ -23,6 +23,7 @@ import {
   Video,
   Mic,
   Film,
+  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ const navItems = [
   { icon: Mic, label: "Voice Memos", href: "/voice-memos" },
   { icon: Film, label: "Recordings", href: "/recordings" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
+  { icon: Tag, label: "Listings", href: "/listings" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Activity, label: "Monitor", href: "/monitor" },
   { icon: Settings, label: "Settings", href: "/settings" },

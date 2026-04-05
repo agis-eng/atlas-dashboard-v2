@@ -22,7 +22,6 @@ interface FathomMeeting {
   recording_end_time?: string;
   calendar_invitees?: Array<{ name?: string; email?: string }>;
   recorded_by?: { name?: string; email?: string; team?: string };
-  transcript?: Array<{ speaker?: string; text?: string; start_time?: number }>;
   default_summary?: { markdown_formatted?: string; plain_text?: string };
   action_items?: Array<{ description?: string; text?: string; assignee?: string }>;
 }
@@ -35,14 +34,12 @@ function getApiKey(): string {
 
 export async function listMeetings(options?: {
   cursor?: string;
-  includeTranscript?: boolean;
   includeSummary?: boolean;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<FathomMeetingResponse> {
   const params = new URLSearchParams();
   if (options?.cursor) params.set("cursor", options.cursor);
-  if (options?.includeTranscript) params.set("include_transcript", "true");
   if (options?.includeSummary) params.set("include_summary", "true");
   if (options?.createdAfter) params.set("created_after", options.createdAfter);
   if (options?.createdBefore) params.set("created_before", options.createdBefore);
@@ -103,15 +100,6 @@ function computeDuration(meeting: FathomMeeting): number | undefined {
   return diff > 0 ? Math.round(diff) : undefined;
 }
 
-function formatTranscript(
-  transcript?: Array<{ speaker?: string; text?: string }>
-): string {
-  if (!transcript || transcript.length === 0) return "";
-  return transcript
-    .map((t) => `${t.speaker || "Speaker"}: ${t.text || ""}`)
-    .join("\n");
-}
-
 function isInternalEmail(email: string): boolean {
   return INTERNAL_DOMAINS.some((d) => email.toLowerCase().includes(d));
 }
@@ -119,7 +107,7 @@ function isInternalEmail(email: string): boolean {
 export function normalizeMeeting(
   meeting: FathomMeeting,
   source: "webhook" | "api-sync"
-): { recording: Omit<FathomRecording, "suggestedProjectId" | "suggestedProjectName" | "matchConfidence">; fullTranscript: string } {
+): { recording: Omit<FathomRecording, "suggestedProjectId" | "suggestedProjectName" | "matchConfidence"> } {
   const invitees = meeting.calendar_invitees || [];
   const allParticipants = invitees
     .map((a) => a.name || a.email || "Unknown")
@@ -133,14 +121,11 @@ export function normalizeMeeting(
     meeting.default_summary?.plain_text ||
     null;
 
+  console.log(`[fathom] normalizeMeeting ${meeting.id}: default_summary keys=${JSON.stringify(Object.keys(meeting.default_summary || {}))}, summary=${summary ? summary.slice(0, 80) + "..." : "null"}`);
+
   const actionItems = (meeting.action_items || [])
     .map((a) => a.description || a.text || "")
     .filter(Boolean);
-
-  const fullTranscript = formatTranscript(meeting.transcript);
-  const transcriptPreview = fullTranscript.length > 500
-    ? fullTranscript.slice(0, 500) + "..."
-    : fullTranscript;
 
   const recording = {
     id: meeting.id,
@@ -151,7 +136,6 @@ export function normalizeMeeting(
     attendeeEmails: allEmails,
     summary,
     actionItems,
-    transcript: transcriptPreview || undefined,
     url: meeting.share_url || meeting.url || null,
     projectId: null,
     projectName: null,
@@ -160,12 +144,11 @@ export function normalizeMeeting(
     source,
   };
 
-  return { recording, fullTranscript };
+  return { recording };
 }
 
 export function normalizeWebhookPayload(body: any): {
   recording: Omit<FathomRecording, "suggestedProjectId" | "suggestedProjectName" | "matchConfidence">;
-  fullTranscript: string;
 } {
   const payload = body?.payload || body;
   const d = payload?.data || payload;
@@ -180,17 +163,6 @@ export function normalizeWebhookPayload(body: any): {
 
   const summary: string = d.summary || d.ai_notes?.summary ||
     d.default_summary?.markdown_formatted || d.default_summary?.plain_text || "";
-
-  const rawTranscript = d.transcript || d.full_transcript || "";
-  const fullTranscript = typeof rawTranscript === "string"
-    ? rawTranscript
-    : Array.isArray(rawTranscript)
-      ? formatTranscript(rawTranscript)
-      : "";
-
-  const transcriptPreview = fullTranscript.length > 500
-    ? fullTranscript.slice(0, 500) + "..."
-    : fullTranscript;
 
   const actionItems: string[] = (d.action_items || d.ai_notes?.action_items || [])
     .map((a: any) => (typeof a === "string" ? a : a.text || a.description || ""))
@@ -213,7 +185,6 @@ export function normalizeWebhookPayload(body: any): {
     attendeeEmails: allEmails,
     summary: summary || null,
     actionItems,
-    transcript: transcriptPreview || undefined,
     url: recordingUrl || null,
     projectId: null,
     projectName: null,
@@ -222,5 +193,5 @@ export function normalizeWebhookPayload(body: any): {
     source: "webhook" as const,
   };
 
-  return { recording, fullTranscript };
+  return { recording };
 }

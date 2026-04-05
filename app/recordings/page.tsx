@@ -35,7 +35,6 @@ interface FathomRecording {
   attendeeEmails?: string[];
   summary?: string;
   actionItems?: string[];
-  transcript?: string;
   url?: string;
   projectId?: string;
   projectName?: string;
@@ -541,15 +540,6 @@ function RecordingCard({
                   </div>
                 </div>
               )}
-
-            {recording.transcript && (
-              <div>
-                <p className="text-xs font-medium mb-1.5">Transcript Preview</p>
-                <div className="text-xs text-muted-foreground bg-muted/40 rounded p-2 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                  {recording.transcript}
-                </div>
-              </div>
-            )}
 
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2 border-t">

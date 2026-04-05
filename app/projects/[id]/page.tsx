@@ -864,7 +864,6 @@ export default function ProjectDetailPage({
     actionItems: string[];
     keyDecisions?: string[];
     sentiment?: string;
-    transcript?: string;
   }>>([]);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
