@@ -27,8 +27,37 @@ export async function POST(request: NextRequest) {
     const meetings = await fetchAllMeetings();
 
     let imported = 0;
-    const recordings: FathomRecording[] = [...(existing || [])];
+    let rematched = 0;
+    const recordings: FathomRecording[] = [];
 
+    // Re-run matching on existing recordings that were auto-suggested (not manually assigned)
+    for (const rec of existing || []) {
+      const wasManuallyAssigned = rec.projectId && rec.projectId !== rec.suggestedProjectId;
+      if (wasManuallyAssigned) {
+        recordings.push(rec);
+      } else {
+        // Re-run matching with updated logic
+        const match = await suggestProjectForRecording(
+          rec.attendeeEmails,
+          rec.participants
+        );
+        const updated: FathomRecording = {
+          ...rec,
+          suggestedProjectId: match?.projectId || null,
+          suggestedProjectName: match?.projectName || null,
+          matchConfidence: match?.confidence || null,
+        };
+        // If no manual override, also update the displayed project
+        if (!wasManuallyAssigned) {
+          updated.projectId = match?.projectId || null;
+          updated.projectName = match?.projectName || null;
+        }
+        recordings.push(updated);
+        rematched++;
+      }
+    }
+
+    // Import new meetings
     for (const meeting of meetings) {
       if (existingIds.has(meeting.id)) continue;
 
@@ -75,6 +104,7 @@ export async function POST(request: NextRequest) {
     return Response.json({
       success: true,
       imported,
+      rematched,
       total: recordings.length,
       alreadyExisted: meetings.length - imported,
     });

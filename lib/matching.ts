@@ -17,6 +17,17 @@ interface ProjectEntry {
   lastUpdate?: string;
 }
 
+// Internal team members to exclude from matching — these people are on every call
+const INTERNAL_NAMES = [
+  "erik laine",
+  "anton hocking",
+];
+
+function isInternalName(name: string): boolean {
+  const lower = name.toLowerCase().trim();
+  return INTERNAL_NAMES.some((internal) => lower === internal || lower.includes(internal) || internal.includes(lower));
+}
+
 async function loadYaml<T>(filename: string): Promise<T> {
   const filePath = join(process.cwd(), "data", filename);
   const contents = await readFile(filePath, "utf8");
@@ -29,6 +40,9 @@ export async function suggestProjectForRecording(
 ): Promise<{ projectId: string; projectName: string; confidence: "high" | "medium" } | null> {
   const { clients } = await loadYaml<{ clients: Client[] }>("clients.yaml");
   const { projects } = await loadYaml<{ projects: ProjectEntry[] }>("projects.yaml");
+
+  // Filter out internal team members from attendee names
+  const externalNames = attendeeNames.filter((n) => !isInternalName(n));
 
   const activeProjects = projects.filter(
     (p) => !p.archived && p.stage !== "done"
@@ -45,19 +59,19 @@ export async function suggestProjectForRecording(
   }
 
   // Strategy 1: Match attendee names against client names (high confidence)
-  // This is the most reliable since client contacts are mostly internal emails
-  for (const name of attendeeNames) {
+  // Uses exact word-part matching (not substring) to avoid false positives
+  for (const name of externalNames) {
     const nameLower = name.toLowerCase().trim();
     if (!nameLower || nameLower.length < 3) continue;
 
     for (const client of clients) {
       const clientNameLower = client.name.toLowerCase();
-      // Check if attendee name appears in client name or vice versa
       const nameParts = nameLower.split(/\s+/);
       const clientParts = clientNameLower.split(/\s+/);
 
+      // Require exact match on at least one name part (not substring)
       const match = nameParts.some(
-        (part) => part.length >= 3 && clientParts.some((cp) => cp.includes(part) || part.includes(cp))
+        (part) => part.length >= 3 && clientParts.some((cp) => cp === part)
       );
 
       if (match) {
@@ -74,15 +88,17 @@ export async function suggestProjectForRecording(
   }
 
   // Strategy 2: Match attendee names against project names (medium confidence)
-  for (const name of attendeeNames) {
+  for (const name of externalNames) {
     const nameLower = name.toLowerCase().trim();
     if (!nameLower || nameLower.length < 3) continue;
 
     const nameParts = nameLower.split(/\s+/);
     for (const proj of activeProjects) {
       const projNameLower = proj.name.toLowerCase();
+      const projParts = projNameLower.split(/\s+/);
+      // Require exact word match against project name parts
       const match = nameParts.some(
-        (part) => part.length >= 3 && projNameLower.includes(part)
+        (part) => part.length >= 3 && projParts.some((pp) => pp === part)
       );
       if (match) {
         return { projectId: proj.id, projectName: proj.name, confidence: "medium" };
