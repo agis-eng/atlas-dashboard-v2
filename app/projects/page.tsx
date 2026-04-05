@@ -118,7 +118,9 @@ function SitePreview({ url, projectId }: { url: string; projectId: string }) {
   );
 }
 
-function ProjectCard({ project }: { project: ProjectItem }) {
+const PRIORITY_CYCLE = ["low", "medium", "high", ""];
+
+function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPriorityChange: (id: string, priority: string) => void }) {
   return (
     <Link href={`/projects/${project.id}`} className="block">
       <Card className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
@@ -180,19 +182,31 @@ function ProjectCard({ project }: { project: ProjectItem }) {
                   : "No update date"}
               </span>
             </div>
-            {project.priority && (
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${
-                  project.priority === "high"
-                    ? "bg-red-500/10 text-red-500"
-                    : project.priority === "medium"
-                      ? "bg-yellow-500/10 text-yellow-500"
-                      : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {project.priority}
-              </span>
-            )}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const currentIdx = PRIORITY_CYCLE.indexOf(project.priority || "");
+                const next = PRIORITY_CYCLE[(currentIdx + 1) % PRIORITY_CYCLE.length];
+                onPriorityChange(project.id, next);
+                fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ priority: next }),
+                });
+              }}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase transition-colors hover:ring-1 hover:ring-foreground/20 ${
+                project.priority === "high"
+                  ? "bg-red-500/10 text-red-500"
+                  : project.priority === "medium"
+                    ? "bg-yellow-500/10 text-yellow-500"
+                    : project.priority === "low"
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-muted/50 text-muted-foreground/50"
+              }`}
+            >
+              {project.priority || "priority"}
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -307,7 +321,9 @@ export default function ProjectsPage() {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((project) => (
-          <ProjectCard key={project.id} project={project} />
+          <ProjectCard key={project.id} project={project} onPriorityChange={(id, priority) => {
+                setProjects((prev) => prev.map((p) => p.id === id ? { ...p, priority: priority || undefined } : p));
+              }} />
         ))}
       </div>
     );

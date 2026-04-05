@@ -17,6 +17,7 @@ import {
   ListChecks,
   Tag,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,8 @@ export default function VoiceMemosPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [processResult, setProcessResult] = useState<string | null>(null);
 
   useEffect(() => {
     loadMemos();
@@ -86,6 +89,31 @@ export default function VoiceMemosPage() {
       if (expandedId === id) setExpandedId(null);
     } catch {
       alert("Failed to delete memo");
+    }
+  }
+
+  const unprocessedCount = memos.filter((m) => m.source === "icloud").length;
+
+  async function processAll() {
+    setProcessing(true);
+    setProcessResult(null);
+    try {
+      const res = await fetch("/api/voice-memos/process-all", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setProcessResult(
+          `Processed ${data.processed} of ${data.total} recordings${data.errors ? ` (${data.errors} errors)` : ""}`
+        );
+        await loadMemos();
+      } else {
+        setProcessResult(data.error || "Processing failed");
+      }
+    } catch {
+      setProcessResult("Failed to process recordings");
+    } finally {
+      setProcessing(false);
     }
   }
 
@@ -133,10 +161,29 @@ export default function VoiceMemosPage() {
             {memos.length} memos — {businessCount} business, {personalCount} personal
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadMemos}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {unprocessedCount > 0 && (
+            <Button
+              size="sm"
+              onClick={processAll}
+              disabled={processing}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {processing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {processing
+                ? "Processing..."
+                : `Process All (${unprocessedCount})`}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={loadMemos}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Search & Filters */}
@@ -167,6 +214,19 @@ export default function VoiceMemosPage() {
           ))}
         </div>
       </div>
+
+      {/* Process result banner */}
+      {processResult && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-muted/50 text-sm">
+          <span>{processResult}</span>
+          <button
+            onClick={() => setProcessResult(null)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Memos List */}
       {loading ? (

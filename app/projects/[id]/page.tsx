@@ -1128,19 +1128,40 @@ export default function ProjectDetailPage({
                       {p.stage}
                     </span>
                   )}
-                  {p.priority && (
-                    <span
-                      className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium uppercase ${
-                        p.priority === "high"
-                          ? "bg-red-500/10 text-red-500"
-                          : p.priority === "medium"
-                            ? "bg-yellow-500/10 text-yellow-500"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {p.priority}
-                    </span>
-                  )}
+                  <button
+                    onClick={async () => {
+                      const cycle = ["", "low", "medium", "high"];
+                      const currentIdx = cycle.indexOf(p.priority || "");
+                      const next = cycle[(currentIdx + 1) % cycle.length];
+                      // Optimistic update
+                      setProject({ ...project!, priority: next || undefined });
+                      try {
+                        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ priority: next }),
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          setProject(data.project);
+                          setToast({ message: next ? `Priority set to ${next}` : "Priority cleared", type: "success" });
+                        }
+                      } catch {
+                        setProject(project);
+                      }
+                    }}
+                    className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium uppercase cursor-pointer hover:ring-2 hover:ring-ring/50 transition-all ${
+                      p.priority === "high"
+                        ? "bg-red-500/10 text-red-500"
+                        : p.priority === "medium"
+                          ? "bg-yellow-500/10 text-yellow-500"
+                          : p.priority === "low"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-muted/50 text-muted-foreground/60 border border-dashed border-border"
+                    }`}
+                  >
+                    {p.priority || "priority"}
+                  </button>
                 </>
               )}
             </div>

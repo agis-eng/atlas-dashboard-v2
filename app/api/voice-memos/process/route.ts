@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs";
+import { unlink } from "fs/promises";
 import path from "path";
 import yaml from "js-yaml";
 import { getRedis } from "@/lib/redis";
@@ -71,11 +72,11 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 2000,
+      max_tokens: 3000,
       messages: [
         {
           role: "user",
-          content: `Analyze this voice memo transcript and extract structured information. Return ONLY valid JSON.
+          content: `You are an expert at analyzing voice memo transcripts. Analyze this recording and extract detailed, structured information. Return ONLY valid JSON.
 
 <transcript>
 ${cleanTranscript}
@@ -84,19 +85,33 @@ ${cleanTranscript}
 Known clients: ${clientList.substring(0, 2000)}
 Known projects: ${projectList.substring(0, 2000)}
 
+## Speaker Identification Instructions
+- Try to identify speakers by name from context clues (introductions, greetings, references to each other, voice cues like "I'm [name]", "hey [name]", etc.)
+- If the recording is a single person, try to identify who it is from the content and context (e.g., if they mention "my project" and it matches a known project owner)
+- Known people: Erik Laine (owner/founder), Anton (developer/partner). If the content suggests one of them, name them.
+- For unknown speakers, use descriptive labels like "Speaker 1 (male voice)", "Speaker 2 (female, client)" etc.
+- Note how many distinct speakers you detect
+
+## Summary Instructions
+- Write a comprehensive 3-5 sentence summary that captures the KEY substance of the conversation
+- Include specific details: names, numbers, dates, decisions, and outcomes mentioned
+- Explain the context and purpose of the conversation (e.g., "client onboarding call", "internal planning session", "personal reminder")
+- Note the tone and dynamic of the conversation
+
 Return JSON with these fields:
 {
-  "title": "A descriptive title for this recording (5-10 words)",
+  "title": "A specific, descriptive title (5-12 words) that captures what this is about",
   "type": "business" or "personal",
-  "speakers": "Comma-separated list of speaker names mentioned or identified",
-  "summary": "2-3 sentence summary of what was discussed",
-  "topics": ["array", "of", "key", "topics"],
-  "actionItems": ["array of action items or next steps mentioned"],
+  "speakers": "Named speakers with roles, e.g. 'Erik Laine (founder), John Smith (client from Acme Corp)' — be as specific as possible",
+  "speakerCount": number of distinct speakers detected,
+  "summary": "Comprehensive 3-5 sentence summary with specific details, names, numbers, and context",
+  "topics": ["specific", "descriptive", "topics"],
+  "actionItems": ["specific action items with who is responsible if mentioned"],
   "clientMatch": "matching client ID from the known clients list, or null if no match",
   "projectMatch": "matching project ID from the known projects list, or null if no match",
   "sentiment": "positive, neutral, or negative",
-  "keyDecisions": ["any decisions that were made"],
-  "mentionedPeople": ["names of people mentioned"]
+  "keyDecisions": ["specific decisions that were made with context"],
+  "mentionedPeople": ["full names of people mentioned with brief context, e.g. 'John Smith (potential client)'"]
 }
 
 Be accurate with client/project matching — only match if clearly discussed. Return ONLY the JSON object.`,
@@ -163,6 +178,16 @@ Be accurate with client/project matching — only match if clearly discussed. Re
     }
 
     await redis.set(key, existing);
+
+    // Delete the original iCloud recording if it exists
+    if (filePath && filePath.includes("iCloud") && fs.existsSync(filePath)) {
+      try {
+        await unlink(filePath);
+        console.log(`Deleted iCloud recording: ${filePath}`);
+      } catch (delErr) {
+        console.error("Failed to delete iCloud recording:", delErr);
+      }
+    }
 
     // If matched to a client/project, also update the brain if one exists
     if (analysis.clientMatch || analysis.projectMatch) {
