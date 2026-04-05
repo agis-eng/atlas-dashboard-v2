@@ -36,6 +36,11 @@ export async function POST(request: NextRequest) {
       if (wasManuallyAssigned) {
         recordings.push(rec);
       } else {
+        // Clear any projectId that was wrongly set by auto-matching (projectId is for manual assignment only)
+        if (rec.projectId && rec.projectId === rec.suggestedProjectId) {
+          rec.projectId = null;
+          rec.projectName = null;
+        }
         // Re-run matching with updated logic
         const match = await suggestProjectForRecording(
           rec.attendeeEmails,
@@ -47,11 +52,6 @@ export async function POST(request: NextRequest) {
           suggestedProjectName: match?.projectName || null,
           matchConfidence: match?.confidence || null,
         };
-        // If no manual override, also update the displayed project
-        if (!wasManuallyAssigned) {
-          updated.projectId = match?.projectId || null;
-          updated.projectName = match?.projectName || null;
-        }
         recordings.push(updated);
         rematched++;
       }
