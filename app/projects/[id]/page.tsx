@@ -43,6 +43,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
+import { ProjectCalls } from "@/components/project-calls";
 
 // ── Types ──
 
@@ -853,6 +854,18 @@ export default function ProjectDetailPage({
   } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [voiceMemos, setVoiceMemos] = useState<Array<{
+    id: string;
+    title: string;
+    date: string;
+    speakers: string;
+    summary: string;
+    topics: string[];
+    actionItems: string[];
+    keyDecisions?: string[];
+    sentiment?: string;
+    transcript?: string;
+  }>>([]);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
@@ -869,6 +882,18 @@ export default function ProjectDetailPage({
         const data = await res.json();
         setProject(data.project);
         
+        // Load voice memos linked to this project
+        try {
+          const memosRes = await fetch("/api/voice-memos");
+          if (memosRes.ok) {
+            const memosData = await memosRes.json();
+            const linked = (memosData.memos || []).filter(
+              (m: any) => m.projectMatch === id || m.clientMatch === id
+            );
+            setVoiceMemos(linked);
+          }
+        } catch {}
+
         // Load client contact info if clientId exists
         if (data.project?.clientId) {
           try {
@@ -1498,6 +1523,65 @@ export default function ProjectDetailPage({
         />
       )}
 
+      {/* Voice Memos linked to this project */}
+      {voiceMemos.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="h-4 w-4 text-orange-500" />
+              Voice Memos ({voiceMemos.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {voiceMemos.map((memo) => (
+              <div key={memo.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">{memo.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(memo.date).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{memo.speakers}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{memo.summary}</p>
+                {memo.actionItems && memo.actionItems.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium mt-2 mb-1">Action Items</p>
+                    <ul className="space-y-0.5">
+                      {memo.actionItems.map((item, i) => (
+                        <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                          <span className="text-orange-500 shrink-0">-</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {memo.keyDecisions && memo.keyDecisions.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium mt-2 mb-1">Key Decisions</p>
+                    <ul className="space-y-0.5">
+                      {memo.keyDecisions.map((d, i) => (
+                        <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                          <span className="text-green-500 shrink-0">-</span>
+                          {d}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {memo.topics && memo.topics.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {memo.topics.map((t, i) => (
+                      <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Affiliate section */}
       {(hasAffiliate || editing) && (
         <AffiliateSection
@@ -1508,6 +1592,9 @@ export default function ProjectDetailPage({
           onChange={(aff) => updateDraft("affiliate", aff)}
         />
       )}
+
+      {/* Calls */}
+      <ProjectCalls projectId={id} />
 
       {/* Changelog */}
       <ChangelogSection projectId={id} />
