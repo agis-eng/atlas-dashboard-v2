@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
-import { getRedis } from "@/lib/redis";
+import { getRedis, REDIS_KEYS } from "@/lib/redis";
+import { normalizeWebhookPayload } from "@/lib/fathom";
+import { suggestProjectForRecording } from "@/lib/matching";
+import type { FathomRecording } from "@/lib/redis";
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN || "";
 const CLIENTS_DB_ID = process.env.NOTION_CLIENTS_DB_ID || "31e59b38371a805ba925e0aed72302ea";
@@ -274,53 +277,59 @@ export async function POST(request: NextRequest) {
 
     console.log("Fathom webhook keys:", Object.keys(body || {}).join(","));
 
-    // Fathom payload: { event, payload: { id, title, ended_at, attendees, summary, transcript, action_items } }
-    const payload = body?.payload || body;
-    const d = payload?.data || payload;
-
-    if (!d?.id) {
-      console.error("Fathom webhook: missing id. Full body keys:", JSON.stringify(Object.keys(body || {})), "payload keys:", JSON.stringify(Object.keys(payload || {})), "d keys:", JSON.stringify(Object.keys(d || {})));
-      return Response.json({ error: "Invalid payload: missing id" }, { status: 400 });
+    // ── Normalize using shared utility ────────────────────────────────────────
+    let normalized;
+    try {
+      normalized = normalizeWebhookPayload(body);
+    } catch (err: any) {
+      console.error("Fathom webhook: normalization failed:", err.message);
+      return Response.json({ error: err.message }, { status: 400 });
     }
 
-    const meetingTitle = d.title || d.name || d.meeting_title || "Untitled Call";
-    const meetingDate = (d.ended_at || d.date || d.created_at || new Date().toISOString()).split("T")[0];
-    const attendees: Array<{ name?: string; email?: string }> = d.attendees || d.participants || [];
-    const summary: string = d.summary || d.ai_notes?.summary || "";
-    const transcript: string = d.transcript || d.full_transcript || "";
-    const actionItems: string[] = (d.action_items || d.ai_notes?.action_items || [])
-      .map((a: any) => (typeof a === "string" ? a : a.text || a.description || ""))
-      .filter(Boolean);
-    const recordingUrl: string = d.share_url || d.recording_url || d.video_url || d.url || "";
+    const { recording, fullTranscript } = normalized;
+
+    // Run auto-matching for project suggestion
+    const match = await suggestProjectForRecording(
+      recording.attendeeEmails,
+      recording.participants
+    );
+
+    const fullRecording: FathomRecording = {
+      ...recording,
+      suggestedProjectId: match?.projectId || null,
+      suggestedProjectName: match?.projectName || null,
+      matchConfidence: match?.confidence || null,
+    };
 
     // ── Store in Redis ────────────────────────────────────────────────────────
     const redis = getRedis();
-    const recording = {
-      id: d.id,
-      title: meetingTitle,
-      date: d.ended_at || d.date || d.created_at || new Date().toISOString(),
-      duration: d.duration,
-      participants: attendees.map((p) => p.name || p.email || "Unknown"),
-      summary: summary || null,
-      actionItems,
-      url: recordingUrl || null,
-      projectId: null,
-      projectName: null,
-      status: "processed",
-      receivedAt: new Date().toISOString(),
-    };
-
-    const key = "fathom:recordings";
+    const key = REDIS_KEYS.fathomRecordings;
     const existing = (await redis.get(key)) as any[] | null;
     const recordings = Array.isArray(existing) ? existing : [];
-    const alreadyExists = recordings.some((r: any) => r.id === recording.id);
+    const alreadyExists = recordings.some((r: any) => r.id === fullRecording.id);
     if (!alreadyExists) {
-      recordings.unshift(recording);
-      if (recordings.length > 200) recordings.splice(200);
+      recordings.unshift(fullRecording);
+      if (recordings.length > 500) recordings.splice(500);
       await redis.set(key, recordings);
+
+      // Store full transcript separately
+      if (fullTranscript && fullTranscript.length > 500) {
+        await redis.set(REDIS_KEYS.fathomTranscript(fullRecording.id), fullTranscript);
+      }
     }
 
     // ── Notion integration ────────────────────────────────────────────────────
+    // Extract raw data for Notion (needs original attendees format)
+    const payload = body?.payload || body;
+    const d = payload?.data || payload;
+    const attendees: Array<{ name?: string; email?: string }> = d.attendees || d.participants || d.calendar_invitees || [];
+    const meetingTitle = fullRecording.title;
+    const meetingDate = (fullRecording.date || new Date().toISOString()).split("T")[0];
+    const summary = fullRecording.summary || "";
+    const transcript = fullTranscript;
+    const actionItems = fullRecording.actionItems;
+    const recordingUrl = fullRecording.url || "";
+
     const notionResults = { saved: [] as string[], failed: [] as string[], matched: 0 };
 
     if (NOTION_TOKEN) {
@@ -369,7 +378,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       success: true,
-      id: d.id,
+      id: fullRecording.id,
       redisStored: !alreadyExists,
       notion: notionResults,
     });

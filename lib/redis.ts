@@ -41,6 +41,11 @@ export const REDIS_KEYS = {
   userByEmail: (email: string) => `user:email:${email.toLowerCase()}`,
   session: (sessionId: string) => `session:${sessionId}`,
 
+  // Fathom Recordings
+  fathomRecordings: "fathom:recordings",
+  fathomTranscript: (id: string) => `fathom:transcript:${id}`,
+  fathomSyncMeta: "fathom:sync:meta",
+
   // Memory / Daily Logs
   memoryEntries: (date: string) => `memory:entries:${date}`,
   memoryEntry: (id: string) => `memory:entry:${id}`,
@@ -95,6 +100,33 @@ export interface Session {
   userId: string;
   createdAt: number;
   expiresAt: number;
+}
+
+export interface FathomRecording {
+  id: string;
+  title: string;
+  date: string;
+  duration?: number;
+  participants: string[];
+  attendeeEmails: string[];
+  summary: string | null;
+  actionItems: string[];
+  transcript?: string; // truncated preview; full transcript stored separately
+  url: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  suggestedProjectId?: string | null;
+  suggestedProjectName?: string | null;
+  matchConfidence?: "high" | "medium" | null;
+  status: "pending" | "processed";
+  receivedAt: string;
+  source: "webhook" | "api-sync";
+}
+
+export interface FathomSyncMeta {
+  lastSyncAt: string;
+  totalImported: number;
+  apiKeyConfigured: boolean;
 }
 
 export interface MemoryEntry {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Film,
   RefreshCw,
@@ -16,6 +17,12 @@ import {
   Users,
   Sparkles,
   CheckSquare,
+  Trash2,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,16 +32,22 @@ interface FathomRecording {
   date: string;
   duration?: number;
   participants?: string[];
+  attendeeEmails?: string[];
   summary?: string;
   actionItems?: string[];
+  transcript?: string;
   url?: string;
   projectId?: string;
   projectName?: string;
+  suggestedProjectId?: string;
+  suggestedProjectName?: string;
+  matchConfidence?: "high" | "medium" | null;
   status: "pending" | "processed";
+  source?: "webhook" | "api-sync";
 }
 
 function formatDuration(seconds?: number): string {
-  if (!seconds) return "—";
+  if (!seconds) return "";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   if (h > 0) return `${h}h ${m}m`;
@@ -47,10 +60,18 @@ export default function RecordingsPage() {
   const [search, setSearch] = useState("");
   const [projects, setProjects] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    apiKeyConfigured: boolean;
+    lastSyncAt: string | null;
+    totalRecordings: number;
+  } | null>(null);
 
   useEffect(() => {
     loadRecordings();
     loadProjects();
+    loadSyncStatus();
   }, []);
 
   async function loadRecordings() {
@@ -78,7 +99,42 @@ export default function RecordingsPage() {
     } catch {}
   }
 
-  async function assignProject(recordingId: string, projectId: string, projectName: string) {
+  async function loadSyncStatus() {
+    try {
+      const res = await fetch("/api/fathom/sync");
+      if (res.ok) {
+        setSyncStatus(await res.json());
+      }
+    } catch {}
+  }
+
+  async function syncFromFathom() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/fathom/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncResult(
+          `Imported ${data.imported} new call${data.imported !== 1 ? "s" : ""} (${data.total} total)`
+        );
+        await loadRecordings();
+        await loadSyncStatus();
+      } else {
+        setSyncResult(data.error || "Sync failed");
+      }
+    } catch {
+      setSyncResult("Failed to sync from Fathom");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function assignProject(
+    recordingId: string,
+    projectId: string,
+    projectName: string
+  ) {
     try {
       await fetch(`/api/recordings/${recordingId}`, {
         method: "PATCH",
@@ -86,10 +142,45 @@ export default function RecordingsPage() {
         body: JSON.stringify({ projectId, projectName }),
       });
       setRecordings((prev) =>
-        prev.map((r) => (r.id === recordingId ? { ...r, projectId, projectName } : r))
+        prev.map((r) =>
+          r.id === recordingId
+            ? { ...r, projectId, projectName, suggestedProjectId: undefined, suggestedProjectName: undefined }
+            : r
+        )
       );
     } catch {
       alert("Failed to assign project");
+    }
+  }
+
+  async function unassignProject(recordingId: string) {
+    try {
+      await fetch(`/api/recordings/${recordingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: null, projectName: null }),
+      });
+      setRecordings((prev) =>
+        prev.map((r) =>
+          r.id === recordingId ? { ...r, projectId: undefined, projectName: undefined } : r
+        )
+      );
+    } catch {
+      alert("Failed to unassign project");
+    }
+  }
+
+  async function deleteRecording(id: string) {
+    try {
+      await fetch(`/api/recordings/${id}`, { method: "DELETE" });
+      setRecordings((prev) => prev.filter((r) => r.id !== id));
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch {
+      alert("Failed to delete recording");
     }
   }
 
@@ -104,13 +195,16 @@ export default function RecordingsPage() {
 
   const filtered = recordings.filter(
     (r) =>
+      !search ||
       r.title.toLowerCase().includes(search.toLowerCase()) ||
       r.summary?.toLowerCase().includes(search.toLowerCase()) ||
       r.projectName?.toLowerCase().includes(search.toLowerCase()) ||
-      r.participants?.some((p) => p.toLowerCase().includes(search.toLowerCase()))
+      r.participants?.some((p) =>
+        p.toLowerCase().includes(search.toLowerCase())
+      )
   );
 
-  const unassigned = filtered.filter((r) => !r.projectId);
+  const inbox = filtered.filter((r) => !r.projectId);
   const assigned = filtered.filter((r) => r.projectId);
 
   return (
@@ -120,13 +214,28 @@ export default function RecordingsPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Film className="h-6 w-6 text-orange-600" />
-            Fathom Recordings
+            Call Recordings
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Call recordings from Fathom — assign to projects
+            {recordings.length} recording{recordings.length !== 1 ? "s" : ""} &mdash;{" "}
+            {inbox.length} in inbox, {assigned.length} assigned
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={syncFromFathom}
+            disabled={syncing}
+            className="bg-orange-600 hover:bg-orange-700 text-white"
+          >
+            {syncing ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {syncing ? "Syncing..." : "Sync from Fathom"}
+          </Button>
           <Button variant="outline" size="sm" onClick={loadRecordings}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -134,22 +243,40 @@ export default function RecordingsPage() {
         </div>
       </div>
 
-      {/* Webhook Setup Info */}
-      <Card className="border-blue-500/30 bg-blue-500/5">
-        <CardContent className="p-4">
-          <p className="text-sm font-medium text-blue-400 mb-1">📡 Fathom Webhook Setup</p>
-          <p className="text-xs text-muted-foreground">
-            In Fathom settings → Webhooks, add:{" "}
-            <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">
-              {typeof window !== "undefined" ? window.location.origin : "https://your-app.railway.app"}
-              /api/webhooks/fathom
-            </code>
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            New recordings will appear here automatically after each call.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Sync status / setup */}
+      {syncStatus && !syncStatus.apiKeyConfigured && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4">
+            <p className="text-sm font-medium text-amber-500 mb-1">
+              Fathom API Key Required
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Add <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">FATHOM_API_KEY</code> to
+              your environment variables. Get your API key from{" "}
+              <span className="font-medium">Fathom Settings &rarr; Integrations &rarr; API</span>.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {syncStatus?.lastSyncAt && (
+        <p className="text-xs text-muted-foreground">
+          Last synced: {new Date(syncStatus.lastSyncAt).toLocaleString()}
+        </p>
+      )}
+
+      {/* Sync result banner */}
+      {syncResult && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-muted/50 text-sm">
+          <span>{syncResult}</span>
+          <button
+            onClick={() => setSyncResult(null)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -162,17 +289,6 @@ export default function RecordingsPage() {
         />
       </div>
 
-      {/* Stats */}
-      {recordings.length > 0 && (
-        <div className="flex gap-4 text-sm text-muted-foreground">
-          <span>{recordings.length} recording{recordings.length !== 1 ? "s" : ""}</span>
-          <span>•</span>
-          <span>{unassigned.length} unassigned</span>
-          <span>•</span>
-          <span>{assigned.length} assigned to projects</span>
-        </div>
-      )}
-
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -183,20 +299,34 @@ export default function RecordingsPage() {
             <Film className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
             <p className="text-muted-foreground mb-2">No recordings yet.</p>
             <p className="text-xs text-muted-foreground">
-              Set up the Fathom webhook above and recordings will appear here after your calls.
+              Click &ldquo;Sync from Fathom&rdquo; to import your call recordings.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {/* Unassigned */}
-          {unassigned.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Needs Assignment ({unassigned.length})
-              </h2>
+        <Tabs defaultValue="inbox">
+          <TabsList>
+            <TabsTrigger value="inbox">
+              Inbox ({inbox.length})
+            </TabsTrigger>
+            <TabsTrigger value="assigned">
+              Assigned ({assigned.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="inbox" className="mt-4">
+            {inbox.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <Check className="h-6 w-6 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm text-muted-foreground">
+                    All caught up! No unassigned recordings.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
               <div className="space-y-3">
-                {unassigned.map((rec) => (
+                {inbox.map((rec) => (
                   <RecordingCard
                     key={rec.id}
                     recording={rec}
@@ -204,18 +334,24 @@ export default function RecordingsPage() {
                     expanded={expanded.has(rec.id)}
                     onToggleExpand={() => toggleExpand(rec.id)}
                     onAssignProject={assignProject}
+                    onDelete={deleteRecording}
                   />
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </TabsContent>
 
-          {/* Assigned */}
-          {assigned.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Assigned to Projects ({assigned.length})
-              </h2>
+          <TabsContent value="assigned" className="mt-4">
+            {assigned.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <FolderOpen className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    No recordings assigned to projects yet.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
               <div className="space-y-3">
                 {assigned.map((rec) => (
                   <RecordingCard
@@ -225,12 +361,14 @@ export default function RecordingsPage() {
                     expanded={expanded.has(rec.id)}
                     onToggleExpand={() => toggleExpand(rec.id)}
                     onAssignProject={assignProject}
+                    onUnassign={unassignProject}
+                    onDelete={deleteRecording}
                   />
                 ))}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
@@ -242,19 +380,26 @@ function RecordingCard({
   expanded,
   onToggleExpand,
   onAssignProject,
+  onUnassign,
+  onDelete,
 }: {
   recording: FathomRecording;
   projects: any[];
   expanded: boolean;
   onToggleExpand: () => void;
   onAssignProject: (id: string, projectId: string, projectName: string) => void;
+  onUnassign?: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
+  const hasSuggestion =
+    recording.suggestedProjectId && !recording.projectId;
+
   return (
     <Card className="transition-shadow hover:shadow-md">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <button
                 onClick={onToggleExpand}
                 className="font-medium text-sm text-left hover:text-orange-600 transition-colors"
@@ -267,6 +412,24 @@ function RecordingCard({
                   {recording.projectName}
                 </Badge>
               )}
+              {hasSuggestion && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs shrink-0 bg-amber-500/10 text-amber-600 cursor-pointer hover:bg-amber-500/20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignProject(
+                      recording.id,
+                      recording.suggestedProjectId!,
+                      recording.suggestedProjectName!
+                    );
+                  }}
+                >
+                  <Sparkles className="h-2.5 w-2.5 mr-1" />
+                  Suggested: {recording.suggestedProjectName}
+                  {recording.matchConfidence === "high" ? " (high)" : " (med)"}
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -277,19 +440,20 @@ function RecordingCard({
                   year: "numeric",
                 })}
               </span>
-              {recording.duration && (
+              {recording.duration ? (
                 <>
-                  <span>•</span>
+                  <span>&middot;</span>
                   <span>{formatDuration(recording.duration)}</span>
                 </>
-              )}
+              ) : null}
               {recording.participants && recording.participants.length > 0 && (
                 <>
-                  <span>•</span>
+                  <span>&middot;</span>
                   <span className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
-                    {recording.participants.slice(0, 2).join(", ")}
-                    {recording.participants.length > 2 && ` +${recording.participants.length - 2}`}
+                    {recording.participants.slice(0, 3).join(", ")}
+                    {recording.participants.length > 3 &&
+                      ` +${recording.participants.length - 3}`}
                   </span>
                 </>
               )}
@@ -308,8 +472,27 @@ function RecordingCard({
                 Open
               </a>
             )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={onToggleExpand}
+            >
+              {expanded ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </Button>
           </div>
         </div>
+
+        {/* Summary preview */}
+        {recording.summary && !expanded && (
+          <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
+            {recording.summary}
+          </p>
+        )}
 
         {/* Expanded Content */}
         {expanded && (
@@ -319,7 +502,7 @@ function RecordingCard({
                 <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
                   <Sparkles className="h-3 w-3" /> Summary
                 </p>
-                <p className="text-sm">{recording.summary}</p>
+                <p className="text-sm leading-relaxed">{recording.summary}</p>
               </div>
             )}
 
@@ -331,46 +514,85 @@ function RecordingCard({
                 <ul className="space-y-1">
                   {recording.actionItems.map((item, i) => (
                     <li key={i} className="text-sm flex items-start gap-2">
-                      <span className="text-green-500 mt-0.5">•</span>
+                      <span className="text-green-500 mt-0.5">&bull;</span>
                       <span>{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
+
+            {recording.attendeeEmails &&
+              recording.attendeeEmails.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium flex items-center gap-1 mb-1.5">
+                    <Mail className="h-3 w-3" /> Attendee Emails
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recording.attendeeEmails.map((email, i) => (
+                      <Badge
+                        key={i}
+                        variant="outline"
+                        className="text-xs font-normal"
+                      >
+                        {email}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {recording.transcript && (
+              <div>
+                <p className="text-xs font-medium mb-1.5">Transcript Preview</p>
+                <div className="text-xs text-muted-foreground bg-muted/40 rounded p-2 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  {recording.transcript}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <select
+                className="flex-1 h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground"
+                value={recording.projectId || recording.suggestedProjectId || ""}
+                onChange={(e) => {
+                  const proj = projects.find((p: any) => p.id === e.target.value);
+                  if (proj) onAssignProject(recording.id, proj.id, proj.name);
+                  else onAssignProject(recording.id, "", "");
+                }}
+              >
+                <option value="">Assign to project...</option>
+                {projects.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {recording.projectId && onUnassign && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => onUnassign(recording.id)}
+                >
+                  Unassign
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                onClick={() => onDelete(recording.id)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
-
-        {/* Project Assignment */}
-        <div className="mt-3 flex items-center gap-2">
-          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <select
-            className="flex-1 h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground"
-            value={recording.projectId || ""}
-            onChange={(e) => {
-              const proj = projects.find((p) => p.id === e.target.value);
-              if (proj) onAssignProject(recording.id, proj.id, proj.name);
-              else onAssignProject(recording.id, "", "");
-            }}
-          >
-            <option value="">Assign to project...</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs"
-            onClick={onToggleExpand}
-          >
-            {expanded ? "Less" : "More"}
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
 }
-
