@@ -474,7 +474,7 @@ function RecordingCard({
   }
 
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <Card className="transition-shadow hover:shadow-md cursor-pointer" onClick={onToggleExpand}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -559,7 +559,9 @@ function RecordingCard({
             <select
               className="h-7 text-xs rounded border border-border bg-background px-1.5 text-muted-foreground max-w-[130px]"
               value={recording.projectId || recording.suggestedProjectId || ""}
+              onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
+                e.stopPropagation();
                 if (e.target.value === "__new__") {
                   setShowNewProject(true);
                   e.target.value = "";
@@ -604,7 +606,7 @@ function RecordingCard({
 
         {/* Inline new project creation — right below header */}
         {showNewProject && (
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
             <Plus className="h-3.5 w-3.5 text-orange-600 shrink-0" />
             <Input
               autoFocus
@@ -661,7 +663,7 @@ function RecordingCard({
 
         {/* Expanded Content */}
         {expanded && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
             {recording.summary && (
               <div className="bg-muted/40 rounded p-3">
                 <div className="flex items-center justify-between mb-2">
