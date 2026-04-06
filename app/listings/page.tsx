@@ -405,6 +405,8 @@ export default function ListingsPage() {
     }
   }
 
+  const [pendingConnect, setPendingConnect] = useState<{ platform: string; sessionId: string; liveViewUrl: string } | null>(null);
+
   async function connectMarketplace(platform: "mercari" | "facebook") {
     setConnecting(platform);
     try {
@@ -415,37 +417,46 @@ export default function ListingsPage() {
       });
       const data = await res.json();
 
-      if (data.status === "already_connected") {
-        setMarketplaceStatus((prev) => ({ ...prev, [platform]: data.connection }));
-        alert(`${platform} is already connected!`);
-      } else if (data.status === "login_required") {
-        // User needs to log in — use interact to prompt login
-        alert(`Please wait while we set up the ${platform} connection. This may take a moment. If a CAPTCHA appears, the connection may need to be retried.`);
-        // Auto-verify after a short delay
-        setTimeout(async () => {
-          const verifyRes = await fetch("/api/marketplace/connect", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ platform, action: "verify", scrapeId: data.scrapeId }),
-          });
-          const verifyData = await verifyRes.json();
-          if (verifyData.connection) {
-            setMarketplaceStatus((prev) => ({ ...prev, [platform]: verifyData.connection }));
-            if (verifyData.connection.connected) {
-              alert(`${platform} connected successfully!`);
-            } else {
-              alert(`${platform} login not detected. You may need to log in manually first and try again.`);
-            }
-          }
-          setConnecting(null);
-        }, 5000);
-        return;
+      if (data.status === "login_required" && data.liveViewUrl) {
+        // Open the remote browser for the user to log in
+        setPendingConnect({ platform, sessionId: data.sessionId, liveViewUrl: data.liveViewUrl });
+        window.open(data.liveViewUrl, "_blank");
       } else {
         alert(data.error || "Connection failed");
       }
     } catch (err) {
       console.error("Connect error:", err);
       alert("Failed to connect marketplace");
+    }
+    setConnecting(null);
+  }
+
+  async function verifyConnection() {
+    if (!pendingConnect) return;
+    setConnecting(pendingConnect.platform);
+    try {
+      const res = await fetch("/api/marketplace/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: pendingConnect.platform,
+          action: "verify",
+          sessionId: pendingConnect.sessionId,
+        }),
+      });
+      const data = await res.json();
+      if (data.connection) {
+        setMarketplaceStatus((prev) => ({ ...prev, [pendingConnect.platform]: data.connection }));
+        if (data.connection.connected) {
+          alert(`${pendingConnect.platform} connected successfully!`);
+          setPendingConnect(null);
+        } else {
+          alert("Login not detected yet. Make sure you completed the login in the browser window, then try verifying again.");
+        }
+      }
+    } catch (err) {
+      console.error("Verify error:", err);
+      alert("Failed to verify connection");
     }
     setConnecting(null);
   }
@@ -700,6 +711,31 @@ export default function ListingsPage() {
                 ? `Facebook${marketplaceStatus.facebook.username ? ` (${marketplaceStatus.facebook.username})` : ""}`
                 : "Connect Facebook"}
             </Button>
+            {pendingConnect && (
+              <>
+                <Button
+                  size="sm"
+                  className="text-xs h-7 bg-green-600 hover:bg-green-700 text-white"
+                  onClick={verifyConnection}
+                  disabled={!!connecting}
+                >
+                  {connecting ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3 mr-1" />
+                  )}
+                  I logged in — Verify
+                </Button>
+                <a
+                  href={pendingConnect.liveViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 underline"
+                >
+                  Re-open login window
+                </a>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

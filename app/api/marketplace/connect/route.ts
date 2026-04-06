@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, MarketplaceConnection } from "@/lib/redis";
-import { firecrawlScrape, firecrawlInteract, MERCARI_PROFILE, FACEBOOK_PROFILE } from "@/lib/firecrawl";
+import {
+  firecrawlBrowserCreate,
+  firecrawlBrowserDelete,
+  firecrawlScrape,
+  firecrawlInteract,
+  MERCARI_PROFILE,
+  FACEBOOK_PROFILE,
+} from "@/lib/firecrawl";
 import { MERCARI_PROMPTS, FACEBOOK_PROMPTS } from "@/lib/marketplace-prompts";
 
 const PLATFORM_CONFIG = {
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { platform, action, scrapeId } = await request.json();
+    const { platform, action, sessionId } = await request.json();
 
     if (!platform || !["mercari", "facebook"].includes(platform)) {
       return Response.json({ error: "Invalid platform" }, { status: 400 });
@@ -33,76 +40,73 @@ export async function POST(request: NextRequest) {
     const config = PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG];
 
     if (action === "start") {
-      // Start a browser session at the login page with a persistent profile
-      const result = await firecrawlScrape(config.loginUrl, {
+      // Create an interactive browser session with persistent profile
+      const result = await firecrawlBrowserCreate({
         profile: config.profile,
-        proxy: "stealth",
-        waitFor: 5000,
-        formats: ["markdown", "screenshot"],
+        ttl: 300, // 5 minutes to log in
+        activityTtl: 300,
       });
 
-      if (!result.success || !result.data?.metadata?.scrapeId) {
+      if (!result.success || !result.interactiveLiveViewUrl) {
         return Response.json(
           { error: "Failed to start browser session", details: result.error },
           { status: 500 }
         );
       }
 
-      const scrapeId = result.data.metadata.scrapeId;
-
-      // Check if already logged in from a previous session
-      const checkResult = await firecrawlInteract(scrapeId, config.prompts.checkLogin, { timeout: 30 });
-      const output = checkResult.data?.output || "";
-      const alreadyLoggedIn = output.toLowerCase().includes("logged in") || output.toLowerCase().includes("successful");
-
-      if (alreadyLoggedIn) {
-        // Already authenticated via profile cookies
-        const redis = getRedis();
-        const connection: MarketplaceConnection = {
-          platform: platform as "mercari" | "facebook",
-          profileName: config.profile.name,
-          connected: true,
-          lastValidated: new Date().toISOString(),
-          username: extractUsername(output),
-        };
-        await redis.set(REDIS_KEYS.marketplaceConnection(platform), JSON.stringify(connection));
-
-        return Response.json({
-          status: "already_connected",
-          scrapeId,
-          connection,
-        });
-      }
-
-      // Not logged in — user needs to log in via the interact session
-      // Return the scrapeId so the frontend can call verify after login
       return Response.json({
         status: "login_required",
-        scrapeId,
-        message: `Please log in to ${platform} in the browser session. The session is using a persistent profile so you only need to do this once.`,
+        sessionId: result.id,
+        liveViewUrl: result.interactiveLiveViewUrl,
+        expiresAt: result.expiresAt,
+        message: `Open the link below to log into ${platform}. Your session is saved so you only need to do this once.`,
       });
     }
 
     if (action === "verify") {
-      if (!scrapeId) {
-        return Response.json({ error: "scrapeId required for verify" }, { status: 400 });
-      }
+      // After user logs in via live view, verify by scraping a protected page
+      // The profile should now have auth cookies saved
+      const testUrl = platform === "mercari"
+        ? "https://www.mercari.com/mypage/"
+        : "https://www.facebook.com/marketplace/you/selling/";
 
-      // Check if login succeeded
-      const checkResult = await firecrawlInteract(scrapeId, config.prompts.checkLogin, { timeout: 30 });
-      const output = checkResult.data?.output || "";
-      const loggedIn = output.toLowerCase().includes("logged in") || output.toLowerCase().includes("successful");
+      const result = await firecrawlScrape(testUrl, {
+        profile: config.profile,
+        proxy: "stealth",
+        waitFor: 5000,
+        formats: ["markdown"],
+      });
+
+      const content = result.data?.markdown || "";
+      const url = result.data?.metadata?.url || "";
+
+      // Check if we got redirected to login (not authenticated) or stayed on the page
+      const isLoggedIn = platform === "mercari"
+        ? !url.includes("/login") && (content.includes("My Page") || content.includes("mypage") || content.includes("Selling") || content.includes("listing"))
+        : !url.includes("/login") && (content.includes("Marketplace") || content.includes("selling") || content.includes("Your listings"));
 
       const redis = getRedis();
       const connection: MarketplaceConnection = {
         platform: platform as "mercari" | "facebook",
         profileName: config.profile.name,
-        connected: loggedIn,
+        connected: isLoggedIn,
         lastValidated: new Date().toISOString(),
-        username: loggedIn ? extractUsername(output) : undefined,
-        error: loggedIn ? undefined : "Login not detected. Please try again.",
+        error: isLoggedIn ? undefined : "Login not detected. Please try connecting again.",
       };
       await redis.set(REDIS_KEYS.marketplaceConnection(platform), JSON.stringify(connection));
+
+      // Clean up the browser session if one was provided
+      if (sessionId) {
+        try { await firecrawlBrowserDelete(sessionId); } catch {}
+      }
+
+      // Stop the scrape interact session
+      if (result.data?.metadata?.scrapeId) {
+        try {
+          const { firecrawlInteractStop } = await import("@/lib/firecrawl");
+          await firecrawlInteractStop(result.data.metadata.scrapeId);
+        } catch {}
+      }
 
       return Response.json({ connection });
     }
@@ -115,10 +119,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function extractUsername(output: string): string | undefined {
-  // Try to find a username/display name from the check login output
-  const match = output.match(/(?:username|name|user)[:\s]+["']?([^"'\n,]+)/i);
-  return match?.[1]?.trim();
 }

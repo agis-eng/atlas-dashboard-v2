@@ -91,3 +91,45 @@ export async function firecrawlInteractStop(scrapeId: string): Promise<void> {
     },
   });
 }
+
+export interface FirecrawlBrowserResult {
+  success: boolean;
+  id?: string;
+  cdpUrl?: string;
+  liveViewUrl?: string;
+  interactiveLiveViewUrl?: string;
+  expiresAt?: string;
+  error?: string;
+}
+
+export async function firecrawlBrowserCreate(
+  options: {
+    profile?: FirecrawlProfile;
+    ttl?: number;
+    activityTtl?: number;
+  } = {}
+): Promise<FirecrawlBrowserResult> {
+  const res = await fetch(`${BASE_URL}/browser`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+    },
+    body: JSON.stringify({
+      ttl: options.ttl || 300,
+      activityTtl: options.activityTtl || 300,
+      profile: options.profile,
+    }),
+  });
+
+  return res.json();
+}
+
+export async function firecrawlBrowserDelete(sessionId: string): Promise<void> {
+  await fetch(`${BASE_URL}/browser/${sessionId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+    },
+  });
+}
