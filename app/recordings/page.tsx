@@ -602,6 +602,56 @@ function RecordingCard({
           </div>
         </div>
 
+        {/* Inline new project creation — right below header */}
+        {showNewProject && (
+          <div className="flex items-center gap-2 mt-2">
+            <Plus className="h-3.5 w-3.5 text-orange-600 shrink-0" />
+            <Input
+              autoFocus
+              placeholder="New project name..."
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              className="flex-1 h-7 text-xs"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newProjectName.trim()) {
+                  setCreating(true);
+                  onCreateProject(recording.id, newProjectName.trim());
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                  setCreating(false);
+                } else if (e.key === "Escape") {
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+              disabled={!newProjectName.trim() || creating}
+              onClick={() => {
+                if (newProjectName.trim()) {
+                  setCreating(true);
+                  onCreateProject(recording.id, newProjectName.trim());
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                  setCreating(false);
+                }
+              }}
+            >
+              {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => { setShowNewProject(false); setNewProjectName(""); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
         {/* Summary preview */}
         {recording.summary && !expanded && (
           <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
@@ -735,58 +785,6 @@ function RecordingCard({
               </Button>
             </div>
 
-            {/* Inline new project creation */}
-            {showNewProject && (
-              <div className="flex items-center gap-2 pt-2">
-                <Plus className="h-3.5 w-3.5 text-orange-600 shrink-0" />
-                <Input
-                  autoFocus
-                  placeholder="New project name..."
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="flex-1 h-7 text-xs"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newProjectName.trim()) {
-                      setCreating(true);
-                      onCreateProject(recording.id, newProjectName.trim());
-                      setShowNewProject(false);
-                      setNewProjectName("");
-                      setCreating(false);
-                    } else if (e.key === "Escape") {
-                      setShowNewProject(false);
-                      setNewProjectName("");
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  className="h-7 text-xs bg-orange-600 hover:bg-orange-700 text-white"
-                  disabled={!newProjectName.trim() || creating}
-                  onClick={() => {
-                    if (newProjectName.trim()) {
-                      setCreating(true);
-                      onCreateProject(recording.id, newProjectName.trim());
-                      setShowNewProject(false);
-                      setNewProjectName("");
-                      setCreating(false);
-                    }
-                  }}
-                >
-                  {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setShowNewProject(false);
-                    setNewProjectName("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
           </div>
         )}
       </CardContent>
