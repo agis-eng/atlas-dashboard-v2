@@ -74,16 +74,33 @@ const PLATFORM_INFO = {
   facebook: { label: "Facebook", icon: Facebook, color: "text-blue-500 bg-blue-500/10", fee: "Free" },
 };
 
+interface MarketplaceConnection {
+  platform: string;
+  connected: boolean;
+  lastValidated: string;
+  username?: string;
+  error?: string;
+}
+
+interface MarketplaceStatus {
+  mercari: MarketplaceConnection | null;
+  facebook: MarketplaceConnection | null;
+}
+
 export default function ListingsPage() {
   const [listings, setListings] = useState<ListingDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
+  const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatus>({ mercari: null, facebook: null });
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [publishProgress, setPublishProgress] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadListings();
+    loadMarketplaceStatus();
   }, []);
 
   async function loadListings() {
@@ -376,6 +393,184 @@ export default function ListingsPage() {
     }
   }
 
+  async function loadMarketplaceStatus() {
+    try {
+      const res = await fetch("/api/marketplace/status");
+      if (res.ok) {
+        const data = await res.json();
+        setMarketplaceStatus(data);
+      }
+    } catch (err) {
+      console.error("Failed to load marketplace status:", err);
+    }
+  }
+
+  async function connectMarketplace(platform: "mercari" | "facebook") {
+    setConnecting(platform);
+    try {
+      const res = await fetch("/api/marketplace/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, action: "start" }),
+      });
+      const data = await res.json();
+
+      if (data.status === "already_connected") {
+        setMarketplaceStatus((prev) => ({ ...prev, [platform]: data.connection }));
+        alert(`${platform} is already connected!`);
+      } else if (data.status === "login_required") {
+        // User needs to log in — use interact to prompt login
+        alert(`Please wait while we set up the ${platform} connection. This may take a moment. If a CAPTCHA appears, the connection may need to be retried.`);
+        // Auto-verify after a short delay
+        setTimeout(async () => {
+          const verifyRes = await fetch("/api/marketplace/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform, action: "verify", scrapeId: data.scrapeId }),
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyData.connection) {
+            setMarketplaceStatus((prev) => ({ ...prev, [platform]: verifyData.connection }));
+            if (verifyData.connection.connected) {
+              alert(`${platform} connected successfully!`);
+            } else {
+              alert(`${platform} login not detected. You may need to log in manually first and try again.`);
+            }
+          }
+          setConnecting(null);
+        }, 5000);
+        return;
+      } else {
+        alert(data.error || "Connection failed");
+      }
+    } catch (err) {
+      console.error("Connect error:", err);
+      alert("Failed to connect marketplace");
+    }
+    setConnecting(null);
+  }
+
+  async function publishToMercari(listing: ListingDraft) {
+    if (!listing.title || !listing.price) {
+      alert("Title and price are required");
+      return;
+    }
+    if (!marketplaceStatus.mercari?.connected) {
+      alert("Connect your Mercari account first");
+      return;
+    }
+
+    await updateListing(listing.id, { status: "listing" });
+    const steps = ["start", "fill", "photos", "category", "submit"] as const;
+    const stepLabels: Record<string, string> = {
+      start: "Opening Mercari...",
+      fill: "Filling details...",
+      photos: "Uploading photos...",
+      category: "Setting category...",
+      submit: "Submitting listing...",
+    };
+
+    let scrapeId = "";
+
+    try {
+      for (const step of steps) {
+        setPublishProgress((prev) => ({ ...prev, [listing.id]: stepLabels[step] }));
+
+        const res = await fetch("/api/listings/publish/mercari", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id, scrapeId, step }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || `Step "${step}" failed`);
+        }
+
+        if (data.scrapeId) scrapeId = data.scrapeId;
+
+        if (step === "submit") {
+          await updateListing(listing.id, {
+            status: "listed",
+            mercariListingUrl: data.listingUrl,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("Mercari publish error:", err);
+      await updateListing(listing.id, {
+        status: "error",
+        error: `Mercari: ${err.message}`,
+      });
+    } finally {
+      setPublishProgress((prev) => {
+        const next = { ...prev };
+        delete next[listing.id];
+        return next;
+      });
+    }
+  }
+
+  async function publishToFacebook(listing: ListingDraft) {
+    if (!listing.title || !listing.price) {
+      alert("Title and price are required");
+      return;
+    }
+    if (!marketplaceStatus.facebook?.connected) {
+      alert("Connect your Facebook account first");
+      return;
+    }
+
+    await updateListing(listing.id, { status: "listing" });
+    const steps = ["start", "fill", "photos", "submit"] as const;
+    const stepLabels: Record<string, string> = {
+      start: "Opening Facebook...",
+      fill: "Filling details...",
+      photos: "Uploading photos...",
+      submit: "Submitting listing...",
+    };
+
+    let scrapeId = "";
+
+    try {
+      for (const step of steps) {
+        setPublishProgress((prev) => ({ ...prev, [listing.id]: stepLabels[step] }));
+
+        const res = await fetch("/api/listings/publish/facebook", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id, scrapeId, step }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || `Step "${step}" failed`);
+        }
+
+        if (data.scrapeId) scrapeId = data.scrapeId;
+
+        if (step === "submit") {
+          await updateListing(listing.id, {
+            status: "listed",
+            facebookListingUrl: data.listingUrl,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("Facebook publish error:", err);
+      await updateListing(listing.id, {
+        status: "error",
+        error: `Facebook: ${err.message}`,
+      });
+    } finally {
+      setPublishProgress((prev) => {
+        const next = { ...prev };
+        delete next[listing.id];
+        return next;
+      });
+    }
+  }
+
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -454,6 +649,61 @@ export default function ListingsPage() {
         </CardContent>
       </Card>
 
+      {/* Marketplace Connections */}
+      <Card>
+        <CardContent className="py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-muted-foreground mr-1">Accounts:</span>
+            <Button
+              size="sm"
+              variant={marketplaceStatus.mercari?.connected ? "outline" : "default"}
+              className={cn(
+                "text-xs h-7",
+                marketplaceStatus.mercari?.connected
+                  ? "border-green-500 text-green-700"
+                  : "bg-red-500 hover:bg-red-600 text-white"
+              )}
+              onClick={() => connectMarketplace("mercari")}
+              disabled={connecting === "mercari"}
+            >
+              {connecting === "mercari" ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : marketplaceStatus.mercari?.connected ? (
+                <Check className="h-3 w-3 mr-1" />
+              ) : (
+                <Store className="h-3 w-3 mr-1" />
+              )}
+              {marketplaceStatus.mercari?.connected
+                ? `Mercari${marketplaceStatus.mercari.username ? ` (${marketplaceStatus.mercari.username})` : ""}`
+                : "Connect Mercari"}
+            </Button>
+            <Button
+              size="sm"
+              variant={marketplaceStatus.facebook?.connected ? "outline" : "default"}
+              className={cn(
+                "text-xs h-7",
+                marketplaceStatus.facebook?.connected
+                  ? "border-green-500 text-green-700"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              )}
+              onClick={() => connectMarketplace("facebook")}
+              disabled={connecting === "facebook"}
+            >
+              {connecting === "facebook" ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : marketplaceStatus.facebook?.connected ? (
+                <Check className="h-3 w-3 mr-1" />
+              ) : (
+                <Facebook className="h-3 w-3 mr-1" />
+              )}
+              {marketplaceStatus.facebook?.connected
+                ? `Facebook${marketplaceStatus.facebook.username ? ` (${marketplaceStatus.facebook.username})` : ""}`
+                : "Connect Facebook"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Listings */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -495,7 +745,11 @@ export default function ListingsPage() {
                   onUpdate={(updates) => updateListing(listing.id, updates)}
                   onDelete={() => deleteListing(listing.id)}
                   onPublishEbay={() => publishToEbay(listing)}
+                  onPublishMercari={() => publishToMercari(listing)}
+                  onPublishFacebook={() => publishToFacebook(listing)}
                   onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
+                  marketplaceStatus={marketplaceStatus}
+                  publishProgress={publishProgress[listing.id]}
                 />
               ))
             )}
@@ -520,7 +774,11 @@ export default function ListingsPage() {
                   onUpdate={(updates) => updateListing(listing.id, updates)}
                   onDelete={() => deleteListing(listing.id)}
                   onPublishEbay={() => {}}
+                  onPublishMercari={() => {}}
+                  onPublishFacebook={() => {}}
                   onReanalyze={() => {}}
+                  marketplaceStatus={marketplaceStatus}
+                  publishProgress={undefined}
                 />
               ))
             )}
@@ -539,7 +797,11 @@ function ListingCard({
   onUpdate,
   onDelete,
   onPublishEbay,
+  onPublishMercari,
+  onPublishFacebook,
   onReanalyze,
+  marketplaceStatus,
+  publishProgress,
 }: {
   listing: ListingDraft;
   expanded: boolean;
@@ -548,7 +810,11 @@ function ListingCard({
   onUpdate: (updates: Partial<ListingDraft>) => void;
   onDelete: () => void;
   onPublishEbay: () => void;
+  onPublishMercari: () => void;
+  onPublishFacebook: () => void;
   onReanalyze: () => void;
+  marketplaceStatus: MarketplaceStatus;
+  publishProgress?: string;
 }) {
   const [editTitle, setEditTitle] = useState(listing.title);
   const [editDesc, setEditDesc] = useState(listing.description);
@@ -822,17 +1088,45 @@ function ListingCard({
                 )}
 
                 {selectedPlatforms.has("mercari") && listing.status !== "listed" && (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">
-                    <Store className="h-3 w-3 mr-1" />
-                    Mercari — coming soon
-                  </Badge>
+                  <Button
+                    size="sm"
+                    className="text-xs bg-red-500 hover:bg-red-600 text-white"
+                    onClick={() => {
+                      saveEdits();
+                      setTimeout(onPublishMercari, 100);
+                    }}
+                    disabled={listing.status === "listing" || !marketplaceStatus.mercari?.connected}
+                  >
+                    {listing.status === "listing" && publishProgress ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Store className="h-3 w-3 mr-1" />
+                    )}
+                    {!marketplaceStatus.mercari?.connected
+                      ? "Connect Mercari"
+                      : publishProgress || "Publish to Mercari"}
+                  </Button>
                 )}
 
                 {selectedPlatforms.has("facebook") && listing.status !== "listed" && (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">
-                    <Facebook className="h-3 w-3 mr-1" />
-                    Facebook — coming soon
-                  </Badge>
+                  <Button
+                    size="sm"
+                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white"
+                    onClick={() => {
+                      saveEdits();
+                      setTimeout(onPublishFacebook, 100);
+                    }}
+                    disabled={listing.status === "listing" || !marketplaceStatus.facebook?.connected}
+                  >
+                    {listing.status === "listing" && publishProgress ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Facebook className="h-3 w-3 mr-1" />
+                    )}
+                    {!marketplaceStatus.facebook?.connected
+                      ? "Connect Facebook"
+                      : publishProgress || "Publish to Facebook"}
+                  </Button>
                 )}
 
                 <div className="flex-1" />
@@ -860,6 +1154,28 @@ function ListingCard({
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
                       View on eBay
+                    </a>
+                  )}
+                  {listing.mercariListingUrl && (
+                    <a
+                      href={listing.mercariListingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-xs text-red-500 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      View on Mercari
+                    </a>
+                  )}
+                  {listing.facebookListingUrl && (
+                    <a
+                      href={listing.facebookListingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-xs text-blue-500 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      View on Facebook
                     </a>
                   )}
                 </div>

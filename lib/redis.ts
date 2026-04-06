@@ -56,6 +56,9 @@ export const REDIS_KEYS = {
   // Listings
   listings: "listings:all",
   listing: (id: string) => `listing:${id}`,
+
+  // Marketplace connections
+  marketplaceConnection: (platform: string) => `marketplace:connection:${platform}`,
 } as const;
 
 // Types
@@ -166,7 +169,20 @@ export interface ListingDraft {
     suggestedCondition: string;
     confidence: string;
   };
+  mercariStatus?: "pending" | "publishing" | "listed" | "error";
+  facebookStatus?: "pending" | "publishing" | "listed" | "error";
+  mercariError?: string;
+  facebookError?: string;
   error?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MarketplaceConnection {
+  platform: "mercari" | "facebook";
+  profileName: string;
+  connected: boolean;
+  lastValidated: string;
+  username?: string;
+  error?: string;
 }
