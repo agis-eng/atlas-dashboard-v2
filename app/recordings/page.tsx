@@ -23,6 +23,7 @@ import {
   ChevronUp,
   Check,
   Mail,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -173,6 +174,32 @@ export default function RecordingsPage() {
       );
     } catch {
       alert("Failed to unassign project");
+    }
+  }
+
+  async function createAndAssignProject(recordingId: string, projectName: string) {
+    try {
+      // Create the project
+      const createRes = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: projectName }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) {
+        alert(createData.error || "Failed to create project");
+        return;
+      }
+
+      const newProject = createData.project;
+
+      // Assign the recording to the new project
+      await assignProject(recordingId, newProject.id, newProject.name);
+
+      // Refresh projects list
+      await loadProjects();
+    } catch {
+      alert("Failed to create project");
     }
   }
 
@@ -340,6 +367,7 @@ export default function RecordingsPage() {
                     expanded={expanded.has(rec.id)}
                     onToggleExpand={() => toggleExpand(rec.id)}
                     onAssignProject={assignProject}
+                    onCreateProject={createAndAssignProject}
                     onDelete={deleteRecording}
                   />
                 ))}
@@ -367,6 +395,7 @@ export default function RecordingsPage() {
                     expanded={expanded.has(rec.id)}
                     onToggleExpand={() => toggleExpand(rec.id)}
                     onAssignProject={assignProject}
+                    onCreateProject={createAndAssignProject}
                     onUnassign={unassignProject}
                     onDelete={deleteRecording}
                   />
@@ -386,6 +415,7 @@ function RecordingCard({
   expanded,
   onToggleExpand,
   onAssignProject,
+  onCreateProject,
   onUnassign,
   onDelete,
 }: {
@@ -394,9 +424,14 @@ function RecordingCard({
   expanded: boolean;
   onToggleExpand: () => void;
   onAssignProject: (id: string, projectId: string, projectName: string) => void;
+  onCreateProject: (recordingId: string, projectName: string) => void;
   onUnassign?: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creating, setCreating] = useState(false);
+
   const hasSuggestion =
     recording.suggestedProjectId && !recording.projectId;
 
@@ -551,18 +586,24 @@ function RecordingCard({
               )}
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-2 border-t">
+            <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
               <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <select
-                className="flex-1 h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground"
+                className="flex-1 min-w-[140px] h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground"
                 value={recording.projectId || recording.suggestedProjectId || ""}
                 onChange={(e) => {
-                  const proj = projects.find((p: any) => p.id === e.target.value);
-                  if (proj) onAssignProject(recording.id, proj.id, proj.name);
-                  else onAssignProject(recording.id, "", "");
+                  if (e.target.value === "__new__") {
+                    setShowNewProject(true);
+                    e.target.value = "";
+                  } else {
+                    const proj = projects.find((p: any) => p.id === e.target.value);
+                    if (proj) onAssignProject(recording.id, proj.id, proj.name);
+                    else onAssignProject(recording.id, "", "");
+                  }
                 }}
               >
                 <option value="">Assign to project...</option>
+                <option value="__new__">+ Create new project</option>
                 {projects.map((p: any) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -589,6 +630,59 @@ function RecordingCard({
                 Delete
               </Button>
             </div>
+
+            {/* Inline new project creation */}
+            {showNewProject && (
+              <div className="flex items-center gap-2 pt-2">
+                <Plus className="h-3.5 w-3.5 text-orange-600 shrink-0" />
+                <Input
+                  autoFocus
+                  placeholder="New project name..."
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="flex-1 h-7 text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newProjectName.trim()) {
+                      setCreating(true);
+                      onCreateProject(recording.id, newProjectName.trim());
+                      setShowNewProject(false);
+                      setNewProjectName("");
+                      setCreating(false);
+                    } else if (e.key === "Escape") {
+                      setShowNewProject(false);
+                      setNewProjectName("");
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                  disabled={!newProjectName.trim() || creating}
+                  onClick={() => {
+                    if (newProjectName.trim()) {
+                      setCreating(true);
+                      onCreateProject(recording.id, newProjectName.trim());
+                      setShowNewProject(false);
+                      setNewProjectName("");
+                      setCreating(false);
+                    }
+                  }}
+                >
+                  {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setShowNewProject(false);
+                    setNewProjectName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

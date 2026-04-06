@@ -130,10 +130,28 @@ export function normalizeMeeting(
     .map((a) => a.description || a.text || "")
     .filter(Boolean);
 
+  // Build a descriptive title from participant names + date
+  const rawTitle = meeting.title || meeting.meeting_title || "";
+  const isGenericTitle = !rawTitle || /^(impromptu|zoom|google meet|teams)/i.test(rawTitle.trim());
+  const meetingDate = meeting.created_at || meeting.recording_start_time || new Date().toISOString();
+  const dateStr = new Date(meetingDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  let title = rawTitle || "Untitled Call";
+  if (isGenericTitle && allParticipants.length > 0) {
+    // Use external participant names (exclude internal team), fall back to all
+    const externalNames = invitees
+      .filter((a) => a.email && !isInternalEmail(a.email))
+      .map((a) => a.name || a.email || "")
+      .filter(Boolean);
+    const displayNames = externalNames.length > 0 ? externalNames : allParticipants;
+    const nameStr = displayNames.slice(0, 3).join(", ") + (displayNames.length > 3 ? ` +${displayNames.length - 3}` : "");
+    title = `${nameStr} — ${dateStr}`;
+  }
+
   const recording = {
     id: meetingId,
-    title: meeting.title || meeting.meeting_title || "Untitled Call",
-    date: meeting.created_at || meeting.recording_start_time || new Date().toISOString(),
+    title,
+    date: meetingDate,
     duration: computeDuration(meeting),
     participants: allParticipants,
     attendeeEmails: allEmails,

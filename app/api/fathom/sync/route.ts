@@ -91,6 +91,19 @@ export async function POST(request: NextRequest) {
         noMatchInApi++;
       }
 
+      // Update generic titles with participant names + date
+      if (/^(impromptu|zoom|google meet|teams)/i.test(rec.title?.trim() || "")) {
+        const externalParticipants = (rec.participants || []).filter((p) =>
+          !(rec.attendeeEmails || []).some((e) => p.toLowerCase().includes(e))
+        );
+        const names = externalParticipants.length > 0 ? externalParticipants : rec.participants || [];
+        if (names.length > 0) {
+          const dateStr = new Date(rec.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          const nameStr = names.slice(0, 3).join(", ") + (names.length > 3 ? ` +${names.length - 3}` : "");
+          rec.title = `${nameStr} — ${dateStr}`;
+        }
+      }
+
       // Collect unmatched recordings (no manual assignment and no suggestion)
       if (!rec.projectId && !rec.suggestedProjectId) {
         unmatchedToProcess.push(rec);
