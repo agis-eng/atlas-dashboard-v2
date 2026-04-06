@@ -192,7 +192,8 @@ export default function RecordingsPage() {
         return;
       }
 
-      const newProject = createData.project;
+      // API returns the project directly, not wrapped in { project: ... }
+      const newProject = createData.project || createData;
 
       // Assign the recording to the new project
       await assignProject(recordingId, newProject.id, newProject.name);
@@ -555,6 +556,26 @@ function RecordingCard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <select
+              className="h-7 text-xs rounded border border-border bg-background px-1.5 text-muted-foreground max-w-[130px]"
+              value={recording.projectId || recording.suggestedProjectId || ""}
+              onChange={(e) => {
+                if (e.target.value === "__new__") {
+                  setShowNewProject(true);
+                  e.target.value = "";
+                } else {
+                  const proj = projects.find((p: any) => p.id === e.target.value);
+                  if (proj) onAssignProject(recording.id, proj.id, proj.name);
+                  else onAssignProject(recording.id, "", "");
+                }
+              }}
+            >
+              <option value="">Project...</option>
+              <option value="__new__">+ New project</option>
+              {projects.map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
             {recording.url && (
               <a
                 href={recording.url}
