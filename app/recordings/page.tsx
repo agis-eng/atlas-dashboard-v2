@@ -111,7 +111,7 @@ export default function RecordingsPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/fathom/sync", { method: "POST" });
+      const res = await fetch("/api/fathom/sync?clear=true", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setSyncResult(
