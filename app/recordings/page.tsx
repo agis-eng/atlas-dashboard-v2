@@ -25,6 +25,13 @@ import {
   Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+
+/** Strip Fathom video links from markdown — they clutter the summary */
+function cleanSummary(text: string): string {
+  // Remove [text](https://fathom.video/...) → keep just text
+  return text.replace(/\[([^\]]*)\]\(https?:\/\/fathom\.video[^)]*\)/g, "$1");
+}
 
 interface FathomRecording {
   id: string;
@@ -111,7 +118,7 @@ export default function RecordingsPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/fathom/sync?clear=true", { method: "POST" });
+      const res = await fetch("/api/fathom/sync", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setSyncResult(
@@ -489,7 +496,7 @@ function RecordingCard({
         {/* Summary preview */}
         {recording.summary && !expanded && (
           <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
-            {recording.summary}
+            {cleanSummary(recording.summary).replace(/#{1,3}\s/g, "").slice(0, 200)}
           </p>
         )}
 
@@ -498,10 +505,12 @@ function RecordingCard({
           <div className="mt-3 space-y-3">
             {recording.summary && (
               <div className="bg-muted/40 rounded p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
                   <Sparkles className="h-3 w-3" /> Summary
                 </p>
-                <p className="text-sm leading-relaxed">{recording.summary}</p>
+                <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_li]:my-0.5 [&_p]:my-1">
+                  <ReactMarkdown>{cleanSummary(recording.summary)}</ReactMarkdown>
+                </div>
               </div>
             )}
 
