@@ -29,15 +29,26 @@ export async function POST(request: NextRequest) {
     let imported = 0;
     const recordings: FathomRecording[] = [];
 
-    // Build lookup of Fathom meetings by ID for backfilling summaries
-    const meetingById = new Map(meetings.map((m) => [m.id, m]));
+    // Build lookup of Fathom meetings by multiple ID formats for matching
+    // The API returns recording_id (number) but webhooks use their own id format
+    const meetingById = new Map<string, typeof meetings[0]>();
+    for (const m of meetings) {
+      const apiId = m.id || String(m.recording_id || "");
+      if (apiId) meetingById.set(apiId, m);
+      if (m.recording_id) meetingById.set(String(m.recording_id), m);
+      // Also index by URL-based call ID (e.g. "625933419" from fathom.video/calls/625933419)
+      if (m.url) {
+        const urlId = m.url.split("/").pop();
+        if (urlId) meetingById.set(urlId, m);
+      }
+    }
 
     // Log what the API actually returned for the first few meetings
     const sampleMeetings = meetings.slice(0, 3);
     for (const m of sampleMeetings) {
-      console.log(`[fathom-sync] Meeting "${m.title || m.meeting_title}" (${m.id}): default_summary=${JSON.stringify(m.default_summary)?.slice(0, 200)}, action_items=${m.action_items?.length ?? "none"}`);
+      console.log(`[fathom-sync] Meeting "${m.title || m.meeting_title}" (id=${m.id}, recording_id=${m.recording_id}): has_summary=${!!m.default_summary?.markdown_formatted}`);
     }
-    console.log(`[fathom-sync] Total meetings from API: ${meetings.length}, existing in Redis: ${existing?.length ?? 0}`);
+    console.log(`[fathom-sync] Total meetings from API: ${meetings.length}, existing in Redis: ${existing?.length ?? 0}, lookup keys: ${meetingById.size}`);
 
     // Clean up existing recordings: strip old transcripts, backfill summaries
     let summariesBackfilled = 0;
@@ -53,10 +64,11 @@ export async function POST(request: NextRequest) {
         const summary = fathomMeeting.default_summary?.markdown_formatted
           || fathomMeeting.default_summary?.plain_text
           || null;
-        if (!rec.summary && summary) {
+        // Overwrite if we have a summary from API and the recording has no real summary
+        if (summary && (!rec.summary || rec.summary.length < 10)) {
           rec.summary = summary;
           summariesBackfilled++;
-        } else if (rec.summary) {
+        } else if (rec.summary && rec.summary.length >= 10) {
           alreadyHadSummary++;
         }
         if ((!rec.actionItems || rec.actionItems.length === 0) && fathomMeeting.action_items) {
@@ -74,7 +86,8 @@ export async function POST(request: NextRequest) {
 
     // Import new meetings (summaries now included from list API)
     for (const meeting of meetings) {
-      if (existingIds.has(meeting.id)) continue;
+      const meetingId = meeting.id || String(meeting.recording_id || "");
+      if (!meetingId || existingIds.has(meetingId)) continue;
 
       const { recording } = normalizeMeeting(meeting, "api-sync");
 

@@ -10,7 +10,8 @@ interface FathomMeetingResponse {
 }
 
 interface FathomMeeting {
-  id: string;
+  id?: string;
+  recording_id?: number;
   title?: string;
   meeting_title?: string;
   url?: string;
@@ -121,14 +122,16 @@ export function normalizeMeeting(
     meeting.default_summary?.plain_text ||
     null;
 
-  console.log(`[fathom] normalizeMeeting ${meeting.id}: default_summary keys=${JSON.stringify(Object.keys(meeting.default_summary || {}))}, summary=${summary ? summary.slice(0, 80) + "..." : "null"}`);
+  const meetingId = meeting.id || String(meeting.recording_id || "");
+
+  console.log(`[fathom] normalizeMeeting ${meetingId}: default_summary keys=${JSON.stringify(Object.keys(meeting.default_summary || {}))}, summary=${summary ? summary.slice(0, 80) + "..." : "null"}`);
 
   const actionItems = (meeting.action_items || [])
     .map((a) => a.description || a.text || "")
     .filter(Boolean);
 
   const recording = {
-    id: meeting.id,
+    id: meetingId,
     title: meeting.title || meeting.meeting_title || "Untitled Call",
     date: meeting.created_at || meeting.recording_start_time || new Date().toISOString(),
     duration: computeDuration(meeting),
