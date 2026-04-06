@@ -94,7 +94,7 @@ export async function suggestProjectForRecording(
         if (projs && projs.length > 0) {
           // Pick most recently updated project for this client
           const best = projs.sort((a, b) =>
-            (b.lastUpdate || "").localeCompare(a.lastUpdate || "")
+            String(b.lastUpdate || "").localeCompare(String(a.lastUpdate || ""))
           )[0];
           return { projectId: best.id, projectName: best.name, confidence: "high" };
         }
@@ -131,7 +131,7 @@ export async function suggestProjectForRecording(
         const projs = clientProjects.get(client.id);
         if (projs && projs.length > 0) {
           const best = projs.sort((a, b) =>
-            (b.lastUpdate || "").localeCompare(a.lastUpdate || "")
+            String(b.lastUpdate || "").localeCompare(String(a.lastUpdate || ""))
           )[0];
           return { projectId: best.id, projectName: best.name, confidence: "high" };
         }

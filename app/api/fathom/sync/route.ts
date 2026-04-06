@@ -20,7 +20,16 @@ export async function POST(request: NextRequest) {
     }
 
     const redis = getRedis();
-    const existing = (await redis.get(REDIS_KEYS.fathomRecordings)) as FathomRecording[] | null;
+
+    // Allow full reset via query param
+    const { searchParams } = new URL(request.url);
+    const clearFirst = searchParams.get("clear") === "true";
+    if (clearFirst) {
+      await redis.del(REDIS_KEYS.fathomRecordings);
+      console.log("[fathom-sync] Cleared all existing recordings for fresh import");
+    }
+
+    const existing = clearFirst ? null : (await redis.get(REDIS_KEYS.fathomRecordings)) as FathomRecording[] | null;
     const existingIds = new Set((existing || []).map((r) => r.id));
 
     // Fetch all meetings from Fathom API
@@ -85,17 +94,24 @@ export async function POST(request: NextRequest) {
     console.log(`[fathom-sync] Backfill results: ${summariesBackfilled} summaries added, ${alreadyHadSummary} already had summary, ${noMatchInApi} not found in API response`);
 
     // Import new meetings (summaries now included from list API)
-    for (const meeting of meetings) {
-      const meetingId = meeting.id || String(meeting.recording_id || "");
-      if (!meetingId || existingIds.has(meetingId)) continue;
+    const newMeetings = meetings.filter((m) => {
+      const mid = m.id || String(m.recording_id || "");
+      return mid && !existingIds.has(mid);
+    });
 
+    // Only run matching for small batches (avoid Vercel timeout on bulk imports)
+    const shouldMatch = newMeetings.length <= 20;
+
+    for (const meeting of newMeetings) {
       const { recording } = normalizeMeeting(meeting, "api-sync");
 
-      // Run auto-matching
-      const match = await suggestProjectForRecording(
-        recording.attendeeEmails,
-        recording.participants
-      );
+      let match = null;
+      if (shouldMatch) {
+        match = await suggestProjectForRecording(
+          recording.attendeeEmails,
+          recording.participants
+        );
+      }
 
       const fullRecording: FathomRecording = {
         ...recording,
@@ -105,7 +121,6 @@ export async function POST(request: NextRequest) {
       };
 
       recordings.push(fullRecording);
-
       imported++;
     }
 
