@@ -32,9 +32,17 @@ export async function POST(request: NextRequest) {
     // Build lookup of Fathom meetings by ID for backfilling summaries
     const meetingById = new Map(meetings.map((m) => [m.id, m]));
 
+    // Log what the API actually returned for the first few meetings
+    const sampleMeetings = meetings.slice(0, 3);
+    for (const m of sampleMeetings) {
+      console.log(`[fathom-sync] Meeting "${m.title || m.meeting_title}" (${m.id}): default_summary=${JSON.stringify(m.default_summary)?.slice(0, 200)}, action_items=${m.action_items?.length ?? "none"}`);
+    }
+    console.log(`[fathom-sync] Total meetings from API: ${meetings.length}, existing in Redis: ${existing?.length ?? 0}`);
+
     // Clean up existing recordings: strip old transcripts, backfill summaries
-    // (Skip re-matching to avoid Vercel timeout — only match new recordings)
     let summariesBackfilled = 0;
+    let alreadyHadSummary = 0;
+    let noMatchInApi = 0;
     for (const rec of existing || []) {
       // Strip legacy transcript field from old records
       delete (rec as any).transcript;
@@ -45,19 +53,24 @@ export async function POST(request: NextRequest) {
         const summary = fathomMeeting.default_summary?.markdown_formatted
           || fathomMeeting.default_summary?.plain_text
           || null;
-        if (summary && !rec.summary) {
+        if (!rec.summary && summary) {
           rec.summary = summary;
           summariesBackfilled++;
+        } else if (rec.summary) {
+          alreadyHadSummary++;
         }
         if ((!rec.actionItems || rec.actionItems.length === 0) && fathomMeeting.action_items) {
           rec.actionItems = fathomMeeting.action_items
             .map((a) => a.description || a.text || "")
             .filter(Boolean);
         }
+      } else {
+        noMatchInApi++;
       }
 
       recordings.push(rec);
     }
+    console.log(`[fathom-sync] Backfill results: ${summariesBackfilled} summaries added, ${alreadyHadSummary} already had summary, ${noMatchInApi} not found in API response`);
 
     // Import new meetings (summaries now included from list API)
     for (const meeting of meetings) {
