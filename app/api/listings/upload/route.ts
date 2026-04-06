@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import crypto from "crypto";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB per photo
@@ -26,9 +25,6 @@ export async function POST(request: NextRequest) {
     }
 
     const listingId = formData.get("listingId") as string || crypto.randomUUID();
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "listings", listingId);
-    await mkdir(uploadDir, { recursive: true });
-
     const uploadedUrls: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -49,10 +45,14 @@ export async function POST(request: NextRequest) {
       }
 
       const ext = file.type.split("/")[1] === "jpeg" ? "jpg" : file.type.split("/")[1];
-      const filename = `${i + 1}.${ext}`;
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(path.join(uploadDir, filename), buffer);
-      uploadedUrls.push(`/uploads/listings/${listingId}/${filename}`);
+      const filename = `listings/${listingId}/${i + 1}.${ext}`;
+
+      const blob = await put(filename, file, {
+        access: "public",
+        contentType: file.type,
+      });
+
+      uploadedUrls.push(blob.url);
     }
 
     return Response.json({

@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { readFile } from "fs/promises";
-import path from "path";
 
 const anthropic = new Anthropic();
 
@@ -19,23 +17,16 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "No photos provided" }, { status: 400 });
     }
 
-    // Read photo files and build content blocks for Claude Vision
+    // Fetch photos from blob URLs and build content blocks for Claude Vision
     const imageBlocks: Anthropic.Messages.ImageBlockParam[] = [];
 
     for (const photoUrl of photos.slice(0, 6)) {
-      const filePath = path.join(process.cwd(), "public", photoUrl);
       try {
-        const buffer = await readFile(filePath);
+        const res = await fetch(photoUrl);
+        const buffer = Buffer.from(await res.arrayBuffer());
         const base64 = buffer.toString("base64");
-        const ext = photoUrl.split(".").pop()?.toLowerCase();
-        const mediaType =
-          ext === "jpg" || ext === "jpeg"
-            ? "image/jpeg"
-            : ext === "png"
-            ? "image/png"
-            : ext === "webp"
-            ? "image/webp"
-            : "image/jpeg";
+        const contentType = res.headers.get("content-type") || "image/jpeg";
+        const mediaType = contentType.startsWith("image/") ? contentType : "image/jpeg";
 
         imageBlocks.push({
           type: "image",
@@ -46,7 +37,7 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch {
-        console.error(`Failed to read photo: ${photoUrl}`);
+        console.error(`Failed to fetch photo: ${photoUrl}`);
       }
     }
 
