@@ -59,10 +59,13 @@ export async function POST(request: NextRequest) {
     }
     console.log(`[fathom-sync] Total meetings from API: ${meetings.length}, existing in Redis: ${existing?.length ?? 0}, lookup keys: ${meetingById.size}`);
 
-    // Clean up existing recordings: strip old transcripts, backfill summaries
+    // Clean up existing recordings: strip old transcripts, backfill summaries, re-match unmatched
     let summariesBackfilled = 0;
     let alreadyHadSummary = 0;
     let noMatchInApi = 0;
+    let matched = 0;
+    const unmatchedToProcess: FathomRecording[] = [];
+
     for (const rec of existing || []) {
       // Strip legacy transcript field from old records
       delete (rec as any).transcript;
@@ -73,7 +76,6 @@ export async function POST(request: NextRequest) {
         const summary = fathomMeeting.default_summary?.markdown_formatted
           || fathomMeeting.default_summary?.plain_text
           || null;
-        // Overwrite if we have a summary from API and the recording has no real summary
         if (summary && (!rec.summary || rec.summary.length < 10)) {
           rec.summary = summary;
           summariesBackfilled++;
@@ -89,9 +91,34 @@ export async function POST(request: NextRequest) {
         noMatchInApi++;
       }
 
+      // Collect unmatched recordings (no manual assignment and no suggestion)
+      if (!rec.projectId && !rec.suggestedProjectId) {
+        unmatchedToProcess.push(rec);
+      }
+
       recordings.push(rec);
     }
-    console.log(`[fathom-sync] Backfill results: ${summariesBackfilled} summaries added, ${alreadyHadSummary} already had summary, ${noMatchInApi} not found in API response`);
+
+    // Re-match unmatched recordings (batch of up to 30 per sync to avoid timeout)
+    const matchBatch = unmatchedToProcess.slice(0, 30);
+    for (const rec of matchBatch) {
+      try {
+        const match = await suggestProjectForRecording(
+          rec.attendeeEmails,
+          rec.participants
+        );
+        if (match) {
+          rec.suggestedProjectId = match.projectId;
+          rec.suggestedProjectName = match.projectName;
+          rec.matchConfidence = match.confidence;
+          matched++;
+        }
+      } catch {
+        // Skip matching errors
+      }
+    }
+
+    console.log(`[fathom-sync] Backfill: ${summariesBackfilled} summaries, ${alreadyHadSummary} already had. Matched ${matched}/${matchBatch.length} (${unmatchedToProcess.length} total unmatched)`);
 
     // Import new meetings (summaries now included from list API)
     const newMeetings = meetings.filter((m) => {
@@ -143,6 +170,8 @@ export async function POST(request: NextRequest) {
       success: true,
       imported,
       summariesBackfilled,
+      matched,
+      unmatchedRemaining: unmatchedToProcess.length - matched,
       total: recordings.length,
       alreadyExisted: meetings.length - imported,
     });
