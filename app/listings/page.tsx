@@ -101,6 +101,37 @@ export default function ListingsPage() {
     }
   }
 
+  async function compressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File> {
+    return new Promise((resolve) => {
+      // If already small enough, skip compression
+      if (file.size < 500_000) {
+        resolve(file);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            resolve(new File([blob!], file.name, { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   async function handlePhotoUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
@@ -108,7 +139,8 @@ export default function ListingsPage() {
     try {
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
-        formData.append("photos", files[i]);
+        const compressed = await compressImage(files[i]);
+        formData.append("photos", compressed);
       }
 
       const uploadRes = await fetch("/api/listings/upload", {
