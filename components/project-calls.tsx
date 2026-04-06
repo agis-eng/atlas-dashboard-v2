@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Film,
   ExternalLink,
@@ -15,7 +16,13 @@ import {
   ChevronUp,
   Loader2,
   X,
+  Pencil,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+
+function cleanSummary(text: string): string {
+  return text.replace(/\[([^\]]*)\]\(https?:\/\/fathom\.video[^)]*\)/g, "$1");
+}
 
 interface Recording {
   id: string;
@@ -42,6 +49,10 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
+  const [summaryDraft, setSummaryDraft] = useState("");
 
   useEffect(() => {
     loadRecordings();
@@ -75,6 +86,31 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
     } catch {
       alert("Failed to unassign recording");
     }
+  }
+
+  async function saveTitle(id: string) {
+    if (!titleDraft.trim()) return;
+    try {
+      await fetch(`/api/recordings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleDraft.trim() }),
+      });
+      setRecordings((prev) => prev.map((r) => r.id === id ? { ...r, title: titleDraft.trim() } : r));
+    } catch { /* ignore */ }
+    setEditingTitleId(null);
+  }
+
+  async function saveSummary(id: string) {
+    try {
+      await fetch(`/api/recordings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: summaryDraft }),
+      });
+      setRecordings((prev) => prev.map((r) => r.id === id ? { ...r, summary: summaryDraft } : r));
+    } catch { /* ignore */ }
+    setEditingSummaryId(null);
   }
 
   function toggleExpand(id: string) {
@@ -122,12 +158,28 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <button
-                    onClick={() => toggleExpand(rec.id)}
-                    className="font-medium text-sm text-left hover:text-orange-600 transition-colors"
-                  >
-                    {rec.title}
-                  </button>
+                  {editingTitleId === rec.id ? (
+                    <Input
+                      autoFocus
+                      value={titleDraft}
+                      onChange={(e) => setTitleDraft(e.target.value)}
+                      onBlur={() => saveTitle(rec.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveTitle(rec.id);
+                        if (e.key === "Escape") setEditingTitleId(null);
+                      }}
+                      className="h-7 text-sm font-medium"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => toggleExpand(rec.id)}
+                      onDoubleClick={(e) => { e.stopPropagation(); setEditingTitleId(rec.id); setTitleDraft(rec.title); }}
+                      className="font-medium text-sm text-left hover:text-orange-600 transition-colors group flex items-center gap-1"
+                    >
+                      {rec.title}
+                      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                    </button>
+                  )}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
@@ -185,7 +237,7 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
               {/* Summary preview */}
               {rec.summary && !isExpanded && (
                 <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
-                  {rec.summary}
+                  {cleanSummary(rec.summary).replace(/#{1,3}\s/g, "").slice(0, 200)}
                 </p>
               )}
 
@@ -193,10 +245,42 @@ export function ProjectCalls({ projectId }: { projectId: string }) {
                 <div className="mt-2 space-y-2">
                   {rec.summary && (
                     <div className="bg-muted/40 rounded p-2">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" /> Summary
-                      </p>
-                      <p className="text-xs leading-relaxed">{rec.summary}</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" /> Summary
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 text-[10px] text-muted-foreground px-1.5"
+                          onClick={() => {
+                            if (editingSummaryId === rec.id) {
+                              saveSummary(rec.id);
+                            } else {
+                              setEditingSummaryId(rec.id);
+                              setSummaryDraft(rec.summary || "");
+                            }
+                          }}
+                        >
+                          <Pencil className="h-2.5 w-2.5 mr-0.5" />
+                          {editingSummaryId === rec.id ? "Save" : "Edit"}
+                        </Button>
+                      </div>
+                      {editingSummaryId === rec.id ? (
+                        <textarea
+                          autoFocus
+                          value={summaryDraft}
+                          onChange={(e) => setSummaryDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditingSummaryId(null);
+                          }}
+                          className="w-full min-h-[200px] rounded border border-input bg-background px-2 py-1.5 text-xs resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      ) : (
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-xs leading-relaxed [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:mt-1.5 [&_h3]:mb-0.5 [&_ul]:my-0.5 [&_li]:my-0 [&_p]:my-0.5">
+                          <ReactMarkdown>{cleanSummary(rec.summary)}</ReactMarkdown>
+                        </div>
+                      )}
                     </div>
                   )}
 

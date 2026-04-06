@@ -24,6 +24,7 @@ import {
   Check,
   Mail,
   Plus,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -203,6 +204,12 @@ export default function RecordingsPage() {
     }
   }
 
+  function updateRecording(id: string, updates: Partial<FathomRecording>) {
+    setRecordings((prev) =>
+      prev.map((r) => r.id === id ? { ...r, ...updates } : r)
+    );
+  }
+
   async function deleteRecording(id: string) {
     try {
       await fetch(`/api/recordings/${id}`, { method: "DELETE" });
@@ -369,6 +376,7 @@ export default function RecordingsPage() {
                     onAssignProject={assignProject}
                     onCreateProject={createAndAssignProject}
                     onDelete={deleteRecording}
+                    onUpdate={updateRecording}
                   />
                 ))}
               </div>
@@ -398,6 +406,7 @@ export default function RecordingsPage() {
                     onCreateProject={createAndAssignProject}
                     onUnassign={unassignProject}
                     onDelete={deleteRecording}
+                    onUpdate={updateRecording}
                   />
                 ))}
               </div>
@@ -418,6 +427,7 @@ function RecordingCard({
   onCreateProject,
   onUnassign,
   onDelete,
+  onUpdate,
 }: {
   recording: FathomRecording;
   projects: any[];
@@ -427,13 +437,40 @@ function RecordingCard({
   onCreateProject: (recordingId: string, projectName: string) => void;
   onUnassign?: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<FathomRecording>) => void;
 }) {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(recording.title);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState(recording.summary || "");
 
   const hasSuggestion =
     recording.suggestedProjectId && !recording.projectId;
+
+  function saveTitle() {
+    if (titleDraft.trim() && titleDraft !== recording.title) {
+      fetch(`/api/recordings/${recording.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleDraft.trim() }),
+      });
+      onUpdate(recording.id, { title: titleDraft.trim() });
+    }
+    setEditingTitle(false);
+  }
+
+  function saveSummary() {
+    fetch(`/api/recordings/${recording.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: summaryDraft }),
+    });
+    onUpdate(recording.id, { summary: summaryDraft });
+    setEditingSummary(false);
+  }
 
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -441,12 +478,28 @@ function RecordingCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <button
-                onClick={onToggleExpand}
-                className="font-medium text-sm text-left hover:text-orange-600 transition-colors"
-              >
-                {recording.title}
-              </button>
+              {editingTitle ? (
+                <Input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") { setTitleDraft(recording.title); setEditingTitle(false); }
+                  }}
+                  className="h-7 text-sm font-medium"
+                />
+              ) : (
+                <button
+                  onClick={onToggleExpand}
+                  onDoubleClick={(e) => { e.stopPropagation(); setEditingTitle(true); }}
+                  className="font-medium text-sm text-left hover:text-orange-600 transition-colors group flex items-center gap-1"
+                >
+                  {recording.title}
+                  <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                </button>
+              )}
               {recording.projectName && (
                 <Badge variant="secondary" className="text-xs shrink-0">
                   <FolderOpen className="h-2.5 w-2.5 mr-1" />
@@ -540,12 +593,42 @@ function RecordingCard({
           <div className="mt-3 space-y-3">
             {recording.summary && (
               <div className="bg-muted/40 rounded p-3">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                  <Sparkles className="h-3 w-3" /> Summary
-                </p>
-                <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_li]:my-0.5 [&_p]:my-1">
-                  <ReactMarkdown>{cleanSummary(recording.summary)}</ReactMarkdown>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> Summary
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 text-[10px] text-muted-foreground px-1.5"
+                    onClick={() => {
+                      if (editingSummary) {
+                        saveSummary();
+                      } else {
+                        setEditingSummary(true);
+                        setSummaryDraft(recording.summary || "");
+                      }
+                    }}
+                  >
+                    <Pencil className="h-2.5 w-2.5 mr-0.5" />
+                    {editingSummary ? "Save" : "Edit"}
+                  </Button>
                 </div>
+                {editingSummary ? (
+                  <textarea
+                    autoFocus
+                    value={summaryDraft}
+                    onChange={(e) => setSummaryDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingSummary(false);
+                    }}
+                    className="w-full min-h-[200px] rounded border border-input bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_li]:my-0.5 [&_p]:my-1">
+                    <ReactMarkdown>{cleanSummary(recording.summary)}</ReactMarkdown>
+                  </div>
+                )}
               </div>
             )}
 

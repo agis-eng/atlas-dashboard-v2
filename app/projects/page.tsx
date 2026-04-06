@@ -28,8 +28,10 @@ import {
   Filter,
   CheckCircle2,
   Plus,
+  ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface ProjectItem {
   id: string;
@@ -236,6 +238,7 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"priority" | "name" | "client">("priority");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
@@ -304,11 +307,28 @@ export default function ProjectsPage() {
     return matchesSearch && matchesStage && matchesOwner;
   });
 
-  const activeProjects = filtered.filter(isActiveProject);
-  const completedProjects = filtered.filter(isCompletedProject);
-  const otherProjects = filtered.filter(
+  const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  function sortProjects(items: ProjectItem[]): ProjectItem[] {
+    return [...items].sort((a, b) => {
+      if (sortBy === "priority") {
+        const pa = priorityOrder[a.priority || ""] ?? 3;
+        const pb = priorityOrder[b.priority || ""] ?? 3;
+        if (pa !== pb) return pa - pb;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      if (sortBy === "client") {
+        return (a.clientId || "zzz").localeCompare(b.clientId || "zzz") || (a.name || "").localeCompare(b.name || "");
+      }
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }
+
+  const activeProjects = sortProjects(filtered.filter(isActiveProject));
+  const completedProjects = sortProjects(filtered.filter(isCompletedProject));
+  const otherProjects = sortProjects(filtered.filter(
     (p) => !isActiveProject(p) && !isCompletedProject(p)
-  );
+  ));
 
   function renderProjectGrid(items: ProjectItem[]) {
     if (items.length === 0) {
@@ -475,6 +495,22 @@ export default function ProjectsPage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+            {(["priority", "name", "client"] as const).map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant={sortBy === s ? "default" : "outline"}
+                onClick={() => setSortBy(s)}
+                className={cn(
+                  "text-xs capitalize",
+                  sortBy === s && "bg-orange-600 hover:bg-orange-700 text-white"
+                )}
+              >
+                {s}
+              </Button>
+            ))}
+            <span className="w-px h-5 bg-border" />
             <Filter className="h-4 w-4 text-muted-foreground" />
             <select
               value={stageFilter}

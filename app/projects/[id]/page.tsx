@@ -41,6 +41,9 @@ import {
   RefreshCw,
   Sparkles,
   Zap,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 import { ProjectCalls } from "@/components/project-calls";
@@ -854,6 +857,7 @@ export default function ProjectDetailPage({
   } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedVoiceMemos, setExpandedVoiceMemos] = useState<Set<string>>(new Set());
   const [voiceMemos, setVoiceMemos] = useState<Array<{
     id: string;
     title: string;
@@ -1532,51 +1536,100 @@ export default function ProjectDetailPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {voiceMemos.map((memo) => (
-              <div key={memo.id} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">{memo.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(memo.date).toLocaleDateString()}
-                  </span>
+            {voiceMemos.map((memo) => {
+              const isVmExpanded = expandedVoiceMemos.has(memo.id);
+              return (
+                <div key={memo.id} className="border rounded-lg p-3 transition-shadow hover:shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <button
+                        onClick={() => setExpandedVoiceMemos((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(memo.id)) next.delete(memo.id);
+                          else next.add(memo.id);
+                          return next;
+                        })}
+                        className="font-medium text-sm text-left hover:text-orange-600 transition-colors"
+                      >
+                        {memo.title}
+                      </button>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span>{new Date(memo.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        <span>&middot;</span>
+                        <span>{memo.speakers}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setExpandedVoiceMemos((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(memo.id)) next.delete(memo.id);
+                        else next.add(memo.id);
+                        return next;
+                      })}
+                      className="shrink-0 p-1"
+                    >
+                      {isVmExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                  </div>
+
+                  {/* Preview */}
+                  {!isVmExpanded && memo.summary && (
+                    <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                      {memo.summary}
+                    </p>
+                  )}
+
+                  {/* Expanded */}
+                  {isVmExpanded && (
+                    <div className="mt-2 space-y-2">
+                      {memo.summary && (
+                        <div className="bg-muted/40 rounded p-2">
+                          <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Summary
+                          </p>
+                          <p className="text-xs leading-relaxed">{memo.summary}</p>
+                        </div>
+                      )}
+                      {memo.actionItems && memo.actionItems.length > 0 && (
+                        <div className="bg-green-600/10 border border-green-600/20 rounded p-2">
+                          <p className="text-xs font-semibold text-green-500 mb-1 flex items-center gap-1">
+                            <CheckSquare className="h-3 w-3" /> Action Items
+                          </p>
+                          <ul className="space-y-0.5">
+                            {memo.actionItems.map((item, i) => (
+                              <li key={i} className="text-xs flex items-start gap-1.5">
+                                <span className="text-green-500 mt-0.5">&bull;</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {memo.keyDecisions && memo.keyDecisions.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium mb-1">Key Decisions</p>
+                          <ul className="space-y-0.5">
+                            {memo.keyDecisions.map((d, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                                <span className="text-orange-500 shrink-0">&bull;</span>
+                                {d}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {memo.topics && memo.topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {memo.topics.map((t, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">{memo.speakers}</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">{memo.summary}</p>
-                {memo.actionItems && memo.actionItems.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium mt-2 mb-1">Action Items</p>
-                    <ul className="space-y-0.5">
-                      {memo.actionItems.map((item, i) => (
-                        <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
-                          <span className="text-orange-500 shrink-0">-</span>
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {memo.keyDecisions && memo.keyDecisions.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium mt-2 mb-1">Key Decisions</p>
-                    <ul className="space-y-0.5">
-                      {memo.keyDecisions.map((d, i) => (
-                        <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
-                          <span className="text-green-500 shrink-0">-</span>
-                          {d}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {memo.topics && memo.topics.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {memo.topics.map((t, i) => (
-                      <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

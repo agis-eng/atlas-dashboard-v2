@@ -18,6 +18,8 @@ import {
   Tag,
   Trash2,
   Sparkles,
+  Pencil,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +53,8 @@ export default function VoiceMemosPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [processing, setProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<string | null>(null);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
 
   useEffect(() => {
     loadMemos();
@@ -115,6 +119,23 @@ export default function VoiceMemosPage() {
     } finally {
       setProcessing(false);
     }
+  }
+
+  async function saveMemoTitle(memoId: string, newTitle: string) {
+    if (!newTitle.trim()) return;
+    try {
+      await fetch(`/api/voice-memos/${memoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
+      setMemos((prev) =>
+        prev.map((m) => m.id === memoId ? { ...m, title: newTitle.trim() } : m)
+      );
+    } catch {
+      alert("Failed to update title");
+    }
+    setEditingTitleId(null);
   }
 
   async function assignProject(memoId: string, projectId: string) {
@@ -259,7 +280,28 @@ export default function VoiceMemosPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-medium text-sm">{memo.title}</h3>
+                        {editingTitleId === memo.id ? (
+                          <Input
+                            autoFocus
+                            value={titleDraft}
+                            onChange={(e) => setTitleDraft(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={() => saveMemoTitle(memo.id, titleDraft)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveMemoTitle(memo.id, titleDraft);
+                              if (e.key === "Escape") setEditingTitleId(null);
+                            }}
+                            className="h-7 text-sm font-medium max-w-[250px]"
+                          />
+                        ) : (
+                          <h3
+                            className="font-medium text-sm group flex items-center gap-1 cursor-pointer"
+                            onDoubleClick={(e) => { e.stopPropagation(); setEditingTitleId(memo.id); setTitleDraft(memo.title); }}
+                          >
+                            {memo.title}
+                            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                          </h3>
+                        )}
                         <Badge
                           variant="secondary"
                           className={cn(
@@ -309,6 +351,22 @@ export default function VoiceMemosPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        className="h-7 text-xs rounded border border-border bg-background px-1.5 text-muted-foreground max-w-[130px]"
+                        value={memo.projectMatch || ""}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          assignProject(memo.id, e.target.value);
+                        }}
+                      >
+                        <option value="">Project...</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
                       {memo.notionUrl && (
                         <a
                           href={memo.notionUrl}
@@ -413,24 +471,9 @@ export default function VoiceMemosPage() {
                         </div>
                       )}
 
-                      {/* Actions: Assign Project + Delete */}
+                      {/* Actions */}
                       <div className="flex items-center gap-2 pt-2 border-t">
-                        <select
-                          className="h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground flex-1"
-                          value={memo.projectMatch || ""}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            assignProject(memo.id, e.target.value);
-                          }}
-                        >
-                          <option value="">Assign to project...</option>
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex-1" />
                         <Button
                           size="sm"
                           variant="ghost"
