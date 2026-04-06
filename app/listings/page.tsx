@@ -416,7 +416,6 @@ export default function ListingsPage() {
             type="file"
             accept="image/*"
             multiple
-            capture="environment"
             className="hidden"
             onChange={(e) => handlePhotoUpload(e.target.files)}
           />
