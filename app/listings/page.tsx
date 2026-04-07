@@ -489,7 +489,7 @@ export default function ListingsPage() {
     const stepLabels: Record<string, string> = {
       start: "Opening Mercari...",
       fill: "Filling listing details...",
-      submit: "Submitting listing...",
+      submit: "Saving as draft...",
     };
 
     let scrapeId = "";
@@ -1167,7 +1167,7 @@ function ListingCard({
                     )}
                     {!marketplaceStatus.mercari?.connected
                       ? "Connect Mercari"
-                      : publishProgress || "Publish to Mercari"}
+                      : publishProgress || "Draft to Mercari"}
                   </Button>
                 )}
 

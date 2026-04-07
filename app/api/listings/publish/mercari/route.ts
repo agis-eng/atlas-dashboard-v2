@@ -127,41 +127,41 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
           return Response.json({ error: "scrapeId required" }, { status: 400 });
         }
 
-        // Click the List button
+        // Click Save draft instead of List — user can review and publish manually
         const submitResult = await firecrawlInteract(
           existingScrapeId,
-          `Click the "List" button to submit this listing. Then wait 5 seconds and describe what happened. Did you see a success message? A new page? An error? If you can see a URL for the new listing, include it.`,
+          `Click the "Save draft" button to save this listing as a draft. Then wait 3 seconds and describe what happened. Did you see a success message? An error? What does the page show now?`,
           { timeout: 50 }
         );
 
         const submitOutput = getOutput(submitResult);
-        console.log("Submit result - success:", submitResult.success, "output:", submitOutput.substring(0, 500));
+        console.log("Save draft result - success:", submitResult.success, "output:", submitOutput.substring(0, 500));
 
         // Stop the interact session to free resources
         try { await firecrawlInteractStop(existingScrapeId); } catch {}
 
-        const listingUrl = extractUrl(submitOutput);
         const hasError = submitOutput.toLowerCase().includes("error") ||
-          submitOutput.toLowerCase().includes("required field") ||
-          submitOutput.toLowerCase().includes("missing");
+          submitOutput.toLowerCase().includes("failed");
+        const hasDraftSuccess = submitOutput.toLowerCase().includes("draft") ||
+          submitOutput.toLowerCase().includes("saved") ||
+          submitOutput.toLowerCase().includes("success");
 
-        if (hasError && !listingUrl) {
+        if (hasError && !hasDraftSuccess) {
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: submitOutput.substring(0, 200) || "Submit may have failed",
+            mercariError: submitOutput.substring(0, 200) || "Save draft may have failed",
             status: "error",
-            error: "Mercari: " + (submitOutput.substring(0, 200) || "Submit may have failed"),
+            error: "Mercari: " + (submitOutput.substring(0, 200) || "Save draft may have failed"),
           });
           return Response.json({
             success: false,
-            error: "Listing may not have been created",
+            error: "Draft may not have been saved",
             details: submitOutput.substring(0, 500),
           });
         }
 
         await updateListingField(redis, listings, listingId, {
           mercariStatus: "listed",
-          mercariListingUrl: listingUrl || undefined,
           status: "listed",
         });
 
