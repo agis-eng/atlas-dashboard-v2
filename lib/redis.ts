@@ -157,6 +157,7 @@ export interface ListingDraft {
   title: string;
   description: string;
   price: number | null;
+  quantity: number;
   condition: string;
   category: string;
   platforms: ("ebay" | "mercari" | "facebook")[];

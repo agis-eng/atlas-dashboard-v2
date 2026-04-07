@@ -32,6 +32,7 @@ interface ListingDraft {
   title: string;
   description: string;
   price: number | null;
+  quantity: number;
   condition: string;
   category: string;
   platforms: ("ebay" | "mercari" | "facebook")[];
@@ -338,7 +339,7 @@ export default function ListingsPage() {
           },
           condition: EBAY_CONDITION_MAP[listing.condition] || "USED_GOOD",
           availability: {
-            shipToLocationAvailability: { quantity: 1 },
+            shipToLocationAvailability: { quantity: listing.quantity || 1 },
           },
         }),
       });
@@ -363,7 +364,7 @@ export default function ListingsPage() {
           pricingSummary: {
             price: { value: String(listing.price), currency: "USD" },
           },
-          availableQuantity: 1,
+          availableQuantity: listing.quantity || 1,
         }),
       });
 
@@ -867,6 +868,7 @@ function ListingCard({
   const [editTitle, setEditTitle] = useState(listing.title);
   const [editDesc, setEditDesc] = useState(listing.description);
   const [editPrice, setEditPrice] = useState(listing.price?.toString() || "");
+  const [editQuantity, setEditQuantity] = useState((listing.quantity || 1).toString());
   const [editCondition, setEditCondition] = useState(listing.condition);
   const [editCategory, setEditCategory] = useState(listing.category);
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
@@ -878,15 +880,17 @@ function ListingCard({
     setEditTitle(listing.title);
     setEditDesc(listing.description);
     setEditPrice(listing.price?.toString() || "");
+    setEditQuantity((listing.quantity || 1).toString());
     setEditCondition(listing.condition);
     setEditCategory(listing.category);
-  }, [listing.title, listing.description, listing.price, listing.condition, listing.category]);
+  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category]);
 
   function saveEdits() {
     onUpdate({
       title: editTitle,
       description: editDesc,
       price: editPrice ? parseFloat(editPrice) : null,
+      quantity: editQuantity ? parseInt(editQuantity) : 1,
       condition: editCondition,
       category: editCategory,
       platforms: Array.from(selectedPlatforms) as any,
@@ -1025,6 +1029,19 @@ function ListingCard({
                       className="pl-7 text-sm"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    Qty
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={editQuantity}
+                    onChange={(e) => setEditQuantity(e.target.value)}
+                    placeholder="1"
+                    className="text-sm w-20"
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1">

@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
         title: body.title || "",
         description: body.description || "",
         price: body.price ?? null,
+        quantity: body.quantity || 1,
         condition: body.condition || "",
         category: body.category || "",
         platforms: body.platforms || [],
