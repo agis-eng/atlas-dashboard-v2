@@ -5,16 +5,17 @@ const EBAY_TOKEN = process.env.EBAY_USER_TOKEN || "";
 const SANDBOX_API = "https://api.sandbox.ebay.com";
 const PRODUCTION_API = "https://api.ebay.com";
 
-async function getTokenFromRedis(): Promise<string> {
+// Returns { token, isOAuth } so we know to always use Bearer for Redis-stored tokens
+async function getTokenFromRedis(): Promise<{ token: string; isOAuth: boolean }> {
   try {
     const redis = getRedis();
     const raw = await redis.get(REDIS_KEYS.ebayToken);
-    if (!raw) return "";
+    if (!raw) return { token: "", isOAuth: false };
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (data.expires_at && new Date(data.expires_at) < new Date()) return "";
-    return data.access_token || "";
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return { token: "", isOAuth: false };
+    return { token: data.access_token || "", isOAuth: true };
   } catch {
-    return "";
+    return { token: "", isOAuth: false };
   }
 }
 
@@ -27,13 +28,15 @@ function isClassicToken(token: string): boolean {
   return token.startsWith("v^");
 }
 
-function ebayHeaders(token: string): Record<string, string> {
+// forceBearer: true for tokens from Redis (OAuth tokens that start with v^)
+function ebayHeaders(token: string, forceBearer = false): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
+    "Accept-Language": "en-US",
   };
 
-  if (isClassicToken(token)) {
+  if (!forceBearer && isClassicToken(token)) {
     // Auth'n'Auth (classic) tokens use X-EBAY-API-IAF-TOKEN header
     headers["X-EBAY-API-IAF-TOKEN"] = token;
   } else {
@@ -50,8 +53,11 @@ export async function GET(request: NextRequest) {
   const action = searchParams.get("action");
   const env = searchParams.get("env") || "sandbox";
   let token = searchParams.get("token") || EBAY_TOKEN;
+  let forceBearer = false;
   if (!token) {
-    token = await getTokenFromRedis();
+    const redis = await getTokenFromRedis();
+    token = redis.token;
+    forceBearer = redis.isOAuth;
   }
   const baseUrl = getBaseUrl(env);
 
@@ -65,7 +71,7 @@ export async function GET(request: NextRequest) {
         const tokenType = isClassicToken(token) ? "Auth'n'Auth (classic)" : "OAuth Bearer";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=1`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         if (res.ok) {
           return Response.json({
@@ -99,7 +105,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/offer?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -110,7 +116,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -121,7 +127,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/fulfillment/v1/order?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -132,7 +138,7 @@ export async function GET(request: NextRequest) {
         if (!orderId) return Response.json({ error: "Missing orderId" }, { status: 400 });
         const res = await fetch(
           `${baseUrl}/sell/fulfillment/v1/order/${orderId}`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -142,7 +148,7 @@ export async function GET(request: NextRequest) {
         const q = searchParams.get("q") || "";
         const res = await fetch(
           `${baseUrl}/commerce/taxonomy/v1/category_tree/0/get_category_suggestions?q=${encodeURIComponent(q)}`,
-          { headers: ebayHeaders(token) }
+          { headers: ebayHeaders(token, forceBearer) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -164,10 +170,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, env = "sandbox", token: bodyToken, ...payload } = body;
   let token = bodyToken || EBAY_TOKEN;
+  let forceBearer = false;
 
   // Fall back to Redis-stored OAuth token
   if (!token) {
-    token = await getTokenFromRedis();
+    const redis = await getTokenFromRedis();
+    token = redis.token;
+    forceBearer = redis.isOAuth;
   }
 
   const baseUrl = getBaseUrl(env);
@@ -185,7 +194,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
           {
             method: "PUT",
-            headers: ebayHeaders(token),
+            headers: ebayHeaders(token, forceBearer),
             body: JSON.stringify(itemData),
           }
         );
@@ -197,7 +206,7 @@ export async function POST(request: NextRequest) {
       case "create-offer": {
         const res = await fetch(`${baseUrl}/sell/inventory/v1/offer`, {
           method: "POST",
-          headers: ebayHeaders(token),
+          headers: ebayHeaders(token, forceBearer),
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -211,7 +220,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}/publish`,
           {
             method: "POST",
-            headers: ebayHeaders(token),
+            headers: ebayHeaders(token, forceBearer),
           }
         );
         const data = await res.json().catch(() => ({ success: true }));
@@ -225,7 +234,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}`,
           {
             method: "DELETE",
-            headers: ebayHeaders(token),
+            headers: ebayHeaders(token, forceBearer),
           }
         );
         if (res.status === 204) return Response.json({ success: true });
@@ -245,7 +254,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/fulfillment/v1/order/${orderId}/shipping_fulfillment`,
           {
             method: "POST",
-            headers: ebayHeaders(token),
+            headers: ebayHeaders(token, forceBearer),
             body: JSON.stringify(shipmentBody),
           }
         );
@@ -260,7 +269,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}`,
           {
             method: "PUT",
-            headers: ebayHeaders(token),
+            headers: ebayHeaders(token, forceBearer),
             body: JSON.stringify(offerData),
           }
         );
