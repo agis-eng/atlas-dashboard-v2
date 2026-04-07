@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   try {
     switch (action) {
       case "test-connection": {
-        const tokenType = isClassicToken(token) ? "Auth'n'Auth (classic)" : "OAuth Bearer";
+        const tokenType = "OAuth Bearer";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=1`,
           { headers: ebayHeaders(token) }
