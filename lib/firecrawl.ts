@@ -25,6 +25,13 @@ export interface FirecrawlScrapeResult {
 
 export interface FirecrawlInteractResult {
   success: boolean;
+  // REST API returns these at top level, not under data
+  output?: string;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  result?: string;
+  liveViewUrl?: string;
   data?: {
     output?: string;
     stdout?: string;

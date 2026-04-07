@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft, MarketplaceConnection } from "@/lib/redis";
-import { firecrawlScrape, firecrawlInteract, firecrawlInteractCode, MERCARI_PROFILE } from "@/lib/firecrawl";
+import { firecrawlScrape, firecrawlInteract, firecrawlInteractStop, FirecrawlProfile } from "@/lib/firecrawl";
+
+// Use saveChanges: false for publish — saveChanges: true locks the profile
+const MERCARI_READ_PROFILE: FirecrawlProfile = { name: "mercari-session", saveChanges: false };
+
+function getOutput(result: any): string {
+  return result?.output || result?.data?.output || "";
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,26 +49,25 @@ export async function POST(request: NextRequest) {
     switch (step) {
       case "start": {
         const result = await firecrawlScrape("https://www.mercari.com/sell/", {
-          profile: MERCARI_PROFILE,
+          profile: MERCARI_READ_PROFILE,
           proxy: "enhanced",
           waitFor: 5000,
           formats: ["markdown"],
         });
 
-        console.log("Mercari raw response:", JSON.stringify(result).substring(0, 500));
-        const scrapeId = result.data?.metadata?.scrapeId || (result as any).metadata?.scrapeId || (result as any).scrapeId;
-        console.log("Mercari start - scrapeId:", scrapeId);
+        const scrapeId = result.data?.metadata?.scrapeId;
+        console.log("Mercari start - scrapeId:", scrapeId, "status:", result.data?.metadata?.statusCode);
 
         if (!scrapeId) {
+          console.log("Mercari no scrapeId. Full keys:", JSON.stringify(Object.keys(result)));
           return Response.json(
             { error: "Failed to open Mercari sell page", details: result.error || "No scrapeId" },
             { status: 500 }
           );
         }
 
-        // Check if we're on the sell page or got redirected to login
         const pageContent = result.data?.markdown || "";
-        if (pageContent.includes("Log in to Mercari") || pageContent.includes("Sign up")) {
+        if (pageContent.includes("Log in to Mercari")) {
           return Response.json(
             { error: "Mercari session expired. Please reconnect your account." },
             { status: 401 }
@@ -70,12 +76,7 @@ export async function POST(request: NextRequest) {
 
         await updateListingField(redis, listings, listingId, { mercariStatus: "publishing" });
 
-        return Response.json({
-          success: true,
-          scrapeId,
-          step: "start",
-          next: "fill",
-        });
+        return Response.json({ success: true, scrapeId, step: "start", next: "fill" });
       }
 
       case "fill": {
@@ -83,38 +84,33 @@ export async function POST(request: NextRequest) {
           return Response.json({ error: "scrapeId required" }, { status: 400 });
         }
 
-        // Use code-based interact to fill form fields via JavaScript
-        const title = listing.title.replace(/'/g, "\\'").replace(/\n/g, " ");
-        const desc = listing.description.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+        const title = listing.title;
+        const desc = listing.description;
         const price = listing.price!;
+        const condition = listing.condition || "Good";
 
-        const fillResult = await firecrawlInteractCode(
+        // Fill all fields in one interact call
+        const fillResult = await firecrawlInteract(
           existingScrapeId,
-          `agent-browser type "input[name='name'], input[placeholder*='Title'], input[aria-label*='Title']" "${title}"`,
-          { timeout: 30, language: "bash" }
-        );
-        console.log("Fill title result:", JSON.stringify(fillResult.data?.output || fillResult.error));
-
-        // Try natural language as fallback — it's better at finding React form fields
-        const nlResult = await firecrawlInteract(
-          existingScrapeId,
-          `On this Mercari "List an item" form page, do the following steps carefully:
-1. Click on the Title input field and type exactly: ${listing.title}
-2. Click on the Description textarea and type exactly: ${listing.description}
-3. Click on "Ship on your own" under the Shipping section
-4. Click on the "${listing.condition || "Good"}" condition option
-5. Click on the price input field and type: ${price}
-Do NOT click the List button. Just fill in these fields.`,
+          `On this Mercari "List an item" form, do these steps in order:
+1. Click the Title input field (textbox labeled "Title") and type exactly: ${title}
+2. Click the Description textarea (textbox labeled "Description") and type exactly: ${desc}
+3. Click on the "${condition}" condition option to select it
+4. Click on "Ship on your own" under Shipping method (if not already selected)
+5. Click the price input field (textbox with placeholder "min $1/max $2000") and type: ${price}
+Do NOT click the List button yet. After filling everything, tell me what the Title field shows and what the price shows.`,
           { timeout: 50 }
         );
-        console.log("Fill NL result:", JSON.stringify({ success: nlResult.success, output: nlResult.data?.output?.substring(0, 200), error: nlResult.error }));
 
-        if (!nlResult.success && !fillResult.success) {
+        const fillOutput = getOutput(fillResult);
+        console.log("Fill result - success:", fillResult.success, "output:", fillOutput.substring(0, 300));
+
+        if (!fillResult.success) {
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: "Failed to fill listing fields",
+            mercariError: "Failed to fill listing fields: " + (fillResult.error || ""),
           });
-          return Response.json({ error: "Failed to fill fields", details: nlResult.error || fillResult.error }, { status: 500 });
+          return Response.json({ error: "Failed to fill fields", details: fillResult.error }, { status: 500 });
         }
 
         return Response.json({
@@ -122,7 +118,7 @@ Do NOT click the List button. Just fill in these fields.`,
           scrapeId: existingScrapeId,
           step: "fill",
           next: "submit",
-          output: nlResult.data?.output,
+          output: fillOutput.substring(0, 300),
         });
       }
 
@@ -131,57 +127,49 @@ Do NOT click the List button. Just fill in these fields.`,
           return Response.json({ error: "scrapeId required" }, { status: 400 });
         }
 
-        // Take a screenshot before submitting so we can see what was filled
-        const screenshotResult = await firecrawlInteract(
-          existingScrapeId,
-          "Take a screenshot of the current page. Describe what you see - are the form fields filled in? What does the title say? What does the price say? Is there any error message?",
-          { timeout: 30 }
-        );
-        console.log("Pre-submit check:", JSON.stringify({ output: screenshotResult.data?.output?.substring(0, 500) }));
-
-        // Try to submit
+        // Click the List button
         const submitResult = await firecrawlInteract(
           existingScrapeId,
-          "Click the 'List' button at the bottom of the page to submit this listing. If there's an error or missing required fields, describe what the error says.",
-          { timeout: 45 }
+          `Click the "List" button to submit this listing. Then wait 5 seconds and describe what happened. Did you see a success message? A new page? An error? If you can see a URL for the new listing, include it.`,
+          { timeout: 50 }
         );
-        console.log("Submit result:", JSON.stringify({ success: submitResult.success, output: submitResult.data?.output?.substring(0, 500), error: submitResult.error }));
 
-        // Check what happened after submit
-        const checkResult = await firecrawlInteract(
-          existingScrapeId,
-          "What happened after clicking List? Is there a success message? A new URL? An error? Describe what you see on the screen now. If there's a listing URL, return it.",
-          { timeout: 30 }
-        );
-        console.log("Post-submit check:", JSON.stringify({ output: checkResult.data?.output?.substring(0, 500) }));
+        const submitOutput = getOutput(submitResult);
+        console.log("Submit result - success:", submitResult.success, "output:", submitOutput.substring(0, 500));
 
-        const output = checkResult.data?.output || submitResult.data?.output || "";
-        const listingUrl = extractUrl(output);
-        const hasError = output.toLowerCase().includes("error") || output.toLowerCase().includes("required") || output.toLowerCase().includes("missing");
+        // Stop the interact session to free resources
+        try { await firecrawlInteractStop(existingScrapeId); } catch {}
+
+        const listingUrl = extractUrl(submitOutput);
+        const hasError = submitOutput.toLowerCase().includes("error") ||
+          submitOutput.toLowerCase().includes("required field") ||
+          submitOutput.toLowerCase().includes("missing");
 
         if (hasError && !listingUrl) {
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: output.substring(0, 200),
+            mercariError: submitOutput.substring(0, 200) || "Submit may have failed",
+            status: "error",
+            error: "Mercari: " + (submitOutput.substring(0, 200) || "Submit may have failed"),
           });
           return Response.json({
             success: false,
             error: "Listing may not have been created",
-            details: output.substring(0, 500),
+            details: submitOutput.substring(0, 500),
           });
         }
 
         await updateListingField(redis, listings, listingId, {
           mercariStatus: "listed",
           mercariListingUrl: listingUrl || undefined,
-          status: listingUrl ? "listed" : listing.status,
+          status: "listed",
         });
 
         return Response.json({
           success: true,
           step: "submit",
           listingUrl,
-          output: output.substring(0, 500),
+          output: submitOutput.substring(0, 500),
         });
       }
 
