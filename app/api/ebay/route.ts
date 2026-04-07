@@ -5,17 +5,16 @@ const EBAY_TOKEN = process.env.EBAY_USER_TOKEN || "";
 const SANDBOX_API = "https://api.sandbox.ebay.com";
 const PRODUCTION_API = "https://api.ebay.com";
 
-// Returns { token, isOAuth } so we know to always use Bearer for Redis-stored tokens
-async function getTokenFromRedis(): Promise<{ token: string; isOAuth: boolean }> {
+async function getTokenFromRedis(): Promise<string> {
   try {
     const redis = getRedis();
     const raw = await redis.get(REDIS_KEYS.ebayToken);
-    if (!raw) return { token: "", isOAuth: false };
+    if (!raw) return "";
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (data.expires_at && new Date(data.expires_at) < new Date()) return { token: "", isOAuth: false };
-    return { token: data.access_token || "", isOAuth: true };
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return "";
+    return data.access_token || "";
   } catch {
-    return { token: "", isOAuth: false };
+    return "";
   }
 }
 
@@ -23,29 +22,14 @@ function getBaseUrl(env: string) {
   return env === "production" ? PRODUCTION_API : SANDBOX_API;
 }
 
-function isClassicToken(token: string): boolean {
-  // Auth'n'Auth (classic/IAF) tokens start with "v^" prefix
-  return token.startsWith("v^");
-}
-
-// forceBearer: true for tokens from Redis (OAuth tokens that start with v^)
-function ebayHeaders(token: string, forceBearer = false): Record<string, string> {
-  const headers: Record<string, string> = {
+function ebayHeaders(token: string): Record<string, string> {
+  return {
     "Content-Type": "application/json",
     Accept: "application/json",
     "Accept-Language": "en-US",
     "Content-Language": "en-US",
+    "Authorization": `Bearer ${token}`,
   };
-
-  if (!forceBearer && isClassicToken(token)) {
-    // Auth'n'Auth (classic) tokens use X-EBAY-API-IAF-TOKEN header
-    headers["X-EBAY-API-IAF-TOKEN"] = token;
-  } else {
-    // OAuth tokens use standard Bearer auth
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  return headers;
 }
 
 // GET - Proxy eBay API reads (listings, orders, inventory)
@@ -54,11 +38,8 @@ export async function GET(request: NextRequest) {
   const action = searchParams.get("action");
   const env = searchParams.get("env") || "sandbox";
   let token = searchParams.get("token") || EBAY_TOKEN;
-  let forceBearer = false;
   if (!token) {
-    const redis = await getTokenFromRedis();
-    token = redis.token;
-    forceBearer = redis.isOAuth;
+    token = await getTokenFromRedis();
   }
   const baseUrl = getBaseUrl(env);
 
@@ -72,7 +53,7 @@ export async function GET(request: NextRequest) {
         const tokenType = isClassicToken(token) ? "Auth'n'Auth (classic)" : "OAuth Bearer";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=1`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         if (res.ok) {
           return Response.json({
@@ -106,7 +87,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/offer?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -117,7 +98,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -128,7 +109,7 @@ export async function GET(request: NextRequest) {
         const offset = searchParams.get("offset") || "0";
         const res = await fetch(
           `${baseUrl}/sell/fulfillment/v1/order?limit=${limit}&offset=${offset}`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -139,7 +120,7 @@ export async function GET(request: NextRequest) {
         if (!orderId) return Response.json({ error: "Missing orderId" }, { status: 400 });
         const res = await fetch(
           `${baseUrl}/sell/fulfillment/v1/order/${orderId}`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -149,7 +130,7 @@ export async function GET(request: NextRequest) {
         const q = searchParams.get("q") || "";
         const res = await fetch(
           `${baseUrl}/commerce/taxonomy/v1/category_tree/0/get_category_suggestions?q=${encodeURIComponent(q)}`,
-          { headers: ebayHeaders(token, forceBearer) }
+          { headers: ebayHeaders(token) }
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
@@ -171,20 +152,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, env = "production", token: bodyToken, ...payload } = body;
   let token = bodyToken || EBAY_TOKEN;
-  let forceBearer = false;
-
-  console.log("eBay POST - action:", action, "env:", env, "hasBodyToken:", !!bodyToken, "hasEnvToken:", !!EBAY_TOKEN);
 
   // Fall back to Redis-stored OAuth token
   if (!token) {
-    const redisResult = await getTokenFromRedis();
-    token = redisResult.token;
-    forceBearer = redisResult.isOAuth;
-    console.log("eBay POST - got token from Redis:", !!token, "forceBearer:", forceBearer);
+    token = await getTokenFromRedis();
   }
 
   const baseUrl = getBaseUrl(env);
-  console.log("eBay POST - baseUrl:", baseUrl, "tokenStart:", token?.substring(0, 10), "forceBearer:", forceBearer);
 
   if (!token) {
     return Response.json({ error: "No eBay token configured" }, { status: 401 });
@@ -199,7 +173,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
           {
             method: "PUT",
-            headers: ebayHeaders(token, forceBearer),
+            headers: ebayHeaders(token),
             body: JSON.stringify(itemData),
           }
         );
@@ -211,7 +185,7 @@ export async function POST(request: NextRequest) {
       case "create-offer": {
         const res = await fetch(`${baseUrl}/sell/inventory/v1/offer`, {
           method: "POST",
-          headers: ebayHeaders(token, forceBearer),
+          headers: ebayHeaders(token),
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -225,7 +199,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}/publish`,
           {
             method: "POST",
-            headers: ebayHeaders(token, forceBearer),
+            headers: ebayHeaders(token),
           }
         );
         const data = await res.json().catch(() => ({ success: true }));
@@ -239,7 +213,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}`,
           {
             method: "DELETE",
-            headers: ebayHeaders(token, forceBearer),
+            headers: ebayHeaders(token),
           }
         );
         if (res.status === 204) return Response.json({ success: true });
@@ -259,7 +233,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/fulfillment/v1/order/${orderId}/shipping_fulfillment`,
           {
             method: "POST",
-            headers: ebayHeaders(token, forceBearer),
+            headers: ebayHeaders(token),
             body: JSON.stringify(shipmentBody),
           }
         );
@@ -274,7 +248,7 @@ export async function POST(request: NextRequest) {
           `${baseUrl}/sell/inventory/v1/offer/${offerId}`,
           {
             method: "PUT",
-            headers: ebayHeaders(token, forceBearer),
+            headers: ebayHeaders(token),
             body: JSON.stringify(offerData),
           }
         );
