@@ -48,8 +48,9 @@ export async function POST(request: NextRequest) {
           formats: ["markdown"],
         });
 
+        console.log("Mercari raw response:", JSON.stringify(result).substring(0, 500));
         const scrapeId = result.data?.metadata?.scrapeId || (result as any).metadata?.scrapeId || (result as any).scrapeId;
-        console.log("Mercari start - scrapeId:", scrapeId, "url:", result.data?.metadata?.url);
+        console.log("Mercari start - scrapeId:", scrapeId);
 
         if (!scrapeId) {
           return Response.json(
