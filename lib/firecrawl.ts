@@ -83,6 +83,27 @@ export async function firecrawlInteract(
   return res.json();
 }
 
+export async function firecrawlInteractCode(
+  scrapeId: string,
+  code: string,
+  options: { timeout?: number; language?: "node" | "python" | "bash" } = {}
+): Promise<FirecrawlInteractResult> {
+  const res = await fetch(`${BASE_URL}/scrape/${scrapeId}/interact`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+    },
+    body: JSON.stringify({
+      code,
+      language: options.language || "bash",
+      timeout: options.timeout || 45,
+    }),
+  });
+
+  return res.json();
+}
+
 export async function firecrawlInteractStop(scrapeId: string): Promise<void> {
   await fetch(`${BASE_URL}/scrape/${scrapeId}/interact/stop`, {
     method: "POST",

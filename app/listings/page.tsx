@@ -485,12 +485,10 @@ export default function ListingsPage() {
     }
 
     await updateListing(listing.id, { status: "listing" });
-    const steps = ["start", "fill", "photos", "category", "submit"] as const;
+    const steps = ["start", "fill", "submit"] as const;
     const stepLabels: Record<string, string> = {
       start: "Opening Mercari...",
-      fill: "Filling details...",
-      photos: "Uploading photos...",
-      category: "Setting category...",
+      fill: "Filling listing details...",
       submit: "Submitting listing...",
     };
 
