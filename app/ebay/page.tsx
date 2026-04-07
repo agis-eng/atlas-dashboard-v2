@@ -192,19 +192,52 @@ export default function EbayPage() {
   const [shipForm, setShipForm] = useState<{ orderId: string; trackingNumber: string; carrier: string } | null>(null);
   const [shipping, setShipping] = useState(false);
 
-  // Load saved settings & drafts on mount
+  // Load saved settings & drafts on mount, check for OAuth token
   useEffect(() => {
-    const saved = localStorage.getItem("ebay-settings");
-    if (saved) {
-      try {
-        const s = JSON.parse(saved);
-        if (s.token) setToken(s.token);
-        if (s.environment) setEnvironment(s.environment);
-      } catch { /* ignore */ }
-    }
+    // Check for OAuth token from server first
+    fetch("/api/ebay/token")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.connected && data.token) {
+          setToken(data.token);
+          setEnvironment("production");
+          setConnectionStatus("connected");
+        } else {
+          // Fall back to localStorage
+          const saved = localStorage.getItem("ebay-settings");
+          if (saved) {
+            try {
+              const s = JSON.parse(saved);
+              if (s.token) setToken(s.token);
+              if (s.environment) setEnvironment(s.environment);
+            } catch { /* ignore */ }
+          }
+        }
+      })
+      .catch(() => {
+        // Fall back to localStorage
+        const saved = localStorage.getItem("ebay-settings");
+        if (saved) {
+          try {
+            const s = JSON.parse(saved);
+            if (s.token) setToken(s.token);
+            if (s.environment) setEnvironment(s.environment);
+          } catch { /* ignore */ }
+        }
+      });
     const savedDrafts = localStorage.getItem(DRAFT_STORAGE_KEY);
     if (savedDrafts) {
       try { setDrafts(JSON.parse(savedDrafts)); } catch { /* ignore */ }
+    }
+    // Check for OAuth callback status in URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "true") {
+      setConnectionStatus("connected");
+      window.history.replaceState({}, "", "/ebay");
+    }
+    if (params.get("error")) {
+      setConnectionStatus("failed");
+      window.history.replaceState({}, "", "/ebay");
     }
   }, []);
 

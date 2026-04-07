@@ -292,14 +292,26 @@ export default function ListingsPage() {
     await updateListing(listing.id, { status: "listing" });
 
     try {
-      // Get eBay settings from localStorage (same pattern as ebay page)
-      const savedSettings = localStorage.getItem("ebay-settings");
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
-      const token = settings.token || "";
-      const env = settings.env || "production";
+      // Try server-stored OAuth token first, fall back to localStorage
+      let token = "";
+      let env = "production";
+      try {
+        const tokenRes = await fetch("/api/ebay/token");
+        const tokenData = await tokenRes.json();
+        if (tokenData.connected && tokenData.token) {
+          token = tokenData.token;
+        }
+      } catch {}
 
       if (!token) {
-        alert("Please configure your eBay token in the eBay page first");
+        const savedSettings = localStorage.getItem("ebay-settings");
+        const settings = savedSettings ? JSON.parse(savedSettings) : {};
+        token = settings.token || "";
+        env = settings.environment || "production";
+      }
+
+      if (!token) {
+        alert("Please connect your eBay account first (go to eBay page or set up OAuth)");
         await updateListing(listing.id, { status: "ready" });
         return;
       }

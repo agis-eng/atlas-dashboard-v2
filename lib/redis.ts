@@ -59,6 +59,9 @@ export const REDIS_KEYS = {
 
   // Marketplace connections
   marketplaceConnection: (platform: string) => `marketplace:connection:${platform}`,
+
+  // eBay OAuth
+  ebayToken: "ebay:oauth:token",
 } as const;
 
 // Types
