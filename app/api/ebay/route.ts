@@ -34,6 +34,7 @@ function ebayHeaders(token: string, forceBearer = false): Record<string, string>
     "Content-Type": "application/json",
     Accept: "application/json",
     "Accept-Language": "en-US",
+    "Content-Language": "en-US",
   };
 
   if (!forceBearer && isClassicToken(token)) {
