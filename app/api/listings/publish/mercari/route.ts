@@ -62,11 +62,17 @@ export async function POST(request: NextRequest) {
           formats: ["markdown"],
         });
 
-        console.log("Mercari scrape result:", JSON.stringify({ success: result.success, scrapeId: result.data?.metadata?.scrapeId, error: result.error, url: result.data?.metadata?.url }));
+        console.log("Mercari scrape full result keys:", JSON.stringify(Object.keys(result)));
+        console.log("Mercari scrape success:", result.success);
+        console.log("Mercari scrape data keys:", result.data ? JSON.stringify(Object.keys(result.data)) : "no data");
+        console.log("Mercari scrape metadata:", result.data?.metadata ? JSON.stringify({ scrapeId: result.data.metadata.scrapeId, url: result.data.metadata.url, statusCode: result.data.metadata.statusCode }) : "no metadata");
+        // Also check top-level for scrapeId (REST API may return differently)
+        const scrapeId = result.data?.metadata?.scrapeId || (result as any).metadata?.scrapeId || (result as any).scrapeId;
+        console.log("Resolved scrapeId:", scrapeId);
 
-        if (!result.success || !result.data?.metadata?.scrapeId) {
+        if (!scrapeId) {
           return Response.json(
-            { error: "Failed to open Mercari sell page", details: result.error || JSON.stringify(result) },
+            { error: "Failed to open Mercari sell page", details: result.error || "No scrapeId in response", resultKeys: Object.keys(result) },
             { status: 500 }
           );
         }
@@ -76,7 +82,7 @@ export async function POST(request: NextRequest) {
 
         return Response.json({
           success: true,
-          scrapeId: result.data.metadata.scrapeId,
+          scrapeId,
           step: "start",
           next: "fill",
         });
