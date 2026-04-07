@@ -55,16 +55,18 @@ export async function POST(request: NextRequest) {
     switch (step) {
       case "start": {
         // Navigate to sell page with persistent profile
-        const result = await firecrawlScrape("https://www.mercari.com/sell/create", {
+        const result = await firecrawlScrape("https://www.mercari.com/sell/", {
           profile: MERCARI_PROFILE,
           proxy: "stealth",
           waitFor: 5000,
           formats: ["markdown"],
         });
 
+        console.log("Mercari scrape result:", JSON.stringify({ success: result.success, scrapeId: result.data?.metadata?.scrapeId, error: result.error, url: result.data?.metadata?.url }));
+
         if (!result.success || !result.data?.metadata?.scrapeId) {
           return Response.json(
-            { error: "Failed to open Mercari sell page", details: result.error },
+            { error: "Failed to open Mercari sell page", details: result.error || JSON.stringify(result) },
             { status: 500 }
           );
         }

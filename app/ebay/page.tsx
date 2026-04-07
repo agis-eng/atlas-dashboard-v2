@@ -237,6 +237,7 @@ export default function EbayPage() {
     }
     if (params.get("error")) {
       setConnectionStatus("failed");
+      alert("eBay OAuth error: " + decodeURIComponent(params.get("error") || "Unknown error"));
       window.history.replaceState({}, "", "/ebay");
     }
   }, []);
