@@ -1,8 +1,22 @@
 import { NextRequest } from "next/server";
+import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
 const EBAY_TOKEN = process.env.EBAY_USER_TOKEN || "";
 const SANDBOX_API = "https://api.sandbox.ebay.com";
 const PRODUCTION_API = "https://api.ebay.com";
+
+async function getTokenFromRedis(): Promise<string> {
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(REDIS_KEYS.ebayToken);
+    if (!raw) return "";
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return "";
+    return data.access_token || "";
+  } catch {
+    return "";
+  }
+}
 
 function getBaseUrl(env: string) {
   return env === "production" ? PRODUCTION_API : SANDBOX_API;
@@ -35,7 +49,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
   const env = searchParams.get("env") || "sandbox";
-  const token = searchParams.get("token") || EBAY_TOKEN;
+  let token = searchParams.get("token") || EBAY_TOKEN;
+  if (!token) {
+    token = await getTokenFromRedis();
+  }
   const baseUrl = getBaseUrl(env);
 
   if (!token) {
@@ -146,7 +163,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, env = "sandbox", token: bodyToken, ...payload } = body;
-  const token = bodyToken || EBAY_TOKEN;
+  let token = bodyToken || EBAY_TOKEN;
+
+  // Fall back to Redis-stored OAuth token
+  if (!token) {
+    token = await getTokenFromRedis();
+  }
+
   const baseUrl = getBaseUrl(env);
 
   if (!token) {

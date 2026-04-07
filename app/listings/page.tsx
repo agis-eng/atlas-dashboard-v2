@@ -293,29 +293,11 @@ export default function ListingsPage() {
     await updateListing(listing.id, { status: "listing" });
 
     try {
-      // Try server-stored OAuth token first, fall back to localStorage
-      let token = "";
-      let env = "production";
-      try {
-        const tokenRes = await fetch("/api/ebay/token");
-        const tokenData = await tokenRes.json();
-        if (tokenData.connected && tokenData.token) {
-          token = tokenData.token;
-        }
-      } catch {}
-
-      if (!token) {
-        const savedSettings = localStorage.getItem("ebay-settings");
-        const settings = savedSettings ? JSON.parse(savedSettings) : {};
-        token = settings.token || "";
-        env = settings.environment || "production";
-      }
-
-      if (!token) {
-        alert("Please connect your eBay account first (go to eBay page or set up OAuth)");
-        await updateListing(listing.id, { status: "ready" });
-        return;
-      }
+      // Token is handled server-side (env var or Redis). Pass from localStorage if available.
+      const savedSettings = localStorage.getItem("ebay-settings");
+      const settings = savedSettings ? JSON.parse(savedSettings) : {};
+      const token = settings.token || ""; // may be empty — server will use Redis/env fallback
+      const env = settings.environment || "production";
 
       const sku = `LISTING-${listing.id.slice(0, 8)}`;
 
