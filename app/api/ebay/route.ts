@@ -169,18 +169,22 @@ export async function GET(request: NextRequest) {
 // POST - Create/update listings, publish offers, mark shipped
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { action, env = "sandbox", token: bodyToken, ...payload } = body;
+  const { action, env = "production", token: bodyToken, ...payload } = body;
   let token = bodyToken || EBAY_TOKEN;
   let forceBearer = false;
 
+  console.log("eBay POST - action:", action, "env:", env, "hasBodyToken:", !!bodyToken, "hasEnvToken:", !!EBAY_TOKEN);
+
   // Fall back to Redis-stored OAuth token
   if (!token) {
-    const redis = await getTokenFromRedis();
-    token = redis.token;
-    forceBearer = redis.isOAuth;
+    const redisResult = await getTokenFromRedis();
+    token = redisResult.token;
+    forceBearer = redisResult.isOAuth;
+    console.log("eBay POST - got token from Redis:", !!token, "forceBearer:", forceBearer);
   }
 
   const baseUrl = getBaseUrl(env);
+  console.log("eBay POST - baseUrl:", baseUrl, "tokenStart:", token?.substring(0, 10), "forceBearer:", forceBearer);
 
   if (!token) {
     return Response.json({ error: "No eBay token configured" }, { status: 401 });
