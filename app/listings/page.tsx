@@ -362,6 +362,8 @@ export default function ListingsPage() {
             returnPolicyId: policies.returnPolicyId,
             paymentPolicyId: policies.paymentPolicyId,
           },
+          countryCode: "US",
+          merchantLocationKey: "default",
         }),
       });
 
