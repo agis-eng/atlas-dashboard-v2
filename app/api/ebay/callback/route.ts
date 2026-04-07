@@ -8,16 +8,27 @@ const EBAY_RUNAME = process.env.EBAY_RUNAME || "";
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
 
+  // Log all params for debugging
+  const allParams = Object.fromEntries(request.nextUrl.searchParams.entries());
+  console.log("eBay callback params:", JSON.stringify(allParams));
+
   if (!code) {
-    // Check if this is an auth declined redirect
+    // Check if this is an auth declined redirect or Auth'n'Auth
     const error = request.nextUrl.searchParams.get("error");
     if (error) {
       return NextResponse.redirect(
         new URL(`/ebay?error=${encodeURIComponent("eBay authorization was declined")}`, request.url)
       );
     }
+    // Auth'n'Auth returns different params
+    const isAuthSuccessful = request.nextUrl.searchParams.get("isAuthSuccessful");
+    if (isAuthSuccessful === "false") {
+      return NextResponse.redirect(
+        new URL("/ebay?error=eBay+auth+was+declined", request.url)
+      );
+    }
     return NextResponse.redirect(
-      new URL("/ebay?error=No+authorization+code+received", request.url)
+      new URL(`/ebay?error=${encodeURIComponent("No authorization code received. Params: " + JSON.stringify(allParams))}`, request.url)
     );
   }
 
@@ -47,10 +58,13 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenRes.json();
 
     if (!tokenRes.ok || tokenData.error) {
-      console.error("eBay token exchange error:", tokenData);
+      console.error("eBay token exchange error:", JSON.stringify(tokenData));
+      console.error("eBay token exchange status:", tokenRes.status);
+      console.error("eBay credentials check - client_id present:", !!EBAY_CLIENT_ID, "secret present:", !!EBAY_CLIENT_SECRET, "runame:", EBAY_RUNAME);
+      const errorMsg = tokenData.error_description || tokenData.error || `Token exchange failed (${tokenRes.status})`;
       return NextResponse.redirect(
         new URL(
-          `/ebay?error=${encodeURIComponent(tokenData.error_description || tokenData.error || "Token exchange failed")}`,
+          `/ebay?error=${encodeURIComponent(errorMsg)}`,
           request.url
         )
       );
