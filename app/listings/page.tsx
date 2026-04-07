@@ -349,6 +349,16 @@ export default function ListingsPage() {
         throw new Error(errData.errors?.[0]?.message || errData.error || "Failed to create inventory item");
       }
 
+      // Fetch eBay policies
+      let policies = { fulfillmentPolicyId: "", returnPolicyId: "", paymentPolicyId: "" };
+      try {
+        const polRes = await fetch("/api/ebay/policies");
+        if (polRes.ok) {
+          const polData = await polRes.json();
+          if (polData.policies) policies = polData.policies;
+        }
+      } catch {}
+
       // Step 2: Create offer
       const offerRes = await fetch("/api/ebay", {
         method: "POST",
@@ -365,6 +375,11 @@ export default function ListingsPage() {
             price: { value: String(listing.price), currency: "USD" },
           },
           availableQuantity: listing.quantity || 1,
+          listingPolicies: {
+            fulfillmentPolicyId: policies.fulfillmentPolicyId,
+            returnPolicyId: policies.returnPolicyId,
+            paymentPolicyId: policies.paymentPolicyId,
+          },
         }),
       });
 
