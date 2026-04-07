@@ -168,8 +168,8 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
         return Response.json({
           success: true,
           step: "submit",
-          listingUrl,
           output: submitOutput.substring(0, 500),
+          message: "Draft saved to Mercari. Go to your Mercari drafts to review and publish.",
         });
       }
 
