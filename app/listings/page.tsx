@@ -331,6 +331,16 @@ export default function ListingsPage() {
         throw new Error(errData.errors?.[0]?.message || errData.error || "Failed to create inventory item");
       }
 
+      // Look up eBay category ID from listing title
+      let categoryId = "";
+      try {
+        const catRes = await fetch(`/api/ebay?action=categories&q=${encodeURIComponent(listing.title)}&env=${env}`);
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          categoryId = catData.categorySuggestions?.[0]?.category?.categoryId || "";
+        }
+      } catch {}
+
       // Fetch eBay policies
       let policies = { fulfillmentPolicyId: "", returnPolicyId: "", paymentPolicyId: "" };
       try {
@@ -364,6 +374,7 @@ export default function ListingsPage() {
           },
           countryCode: "US",
           merchantLocationKey: "default",
+          categoryId,
         }),
       });
 
