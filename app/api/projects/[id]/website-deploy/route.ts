@@ -264,7 +264,7 @@ export async function POST(
   try {
     if (!VERCEL_TOKEN) {
       return Response.json({
-        error: "VERCEL_TOKEN is not configured in Railway environment yet.",
+        error: "VERCEL_TOKEN is not configured. Add it in Vercel environment variables.",
         needsConfig: true,
       }, { status: 400 });
     }

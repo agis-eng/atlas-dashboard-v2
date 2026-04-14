@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Truck,
   Image as ImageIcon,
+  Sparkles,
   Tag,
   DollarSign,
   Hash,
@@ -184,6 +185,7 @@ export default function EbayPage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createResult, setCreateResult] = useState<{ success?: boolean; error?: string } | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Orders
@@ -408,6 +410,41 @@ export default function EbayPage() {
     } finally {
       setPhotoUploading(false);
       if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  async function aiAnalyzePhotos() {
+    const urls = createForm.imageUrls.filter(Boolean);
+    if (urls.length === 0) {
+      alert("Upload photos first");
+      return;
+    }
+    setAiAnalyzing(true);
+    try {
+      const res = await fetch("/api/listings/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photos: urls }),
+      });
+      const data = await res.json();
+      if (res.ok && data.analysis) {
+        const a = data.analysis;
+        setCreateForm((prev) => ({
+          ...prev,
+          title: a.suggestedTitle || prev.title,
+          description: a.suggestedDescription || prev.description,
+          price: a.suggestedPrice ? String(a.suggestedPrice) : prev.price,
+          condition: a.suggestedCondition
+            ? CONDITIONS.find((c) => c.label.toLowerCase() === a.suggestedCondition.toLowerCase())?.value || prev.condition
+            : prev.condition,
+        }));
+      } else {
+        alert(data.error || "AI analysis failed");
+      }
+    } catch {
+      alert("Failed to analyze photos");
+    } finally {
+      setAiAnalyzing(false);
     }
   }
 
@@ -1180,6 +1217,26 @@ export default function EbayPage() {
                     onChange={(e) => handlePhotoUpload(e.target.files)}
                   />
                 </div>
+                {/* AI Generate button - show when photos uploaded */}
+                {createForm.imageUrls.some(Boolean) && (
+                  <button
+                    onClick={aiAnalyzePhotos}
+                    disabled={aiAnalyzing}
+                    className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {aiAnalyzing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analyzing photos...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        AI Generate Listing
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Images */}
