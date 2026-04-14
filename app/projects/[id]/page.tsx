@@ -45,6 +45,7 @@ import {
   ChevronUp,
   CheckSquare,
   Rocket,
+  CheckCircle2,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 import { ProjectCalls } from "@/components/project-calls";
@@ -1507,6 +1508,12 @@ export default function ProjectDetailPage({
         </Card>
       </div>
 
+      {/* Website Setup — always show */}
+      <WebsiteSetup projectId={id} projectName={p.name} repoUrl={p.repoUrl} liveUrl={p.liveUrl || p.previewUrl} onDeployed={(url) => {
+        setProject((prev) => prev ? { ...prev, liveUrl: url } : prev);
+        setToast({ message: "Website deployed!", type: "success" });
+      }} />
+
       {/* Live Preview + AI Code Changes */}
       {(p.liveUrl || p.previewUrl) && (
         <LivePreviewWithAI
@@ -1515,14 +1522,6 @@ export default function ProjectDetailPage({
           projectId={id}
           project={p}
         />
-      )}
-
-      {/* Website Setup — show when no live URL */}
-      {!p.liveUrl && !p.previewUrl && (
-        <WebsiteSetup projectId={id} projectName={p.name} repoUrl={p.repoUrl} onDeployed={(url) => {
-          setProject((prev) => prev ? { ...prev, liveUrl: url } : prev);
-          setToast({ message: "Website deployed!", type: "success" });
-        }} />
       )}
 
       {/* Brain section - always show in edit mode, or when brain has content */}
@@ -1755,10 +1754,11 @@ const DEVICE_PRESETS: Record<DeviceSize, DevicePreset> = {
   desktop: { name: 'Desktop', width: 1440, icon: '💻' },
 };
 
-function WebsiteSetup({ projectId, projectName, repoUrl, onDeployed }: {
+function WebsiteSetup({ projectId, projectName, repoUrl, liveUrl, onDeployed }: {
   projectId: string;
   projectName: string;
   repoUrl?: string;
+  liveUrl?: string;
   onDeployed: (url: string) => void;
 }) {
   const [githubUrl, setGithubUrl] = useState(repoUrl || '');
@@ -1813,8 +1813,14 @@ function WebsiteSetup({ projectId, projectName, repoUrl, onDeployed }: {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {liveUrl && (
+          <div className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate font-mono text-xs">{liveUrl}</a>
+          </div>
+        )}
         <p className="text-sm text-muted-foreground">
-          Connect a GitHub repo to deploy and edit the website with AI.
+          {liveUrl ? "Redeploy or connect a different repo:" : "Connect a GitHub repo to deploy and edit the website with AI."}
         </p>
         <div className="flex gap-2">
           <Input
@@ -1833,7 +1839,7 @@ function WebsiteSetup({ projectId, projectName, repoUrl, onDeployed }: {
             ) : (
               <Rocket className="h-4 w-4 mr-1" />
             )}
-            Deploy
+            {liveUrl ? "Redeploy" : "Deploy"}
           </Button>
         </div>
         {deployStatus && (
