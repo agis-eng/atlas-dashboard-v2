@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Search,
@@ -183,6 +183,8 @@ export default function EbayPage() {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createResult, setCreateResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Orders
   const [orders, setOrders] = useState<EbayOrder[]>([]);
@@ -357,6 +359,30 @@ export default function EbayPage() {
       setCategorySuggestions([]);
     } finally {
       setCategoryLoading(false);
+    }
+  }
+
+  async function handlePhotoUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append("photos", files[i]);
+      }
+      const res = await fetch("/api/ebay/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok && data.urls?.length) {
+        const existing = createForm.imageUrls.filter(Boolean);
+        setCreateForm({ ...createForm, imageUrls: [...existing, ...data.urls] });
+      } else {
+        alert(data.error || "Upload failed");
+      }
+    } catch {
+      alert("Failed to upload photos");
+    } finally {
+      setPhotoUploading(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
     }
   }
 
@@ -1089,6 +1115,35 @@ export default function EbayPage() {
                     Selected: <span className="font-mono">{createForm.categoryId}</span>
                   </p>
                 )}
+              </div>
+
+              {/* Photo Upload */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Photos</label>
+                <div
+                  className="mt-1 border-2 border-dashed border-muted-foreground/25 hover:border-orange-500/50 rounded-lg p-4 text-center cursor-pointer transition-colors"
+                  onClick={() => !photoUploading && photoInputRef.current?.click()}
+                >
+                  {photoUploading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                      <span className="text-sm">Uploading...</span>
+                    </div>
+                  ) : (
+                    <div>
+                      <ImageIcon className="h-8 w-8 text-muted-foreground/50 mx-auto mb-1" />
+                      <p className="text-sm text-muted-foreground">Tap to add photos</p>
+                    </div>
+                  )}
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handlePhotoUpload(e.target.files)}
+                  />
+                </div>
               </div>
 
               {/* Images */}
