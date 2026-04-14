@@ -44,6 +44,7 @@ import {
   ChevronDown,
   ChevronUp,
   CheckSquare,
+  Rocket,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
 import { ProjectCalls } from "@/components/project-calls";
@@ -1508,12 +1509,20 @@ export default function ProjectDetailPage({
 
       {/* Live Preview + AI Code Changes */}
       {(p.liveUrl || p.previewUrl) && (
-        <LivePreviewWithAI 
-          url={p.liveUrl || p.previewUrl || ''} 
+        <LivePreviewWithAI
+          url={p.liveUrl || p.previewUrl || ''}
           projectName={p.name}
           projectId={id}
           project={p}
         />
+      )}
+
+      {/* Website Setup — show when no live URL */}
+      {!p.liveUrl && !p.previewUrl && (
+        <WebsiteSetup projectId={id} projectName={p.name} repoUrl={p.repoUrl} onDeployed={(url) => {
+          setProject((prev) => prev ? { ...prev, liveUrl: url } : prev);
+          setToast({ message: "Website deployed!", type: "success" });
+        }} />
       )}
 
       {/* Brain section - always show in edit mode, or when brain has content */}
@@ -1746,8 +1755,99 @@ const DEVICE_PRESETS: Record<DeviceSize, DevicePreset> = {
   desktop: { name: 'Desktop', width: 1440, icon: '💻' },
 };
 
-function LivePreview({ 
-  url, 
+function WebsiteSetup({ projectId, projectName, repoUrl, onDeployed }: {
+  projectId: string;
+  projectName: string;
+  repoUrl?: string;
+  onDeployed: (url: string) => void;
+}) {
+  const [githubUrl, setGithubUrl] = useState(repoUrl || '');
+  const [deploying, setDeploying] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string | null>(null);
+
+  async function handleDeploy() {
+    if (!githubUrl.trim()) return;
+    setDeploying(true);
+    setDeployStatus("Deploying to Vercel...");
+    try {
+      // First save the repo URL to the project
+      await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: githubUrl }),
+      });
+
+      // Trigger website deploy
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/website-deploy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: githubUrl }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.url) {
+        // Save the live URL to the project
+        await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ liveUrl: data.url }),
+        });
+        setDeployStatus(null);
+        onDeployed(data.url);
+      } else {
+        setDeployStatus(`Failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (err: any) {
+      setDeployStatus(`Error: ${err.message}`);
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  return (
+    <Card className="border-blue-500/20">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Globe className="h-4 w-4 text-blue-500" />
+          Website
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Connect a GitHub repo to deploy and edit the website with AI.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            value={githubUrl}
+            onChange={(e) => setGithubUrl(e.target.value)}
+            placeholder="https://github.com/owner/repo"
+            className="flex-1 font-mono text-xs"
+          />
+          <Button
+            onClick={handleDeploy}
+            disabled={deploying || !githubUrl.trim()}
+            size="sm"
+          >
+            {deploying ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Rocket className="h-4 w-4 mr-1" />
+            )}
+            Deploy
+          </Button>
+        </div>
+        {deployStatus && (
+          <p className={`text-xs ${deployStatus.startsWith("Failed") || deployStatus.startsWith("Error") ? "text-red-500" : "text-muted-foreground"}`}>
+            {deployStatus}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LivePreview({
+  url,
   projectName,
   projectId 
 }: { 
