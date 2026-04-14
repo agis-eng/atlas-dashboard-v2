@@ -15,7 +15,7 @@ const SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.marketing",
 ].join(" ");
 
-const REDIS_KEY = "ebay:oauth:tokens";
+const REDIS_KEY = "ebay:oauth:token";
 
 interface EbayTokens {
   access_token: string;
