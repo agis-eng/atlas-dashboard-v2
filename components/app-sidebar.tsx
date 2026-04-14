@@ -24,6 +24,12 @@ import {
   Mic,
   Film,
   Tag,
+  Headphones,
+  Search,
+  Presentation,
+  Palette,
+  Sprout,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -53,6 +59,12 @@ const navItems = [
   { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: Tag, label: "Listings", href: "/listings" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
+  { icon: Headphones, label: "Voice Lab", href: "/voice-lab" },
+  { icon: Workflow, label: "Orchestrator", href: "/orchestrator" },
+  { icon: Search, label: "Research", href: "/research" },
+  { icon: Presentation, label: "SlideBoost", href: "/slideboost" },
+  { icon: Palette, label: "Logo", href: "/logo" },
+  { icon: Sprout, label: "Agroktic", href: "/agroktic" },
   { icon: Activity, label: "Monitor", href: "/monitor" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
