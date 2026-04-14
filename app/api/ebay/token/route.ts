@@ -26,7 +26,18 @@ export async function GET(request: NextRequest) {
     }
 
     const redis = getRedis();
-    const tokenRaw = await redis.get(REDIS_KEYS.ebayToken);
+    let tokenRaw = await redis.get(REDIS_KEYS.ebayToken);
+
+    // Migration: check old key if new key is empty
+    if (!tokenRaw) {
+      const oldToken = await redis.get("ebay:oauth:tokens");
+      if (oldToken) {
+        // Migrate to the correct key
+        await redis.set(REDIS_KEYS.ebayToken, typeof oldToken === "string" ? oldToken : JSON.stringify(oldToken));
+        await redis.del("ebay:oauth:tokens");
+        tokenRaw = await redis.get(REDIS_KEYS.ebayToken);
+      }
+    }
 
     if (!tokenRaw) {
       // No token stored — try client credentials to get an app token automatically
