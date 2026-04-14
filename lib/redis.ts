@@ -41,6 +41,11 @@ export const REDIS_KEYS = {
   userByEmail: (email: string) => `user:email:${email.toLowerCase()}`,
   session: (sessionId: string) => `session:${sessionId}`,
 
+  // Fathom Recordings
+  fathomRecordings: "fathom:recordings",
+  fathomTranscript: (id: string) => `fathom:transcript:${id}`,
+  fathomSyncMeta: "fathom:sync:meta",
+
   // Memory / Daily Logs
   memoryEntries: (date: string) => `memory:entries:${date}`,
   memoryEntry: (id: string) => `memory:entry:${id}`,
@@ -48,15 +53,15 @@ export const REDIS_KEYS = {
   memoryByProject: (projectId: string) => `memory:project:${projectId}`,
   memoryTags: (profile: string) => `memory:tags:${profile}`,
 
-  // Fathom
-  fathomRecordings: "fathom:recordings",
-  fathomTranscript: (id: string) => `fathom:transcript:${id}`,
-  fathomSyncMeta: "fathom:sync:meta",
-
   // Listings
   listings: "listings:all",
   listing: (id: string) => `listing:${id}`,
+
+  // Marketplace connections
   marketplaceConnection: (platform: string) => `marketplace:connection:${platform}`,
+
+  // eBay OAuth
+  ebayToken: "ebay:oauth:token",
 } as const;
 
 // Types
@@ -107,6 +112,32 @@ export interface Session {
   expiresAt: number;
 }
 
+export interface FathomRecording {
+  id: string;
+  title: string;
+  date: string;
+  duration?: number;
+  participants: string[];
+  attendeeEmails: string[];
+  summary: string | null;
+  actionItems: string[];
+  url: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  suggestedProjectId?: string | null;
+  suggestedProjectName?: string | null;
+  matchConfidence?: "high" | "medium" | null;
+  status: "pending" | "processed";
+  receivedAt: string;
+  source: "webhook" | "api-sync";
+}
+
+export interface FathomSyncMeta {
+  lastSyncAt: string;
+  totalImported: number;
+  apiKeyConfigured: boolean;
+}
+
 export interface MemoryEntry {
   id: string;
   date: string; // YYYY-MM-DD
@@ -129,7 +160,7 @@ export interface ListingDraft {
   quantity: number;
   condition: string;
   category: string;
-  platforms: ("ebay" | "mercari" | "facebook" | "tiktok" | "nextdoor")[];
+  platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
   mercariListingUrl?: string;
@@ -158,30 +189,4 @@ export interface MarketplaceConnection {
   lastValidated: string;
   username?: string;
   error?: string;
-}
-
-export interface FathomRecording {
-  id: string;
-  title: string;
-  date: string;
-  duration?: number;
-  participants: string[];
-  attendeeEmails: string[];
-  summary: string | null;
-  actionItems: string[];
-  url: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  suggestedProjectId?: string | null;
-  suggestedProjectName?: string | null;
-  matchConfidence?: "high" | "medium" | null;
-  status: "pending" | "processed";
-  receivedAt: string;
-  source: "webhook" | "api-sync";
-}
-
-export interface FathomSyncMeta {
-  lastSyncAt: string;
-  totalImported: number;
-  apiKeyConfigured: boolean;
 }

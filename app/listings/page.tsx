@@ -23,8 +23,6 @@ import {
   ShoppingBag,
   Store,
   Facebook,
-  Video,
-  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +35,7 @@ interface ListingDraft {
   quantity: number;
   condition: string;
   category: string;
-  platforms: ("ebay" | "mercari" | "facebook" | "tiktok" | "nextdoor")[];
+  platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
   mercariListingUrl?: string;
@@ -75,8 +73,6 @@ const PLATFORM_INFO = {
   ebay: { label: "eBay", icon: ShoppingBag, color: "text-blue-600 bg-blue-600/10", fee: "~13.25%" },
   mercari: { label: "Mercari", icon: Store, color: "text-red-500 bg-red-500/10", fee: "12.9%" },
   facebook: { label: "Facebook", icon: Facebook, color: "text-blue-500 bg-blue-500/10", fee: "Free" },
-  tiktok: { label: "TikTok Shop", icon: Video, color: "text-pink-500 bg-pink-500/10", fee: "~7%" },
-  nextdoor: { label: "Nextdoor", icon: MapPin, color: "text-green-600 bg-green-600/10", fee: "Free" },
 };
 
 interface MarketplaceConnection {
@@ -305,10 +301,9 @@ export default function ListingsPage() {
 
       const sku = `LISTING-${listing.id.slice(0, 8)}`;
 
-      // Build image URLs — photos are already full Vercel Blob URLs
-      const imageUrls = listing.photos.map((p) =>
-        p.startsWith("http") ? p : `${window.location.origin}${p}`
-      );
+      // Build image URLs — need full public URL for eBay
+      const baseUrl = window.location.origin;
+      const imageUrls = listing.photos.map((p) => p.startsWith("http") ? p : `${baseUrl}${p}`);
 
       // Step 1: Create inventory item
       const invRes = await fetch("/api/ebay", {
@@ -608,69 +603,6 @@ export default function ListingsPage() {
     }
   }
 
-  async function publishToTiktok(listing: ListingDraft) {
-    if (!listing.title || !listing.price) {
-      alert("Title and price are required");
-      return;
-    }
-
-    try {
-      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Preparing TikTok Shop listing..." }));
-      const res = await fetch("/api/listings/publish/tiktok", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id }),
-      });
-      const data = await res.json();
-
-      if (!data.connected) {
-        // Copy listing text to clipboard for manual posting
-        const text = `${listing.title}\n\n$${listing.price}\n\n${listing.description}`;
-        await navigator.clipboard.writeText(text);
-        alert("TikTok Shop not connected yet. Listing details copied to clipboard — paste them into TikTok Seller Center.");
-      }
-    } catch {
-      alert("Failed to publish to TikTok Shop");
-    } finally {
-      setPublishProgress((prev) => {
-        const next = { ...prev };
-        delete next[listing.id];
-        return next;
-      });
-    }
-  }
-
-  async function publishToNextdoor(listing: ListingDraft) {
-    if (!listing.title || !listing.price) {
-      alert("Title and price are required");
-      return;
-    }
-
-    try {
-      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Formatting for Nextdoor..." }));
-      const res = await fetch("/api/listings/publish/nextdoor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id }),
-      });
-      const data = await res.json();
-
-      if (data.formattedPost) {
-        await navigator.clipboard.writeText(data.formattedPost);
-        window.open(data.postUrl, "_blank");
-        alert("Listing text copied to clipboard! Paste it into the Nextdoor post form that just opened.");
-      }
-    } catch {
-      alert("Failed to format for Nextdoor");
-    } finally {
-      setPublishProgress((prev) => {
-        const next = { ...prev };
-        delete next[listing.id];
-        return next;
-      });
-    }
-  }
-
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -872,8 +804,6 @@ export default function ListingsPage() {
                   onPublishEbay={() => publishToEbay(listing)}
                   onPublishMercari={() => publishToMercari(listing)}
                   onPublishFacebook={() => publishToFacebook(listing)}
-                  onPublishTiktok={() => publishToTiktok(listing)}
-                  onPublishNextdoor={() => publishToNextdoor(listing)}
                   onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
                   marketplaceStatus={marketplaceStatus}
                   publishProgress={publishProgress[listing.id]}
@@ -903,8 +833,6 @@ export default function ListingsPage() {
                   onPublishEbay={() => {}}
                   onPublishMercari={() => {}}
                   onPublishFacebook={() => {}}
-                  onPublishTiktok={() => {}}
-                  onPublishNextdoor={() => {}}
                   onReanalyze={() => {}}
                   marketplaceStatus={marketplaceStatus}
                   publishProgress={undefined}
@@ -928,8 +856,6 @@ function ListingCard({
   onPublishEbay,
   onPublishMercari,
   onPublishFacebook,
-  onPublishTiktok,
-  onPublishNextdoor,
   onReanalyze,
   marketplaceStatus,
   publishProgress,
@@ -943,8 +869,6 @@ function ListingCard({
   onPublishEbay: () => void;
   onPublishMercari: () => void;
   onPublishFacebook: () => void;
-  onPublishTiktok: () => void;
-  onPublishNextdoor: () => void;
   onReanalyze: () => void;
   marketplaceStatus: MarketplaceStatus;
   publishProgress?: string;
@@ -1275,44 +1199,6 @@ function ListingCard({
                     {!marketplaceStatus.facebook?.connected
                       ? "Connect Facebook"
                       : publishProgress || "Publish to Facebook"}
-                  </Button>
-                )}
-
-                {selectedPlatforms.has("tiktok") && listing.status !== "listed" && (
-                  <Button
-                    size="sm"
-                    className="text-xs bg-pink-500 hover:bg-pink-600 text-white"
-                    onClick={() => {
-                      saveEdits();
-                      setTimeout(onPublishTiktok, 100);
-                    }}
-                    disabled={listing.status === "listing"}
-                  >
-                    {listing.status === "listing" && publishProgress ? (
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    ) : (
-                      <Video className="h-3 w-3 mr-1" />
-                    )}
-                    {publishProgress || "Copy to TikTok"}
-                  </Button>
-                )}
-
-                {selectedPlatforms.has("nextdoor") && listing.status !== "listed" && (
-                  <Button
-                    size="sm"
-                    className="text-xs bg-green-600 hover:bg-green-700 text-white"
-                    onClick={() => {
-                      saveEdits();
-                      setTimeout(onPublishNextdoor, 100);
-                    }}
-                    disabled={listing.status === "listing"}
-                  >
-                    {listing.status === "listing" && publishProgress ? (
-                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    ) : (
-                      <MapPin className="h-3 w-3 mr-1" />
-                    )}
-                    {publishProgress || "Post to Nextdoor"}
                   </Button>
                 )}
 

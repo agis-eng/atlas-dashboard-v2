@@ -41,9 +41,12 @@ import {
   RefreshCw,
   Sparkles,
   Zap,
-  Search,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
 } from "lucide-react";
 import { ProjectChat } from "@/components/project-chat";
+import { ProjectCalls } from "@/components/project-calls";
 
 // ── Types ──
 
@@ -107,64 +110,6 @@ interface ProjectDetail {
   tags?: string[];
   affiliate?: Affiliate;
   brain?: ProjectBrain;
-}
-
-interface ProjectDeckSlide {
-  title: string;
-  purpose?: string;
-  bullets?: string[];
-  visualIdea?: string;
-  speakerNotes?: string;
-  imagePrompt?: string;
-}
-
-interface ProjectDeck {
-  id: string;
-  title: string;
-  subtitle?: string;
-  deckType?: string;
-  prompt?: string;
-  audience?: string;
-  objective?: string;
-  narrativeArc?: string[];
-  chosenSources?: string[];
-  selectedSources?: Record<string, boolean>;
-  visualStylePreset?: string;
-  coverImagePrompt?: string;
-  slides?: ProjectDeckSlide[];
-}
-
-interface SeoReport {
-  id: string;
-  title: string;
-  url: string;
-  createdAt?: string;
-  seoScore: number;
-  aisoScore: number;
-  combinedScore: number;
-  combinedGrade: string;
-  summary?: string;
-  quickWins?: string[];
-  shareUrl?: string;
-  findings?: { priority: string; issue: string }[];
-}
-
-interface WebsiteBuild {
-  id: string;
-  repoName?: string;
-  repoUrl?: string;
-  branch?: string;
-  status?: string;
-  createdAt?: string;
-}
-
-interface WebsiteDeployStatus {
-  configured: boolean;
-  teamConfigured?: boolean;
-  vercelUrl?: string;
-  previewUrl?: string;
-  error?: string;
-  needsConfig?: boolean;
 }
 
 // ── Constants ──
@@ -264,11 +209,11 @@ function EditableField({
           <select
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="h-8 w-full rounded-lg border border-input bg-background text-foreground px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <option value="" className="bg-background text-foreground">None</option>
+            <option value="">None</option>
             {options.map((o) => (
-              <option key={o} value={o} className="bg-background text-foreground">
+              <option key={o} value={o}>
                 {o}
               </option>
             ))}
@@ -394,13 +339,7 @@ function TagsEditor({
 
 // ── Brain Section ──
 
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function SupportingDocsSection({
+function BrainSection({
   brain,
   editing,
   onChange,
@@ -411,6 +350,8 @@ function SupportingDocsSection({
   onChange: (brain: ProjectBrain) => void;
   projectId: string;
 }) {
+  const links = brain.links || [];
+  const notes = brain.notes || [];
   const files = brain.files || [];
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -459,110 +400,12 @@ function SupportingDocsSection({
     }
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <FileText className="h-4 w-4 text-cyan-500" />
-          Supporting Docs & Uploads
-          {files.length > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500">
-              {files.length}
-            </span>
-          )}
-        </CardTitle>
-        <CardDescription>
-          Files attached to this project, like briefs, screenshots, decks, and source docs.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-          These uploads support the project record. They are separate from the project&apos;s public links and separate from brain/reference notes.
-        </div>
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
-        {files.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No supporting docs uploaded yet.
-          </p>
-        )}
-
-        <div className="space-y-1.5">
-          {files.map((file, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm group"
-            >
-              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate">{file.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatFileSize(file.size)} &middot; {file.uploadedAt}
-                </p>
-              </div>
-              <a
-                href={file.path}
-                download
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="h-3.5 w-3.5" />
-              </a>
-              {editing && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteFile(file.path)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {editing && (
-          <div className="mt-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.csv,.zip"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              ) : (
-                <Upload className="h-3 w-3 mr-1" />
-              )}
-              {uploading ? "Uploading..." : "Upload Supporting Docs"}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function BrainKnowledgeSection({
-  brain,
-  editing,
-  onChange,
-}: {
-  brain: ProjectBrain;
-  editing: boolean;
-  onChange: (brain: ProjectBrain) => void;
-}) {
-  const links = brain.links || [];
-  const notes = brain.notes || [];
   const addLink = () => {
     onChange({ ...brain, links: [...links, { url: "", label: "" }] });
   };
@@ -586,14 +429,14 @@ function BrainKnowledgeSection({
     onChange({ ...brain, notes: notes.filter((_, i) => i !== idx) });
   };
 
-  const totalItems = links.length + notes.length;
+  const totalItems = links.length + notes.length + files.length;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Brain className="h-4 w-4 text-purple-500" />
-          Brain / Reference Knowledge
+          Project Brain
           {totalItems > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-500">
               {totalItems}
@@ -601,23 +444,20 @@ function BrainKnowledgeSection({
           )}
         </CardTitle>
         <CardDescription>
-          Internal reference material the team wants Atlas to remember for this project.
+          Links, notes, and knowledge for this project
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-          Use this for reference knowledge, source material, and internal notes. This is not the public project-links area and not the upload bucket for source files.
-        </div>
-
+        {/* Links */}
         <div>
           <div className="flex items-center gap-2 mb-2">
             <LinkIcon className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Reference Links
+              Links
             </p>
           </div>
           {links.length === 0 && !editing && (
-            <p className="text-sm text-muted-foreground">No reference links yet</p>
+            <p className="text-sm text-muted-foreground">No links yet</p>
           )}
           <div className="space-y-2">
             {links.map((link, idx) =>
@@ -673,15 +513,16 @@ function BrainKnowledgeSection({
           )}
         </div>
 
+        {/* Notes */}
         <div>
           <div className="flex items-center gap-2 mb-2">
             <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Brain Notes
+              Notes
             </p>
           </div>
           {notes.length === 0 && !editing && (
-            <p className="text-sm text-muted-foreground">No brain notes yet</p>
+            <p className="text-sm text-muted-foreground">No notes yet</p>
           )}
           <div className="space-y-2">
             {notes.map((note, idx) =>
@@ -723,6 +564,79 @@ function BrainKnowledgeSection({
               <Plus className="h-3 w-3 mr-1" />
               Add Note
             </Button>
+          )}
+        </div>
+
+        {/* Files */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Files
+            </p>
+          </div>
+          {files.length === 0 && !editing && (
+            <p className="text-sm text-muted-foreground">No files uploaded</p>
+          )}
+          <div className="space-y-1.5">
+            {files.map((file, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm group"
+              >
+                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(file.size)} &middot; {file.uploadedAt}
+                  </p>
+                </div>
+                <a
+                  href={file.path}
+                  download
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+                {editing && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteFile(file.path)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          {editing && (
+            <div className="mt-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.csv,.zip"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Upload className="h-3 w-3 mr-1" />
+                )}
+                {uploading ? "Uploading..." : "Upload Files"}
+              </Button>
+            </div>
           )}
         </div>
       </CardContent>
@@ -943,78 +857,50 @@ export default function ProjectDetailPage({
   } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedVoiceMemos, setExpandedVoiceMemos] = useState<Set<string>>(new Set());
+  const [voiceMemos, setVoiceMemos] = useState<Array<{
+    id: string;
+    title: string;
+    date: string;
+    speakers: string;
+    summary: string;
+    topics: string[];
+    actionItems: string[];
+    keyDecisions?: string[];
+    sentiment?: string;
+  }>>([]);
   const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
-  const [webpageMode, setWebpageMode] = useState<"quick" | "guided">("quick");
-  const [webpagePrompt, setWebpagePrompt] = useState("");
-  const [webpageReferenceUrl, setWebpageReferenceUrl] = useState("");
-  const [webpagePreferredConcept, setWebpagePreferredConcept] = useState("");
-  const [webpageCompetitorQuery, setWebpageCompetitorQuery] = useState("");
-  const [webpageResearchCompetitors, setWebpageResearchCompetitors] = useState(true);
-  const [webpageGuidedAnswers, setWebpageGuidedAnswers] = useState({
-    siteType: "",
-    audience: "",
-    goal: "",
-    style: "",
-    pages: "",
-    cta: "",
-    mustHave: "",
-    brand: "",
-    content: "",
-    notes: "",
-  });
-  const [webpageInspirationImages, setWebpageInspirationImages] = useState<string[]>([]);
-  const [uploadingWebpageImages, setUploadingWebpageImages] = useState(false);
-  const [generatingWebpage, setGeneratingWebpage] = useState(false);
-  const [latestWebpageDraft, setLatestWebpageDraft] = useState<any>(null);
-  const [creatingWebsiteBuild, setCreatingWebsiteBuild] = useState(false);
-  const [latestWebsiteBuild, setLatestWebsiteBuild] = useState<WebsiteBuild | null>(null);
-  const [deployingWebsite, setDeployingWebsite] = useState(false);
-  const [websiteDeployStatus, setWebsiteDeployStatus] = useState<WebsiteDeployStatus | null>(null);
-  const [repoUrlInput, setRepoUrlInput] = useState("");
-  const [savingRepoUrl, setSavingRepoUrl] = useState(false);
-  const [seoUrl, setSeoUrl] = useState("");
-  const [generatingSeo, setGeneratingSeo] = useState(false);
-  const [seoReports, setSeoReports] = useState<SeoReport[]>([]);
-  const [latestSeoReport, setLatestSeoReport] = useState<SeoReport | null>(null);
-  const [deckPrompt, setDeckPrompt] = useState("");
-  const [deckType, setDeckType] = useState("project-update");
-  const [generatingDeck, setGeneratingDeck] = useState(false);
-  const [latestDeck, setLatestDeck] = useState<ProjectDeck | null>(null);
-  const [editingDeck, setEditingDeck] = useState(false);
-  const [deckDraft, setDeckDraft] = useState<ProjectDeck | null>(null);
-  const [savingDeck, setSavingDeck] = useState(false);
-  const [generatingDeckVisuals, setGeneratingDeckVisuals] = useState(false);
-  const [deckVisualStylePreset, setDeckVisualStylePreset] = useState('dark modern strategic');
-  const [deckSources, setDeckSources] = useState<Record<string, boolean>>({
-    projectMeta: true,
-    clientInfo: true,
-    brainNotes: true,
-    brainLinks: true,
-    webpageDraft: true,
-    competitorInsights: true,
-    affiliate: false,
-  });
   const screenshotInputRef = useRef<HTMLInputElement>(null);
-  const webpageImagesInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, { cache: "no-store" });
+        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`);
         if (!res.ok) {
           setError(res.status === 404 ? "Project not found" : "Failed to load project");
           return;
         }
         const data = await res.json();
         setProject(data.project);
-        setRepoUrlInput(data.project?.repoUrl || "");
         
+        // Load voice memos linked to this project
+        try {
+          const memosRes = await fetch("/api/voice-memos");
+          if (memosRes.ok) {
+            const memosData = await memosRes.json();
+            const linked = (memosData.memos || []).filter(
+              (m: any) => m.projectMatch === id || m.clientMatch === id
+            );
+            setVoiceMemos(linked);
+          }
+        } catch {}
+
         // Load client contact info if clientId exists
         if (data.project?.clientId) {
           try {
-            const clientRes = await fetch(`/api/clients/${encodeURIComponent(data.project.clientId)}`, { cache: "no-store" });
+            const clientRes = await fetch(`/api/clients/${encodeURIComponent(data.project.clientId)}`);
             if (clientRes.ok) {
               const clientData = await clientRes.json();
               setClientContact({
@@ -1026,59 +912,6 @@ export default function ProjectDetailPage({
           } catch (err) {
             console.error('Failed to load client contact:', err);
           }
-        }
-
-        try {
-          const deckRes = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, { cache: "no-store" });
-          if (deckRes.ok) {
-            const deckData = await deckRes.json();
-            setLatestDeck(deckData.deck || null);
-            setDeckDraft(deckData.deck ? JSON.parse(JSON.stringify(deckData.deck)) : null);
-            setDeckVisualStylePreset(deckData.deck?.visualStylePreset || 'dark modern strategic');
-          }
-        } catch (err) {
-          console.error('Failed to load project deck:', err);
-        }
-
-        try {
-          const webpageRes = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, { cache: "no-store" });
-          if (webpageRes.ok) {
-            const webpageData = await webpageRes.json();
-            setLatestWebpageDraft(webpageData.page || null);
-          }
-        } catch (err) {
-          console.error('Failed to load webpage draft:', err);
-        }
-
-        try {
-          const buildRes = await fetch(`/api/projects/${encodeURIComponent(id)}/website-build`, { cache: "no-store" });
-          if (buildRes.ok) {
-            const buildData = await buildRes.json();
-            setLatestWebsiteBuild(buildData.build || null);
-          }
-        } catch (err) {
-          console.error('Failed to load site build:', err);
-        }
-
-        try {
-          const deployRes = await fetch(`/api/projects/${encodeURIComponent(id)}/website-deploy`, { cache: "no-store" });
-          if (deployRes.ok) {
-            const deployData = await deployRes.json();
-            setWebsiteDeployStatus(deployData);
-          }
-        } catch (err) {
-          console.error('Failed to load website deploy status:', err);
-        }
-
-        try {
-          const seoRes = await fetch(`/api/seo-audit?projectId=${encodeURIComponent(id)}`, { cache: "no-store" });
-          if (seoRes.ok) {
-            const seoData = await seoRes.json();
-            setSeoReports(seoData.reports || []);
-            setLatestSeoReport((seoData.reports || [])[0] || null);
-          }
-        } catch (err) {
-          console.error('Failed to load SEO reports:', err);
         }
       } catch {
         setError("Failed to load project");
@@ -1095,19 +928,6 @@ export default function ProjectDetailPage({
       setEditing(true);
     }
   }, [project]);
-
-  const refreshProject = useCallback(async () => {
-    const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      throw new Error("Failed to refresh project");
-    }
-    const data = await res.json();
-    setProject(data.project);
-    setRepoUrlInput(data.project?.repoUrl || "");
-    return data.project as ProjectDetail;
-  }, [id]);
 
   const cancelEditing = useCallback(() => {
     setDraft(null);
@@ -1165,7 +985,6 @@ export default function ProjectDetailPage({
 
       const data = await res.json();
       setProject(data.project);
-      router.refresh();
       setEditing(false);
       setDraft(null);
       setToast({ message: "Project saved", type: "success" });
@@ -1187,297 +1006,9 @@ export default function ProjectDetailPage({
     [draft]
   );
 
-  const updateWebpageGuidedAnswer = useCallback((field: string, value: string) => {
-    setWebpageGuidedAnswers((prev) => ({ ...prev, [field]: value }));
-  }, []);
-
-  const uploadWebpageInspirationImages = useCallback(async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploadingWebpageImages(true);
-    try {
-      const formData = new FormData();
-      Array.from(files).slice(0, 8).forEach((file) => formData.append('files', file));
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage/inspiration-upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to upload inspiration images');
-      setWebpageInspirationImages((prev) => [...prev, ...(data.urls || [])]);
-      setToast({ message: 'Inspiration images uploaded', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to upload inspiration images', type: 'error' });
-    } finally {
-      setUploadingWebpageImages(false);
-      if (webpageImagesInputRef.current) webpageImagesInputRef.current.value = '';
-    }
-  }, [id]);
-
-  const generateWebpageDraft = useCallback(async () => {
-    const hasQuickPrompt = webpagePrompt.trim();
-    const hasGuidedInput = Object.values(webpageGuidedAnswers).some((value) => String(value || '').trim());
-    if (webpageMode === 'quick' && !hasQuickPrompt) return;
-    if (webpageMode === 'guided' && !hasGuidedInput && !webpageReferenceUrl.trim() && webpageInspirationImages.length === 0) return;
-    setGeneratingWebpage(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/webpage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: webpageMode,
-          prompt: webpageMode === 'quick' ? webpagePrompt : '',
-          guidedAnswers: webpageMode === 'guided' ? webpageGuidedAnswers : {},
-          referenceUrl: webpageReferenceUrl,
-          inspirationImages: webpageInspirationImages,
-          preferredConcept: webpagePreferredConcept,
-          competitorQuery: webpageCompetitorQuery,
-          researchCompetitors: webpageResearchCompetitors,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate webpage draft');
-      setLatestWebpageDraft(data.page);
-      setWebpagePrompt('');
-      setWebpageReferenceUrl('');
-      setWebpagePreferredConcept('');
-      setWebpageCompetitorQuery('');
-      setWebpageGuidedAnswers({ siteType: '', audience: '', goal: '', style: '', pages: '', cta: '', mustHave: '', brand: '', content: '', notes: '' });
-      setWebpageInspirationImages([]);
-      setToast({ message: 'Website draft created', type: 'success' });
-      const refreshed = await fetch(`/api/projects/${encodeURIComponent(id)}`, { cache: "no-store" });
-      if (refreshed.ok) {
-        const refreshedData = await refreshed.json();
-        setProject(refreshedData.project);
-      }
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to generate webpage draft', type: 'error' });
-    } finally {
-      setGeneratingWebpage(false);
-    }
-  }, [id, webpageMode, webpagePrompt, webpageGuidedAnswers, webpageReferenceUrl, webpageInspirationImages, webpagePreferredConcept, webpageCompetitorQuery, webpageResearchCompetitors]);
-
-  const createWebsiteBuild = useCallback(async () => {
-    setCreatingWebsiteBuild(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/website-build`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create website repo');
-      setLatestWebsiteBuild(data.build);
-      setProject((prev) => prev ? { ...prev, repoUrl: data.build.repoUrl, githubBranch: data.build.branch } : prev);
-      setRepoUrlInput(data.build.repoUrl || "");
-      setToast({ message: 'Website repo created', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to create website repo', type: 'error' });
-    } finally {
-      setCreatingWebsiteBuild(false);
-    }
-  }, [id]);
-
-  const saveRepoUrl = useCallback(async () => {
-    const nextRepoUrl = repoUrlInput.trim();
-    const currentRepoUrl = (project?.repoUrl || "").trim();
-
-    if (!project || nextRepoUrl === currentRepoUrl) return;
-
-    setSavingRepoUrl(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl: nextRepoUrl }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save GitHub URL");
-      setProject(data.project);
-      setRepoUrlInput(data.project?.repoUrl || "");
-      setToast({ message: nextRepoUrl ? "GitHub URL saved" : "GitHub URL cleared", type: "success" });
-    } catch (err: any) {
-      setToast({ message: err.message || "Failed to save GitHub URL", type: "error" });
-    } finally {
-      setSavingRepoUrl(false);
-    }
-  }, [id, project, repoUrlInput]);
-
-  const deployWebsiteBuild = useCallback(async () => {
-    setDeployingWebsite(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/website-deploy`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start website deploy');
-      setWebsiteDeployStatus({
-        configured: true,
-        vercelUrl: data.deploy?.vercelUrl || '',
-        previewUrl: data.deploy?.previewUrl || '',
-      });
-      setProject((prev) => prev ? { ...prev, previewUrl: data.deploy?.previewUrl || prev.previewUrl, vercelUrl: data.deploy?.vercelUrl || prev.vercelUrl } : prev);
-      setWebsiteDeployStatus((prev) => ({
-        configured: true,
-        teamConfigured: prev?.teamConfigured,
-        previewUrl: data.deploy?.previewUrl || prev?.previewUrl || '',
-        vercelUrl: data.deploy?.vercelUrl || prev?.vercelUrl || '',
-      }));
-      await refreshProject();
-      setLatestWebsiteBuild((prev) => prev ? { ...prev, repoUrl: data.deploy?.repoUrl || prev.repoUrl, branch: data.deploy?.branch || prev.branch, status: data.deploy?.repoCreated ? "repo-created" : prev.status } : prev);
-      setRepoUrlInput((prev) => data.deploy?.repoUrl || prev);
-      setToast({ message: data.deploy?.repoCreated ? 'Repo created and Vercel deploy started' : 'Vercel deploy started', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to start deploy', type: 'error' });
-    } finally {
-      setDeployingWebsite(false);
-    }
-  }, [id, refreshProject]);
-
-  const generateSeoAudit = useCallback(async () => {
-    const targetUrl = seoUrl.trim() || project?.liveUrl || project?.previewUrl || '';
-    if (!targetUrl) {
-      setToast({ message: 'Add a live or preview URL first', type: 'error' });
-      return;
-    }
-    setGeneratingSeo(true);
-    try {
-      const res = await fetch('/api/seo-audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl, projectId: id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate SEO audit');
-      setLatestSeoReport(data.report);
-      setSeoReports((prev) => [data.report, ...prev.filter((x) => x.id !== data.report.id)]);
-      setToast({ message: 'SEO audit created', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to generate SEO audit', type: 'error' });
-    } finally {
-      setGeneratingSeo(false);
-    }
-  }, [seoUrl, project?.liveUrl, project?.previewUrl, id]);
-
-  const generateDeckDraft = useCallback(async () => {
-    if (!deckPrompt.trim()) return;
-    setGeneratingDeck(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: deckPrompt,
-          deckType,
-          selectedSources: deckSources,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate deck draft');
-      setLatestDeck(data.deck);
-      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
-      setDeckVisualStylePreset(data.deck?.visualStylePreset || deckVisualStylePreset);
-      setEditingDeck(false);
-      setDeckPrompt('');
-      setToast({ message: 'Deck draft created', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to generate deck draft', type: 'error' });
-    } finally {
-      setGeneratingDeck(false);
-    }
-  }, [id, deckPrompt, deckType, deckSources]);
-
-  const reuseDeckSettings = useCallback(() => {
-    if (!latestDeck) return;
-    setDeckPrompt(latestDeck.prompt || "");
-    setDeckType(latestDeck.deckType || "project-update");
-    if (latestDeck.selectedSources) setDeckSources(latestDeck.selectedSources);
-  }, [latestDeck]);
-
-  const updateDeckSlide = useCallback((index: number, field: keyof ProjectDeckSlide, value: string) => {
-    setDeckDraft((prev) => {
-      if (!prev?.slides) return prev;
-      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
-      if (field === 'bullets') next.slides![index].bullets = value.split('\n').map((x) => x.trim()).filter(Boolean);
-      else (next.slides![index] as any)[field] = value;
-      return next;
-    });
-  }, []);
-
-  const moveDeckSlide = useCallback((index: number, dir: -1 | 1) => {
-    setDeckDraft((prev) => {
-      if (!prev?.slides) return prev;
-      const target = index + dir;
-      if (target < 0 || target >= prev.slides.length) return prev;
-      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
-      const [item] = next.slides!.splice(index, 1);
-      next.slides!.splice(target, 0, item);
-      return next;
-    });
-  }, []);
-
-  const removeDeckSlide = useCallback((index: number) => {
-    setDeckDraft((prev) => {
-      if (!prev?.slides) return prev;
-      const next = JSON.parse(JSON.stringify(prev)) as ProjectDeck;
-      next.slides = next.slides!.filter((_, i) => i !== index);
-      return next;
-    });
-  }, []);
-
-  const generateDeckVisualPrompts = useCallback(async () => {
-    if (!latestDeck?.id) return;
-    setGeneratingDeckVisuals(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck/visuals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deckId: latestDeck.id, stylePreset: deckVisualStylePreset }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate deck visual prompts');
-      setLatestDeck(data.deck);
-      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
-      setToast({ message: 'Deck visual prompts created', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to generate deck visual prompts', type: 'error' });
-    } finally {
-      setGeneratingDeckVisuals(false);
-    }
-  }, [id, latestDeck, deckVisualStylePreset]);
-
-  const saveDeckDraft = useCallback(async () => {
-    if (!deckDraft?.id) return;
-    setSavingDeck(true);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}/deck`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deckId: deckDraft.id,
-          updates: {
-            title: deckDraft.title,
-            subtitle: deckDraft.subtitle,
-            audience: deckDraft.audience,
-            objective: deckDraft.objective,
-            narrativeArc: deckDraft.narrativeArc,
-            slides: deckDraft.slides,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save deck draft');
-      setLatestDeck(data.deck);
-      setDeckDraft(JSON.parse(JSON.stringify(data.deck)));
-      setEditingDeck(false);
-      setToast({ message: 'Deck draft saved', type: 'success' });
-    } catch (err: any) {
-      setToast({ message: err.message || 'Failed to save deck draft', type: 'error' });
-    } finally {
-      setSavingDeck(false);
-    }
-  }, [id, deckDraft]);
-
   if (loading) {
     return (
-      <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto space-y-6">
+      <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-32 w-full" />
@@ -1487,7 +1018,7 @@ export default function ProjectDetailPage({
 
   if (error || !project) {
     return (
-      <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto">
+      <div className="p-6 md:p-10 max-w-4xl mx-auto">
         <Link
           href="/projects"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
@@ -1506,27 +1037,15 @@ export default function ProjectDetailPage({
   }
 
   const p = editing && draft ? draft : project;
-  const activeDeck = (editingDeck ? deckDraft : latestDeck) || null;
   const hasAffiliate =
     p.affiliate && Object.keys(p.affiliate).length > 0;
-  const savedRepoUrl = (project.repoUrl || "").trim();
-  const repoUrlDraft = repoUrlInput.trim();
-  const repoUrlDirty = repoUrlDraft !== savedRepoUrl;
-  const hasWebsiteDraft = Boolean(latestWebpageDraft?.pageCodeDraft);
-  const canAutoCreateRepo = !savedRepoUrl && hasWebsiteDraft;
-  const canDeployProject = Boolean(savedRepoUrl || canAutoCreateRepo);
-  const deployPreviewUrl = websiteDeployStatus?.previewUrl || project.previewUrl || "";
-  const deployVercelUrl = websiteDeployStatus?.vercelUrl || project.vercelUrl || "";
-  const deployButtonLabel = deployingWebsite
-    ? canAutoCreateRepo
-      ? "Creating Repo + Starting Deploy..."
-      : "Starting Deploy..."
-    : canAutoCreateRepo
-      ? "Create Repo + Deploy to Vercel"
-      : "Deploy to Vercel";
+  const hasBrain =
+    p.brain &&
+    ((p.brain.links && p.brain.links.length > 0) ||
+      (p.brain.notes && p.brain.notes.length > 0));
 
   return (
-    <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto space-y-6">
+    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6">
       {toast && (
         <Toast
           message={toast.message}
@@ -1603,11 +1122,11 @@ export default function ProjectDetailPage({
                   <select
                     value={draft?.stage || ""}
                     onChange={(e) => updateDraft("stage", e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-background text-foreground outline-none"
+                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-transparent outline-none"
                   >
-                    <option value="" className="bg-background text-foreground">Stage...</option>
+                    <option value="">Stage...</option>
                     {STAGES.map((s) => (
-                      <option key={s} value={s} className="bg-background text-foreground">
+                      <option key={s} value={s}>
                         {s}
                       </option>
                     ))}
@@ -1615,11 +1134,11 @@ export default function ProjectDetailPage({
                   <select
                     value={draft?.priority || ""}
                     onChange={(e) => updateDraft("priority", e.target.value)}
-                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-background text-foreground outline-none uppercase"
+                    className="text-xs px-2 py-0.5 rounded-full border border-input bg-transparent outline-none uppercase"
                   >
-                    <option value="" className="bg-background text-foreground">Priority...</option>
+                    <option value="">Priority...</option>
                     {PRIORITIES.map((pr) => (
-                      <option key={pr} value={pr} className="bg-background text-foreground uppercase">
+                      <option key={pr} value={pr}>
                         {pr}
                       </option>
                     ))}
@@ -1637,19 +1156,40 @@ export default function ProjectDetailPage({
                       {p.stage}
                     </span>
                   )}
-                  {p.priority && (
-                    <span
-                      className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium uppercase ${
-                        p.priority === "high"
-                          ? "bg-red-500/10 text-red-500"
-                          : p.priority === "medium"
-                            ? "bg-yellow-500/10 text-yellow-500"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {p.priority}
-                    </span>
-                  )}
+                  <button
+                    onClick={async () => {
+                      const cycle = ["", "low", "medium", "high"];
+                      const currentIdx = cycle.indexOf(p.priority || "");
+                      const next = cycle[(currentIdx + 1) % cycle.length];
+                      // Optimistic update
+                      setProject({ ...project!, priority: next || undefined });
+                      try {
+                        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ priority: next }),
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          setProject(data.project);
+                          setToast({ message: next ? `Priority set to ${next}` : "Priority cleared", type: "success" });
+                        }
+                      } catch {
+                        setProject(project);
+                      }
+                    }}
+                    className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium uppercase cursor-pointer hover:ring-2 hover:ring-ring/50 transition-all ${
+                      p.priority === "high"
+                        ? "bg-red-500/10 text-red-500"
+                        : p.priority === "medium"
+                          ? "bg-yellow-500/10 text-yellow-500"
+                          : p.priority === "low"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-muted/50 text-muted-foreground/60 border border-dashed border-border"
+                    }`}
+                  >
+                    {p.priority || "priority"}
+                  </button>
                 </>
               )}
             </div>
@@ -1689,22 +1229,16 @@ export default function ProjectDetailPage({
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={generateWebpageDraft} disabled={generatingWebpage || !webpagePrompt.trim()}>
-                {generatingWebpage ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                {generatingWebpage ? 'Generating…' : 'Create Webpage'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={startEditing}>
-                <Pencil className="h-3.5 w-3.5 mr-1" />
-                Edit
-              </Button>
-            </>
+            <Button variant="outline" size="sm" onClick={startEditing}>
+              <Pencil className="h-3.5 w-3.5 mr-1" />
+              Edit
+            </Button>
           )}
         </div>
       </div>
 
       {/* Details grid */}
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 md:grid-cols-2">
         {/* Info */}
         <Card>
           <CardHeader>
@@ -1751,9 +1285,7 @@ export default function ProjectDetailPage({
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground mb-1">Client Contact</p>
                   {clientContact.name && (
-                    <Link href={`/clients/${encodeURIComponent(p.clientId || '')}`} className="text-sm font-medium mb-1 inline-block hover:underline">
-                      {clientContact.name}
-                    </Link>
+                    <p className="text-sm font-medium mb-1">{clientContact.name}</p>
                   )}
                   {clientContact.email && (
                     <a
@@ -1793,70 +1325,12 @@ export default function ProjectDetailPage({
           </CardContent>
         </Card>
 
-        {/* Project Links */}
+        {/* Links */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Project Links & Repo</CardTitle>
-            <CardDescription>
-              Saved public project links plus the GitHub repo used for deploys.
-            </CardDescription>
+            <CardTitle className="text-base">Links</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border border-border p-3 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">GitHub Repository</p>
-                  <p className="text-xs text-muted-foreground">
-                    Save the repo URL explicitly. Deploy uses the saved value, not what is currently typed.
-                  </p>
-                </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full border ${
-                    repoUrlDirty
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
-                      : savedRepoUrl
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
-                        : "border-border bg-muted/50 text-muted-foreground"
-                  }`}
-                >
-                  {repoUrlDirty ? "Unsaved changes" : savedRepoUrl ? "Saved" : "Not saved"}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={repoUrlInput}
-                  onChange={(e) => setRepoUrlInput(e.target.value)}
-                  placeholder="https://github.com/org/repo"
-                  className="sm:flex-1"
-                />
-                <Button
-                  onClick={saveRepoUrl}
-                  disabled={savingRepoUrl || !repoUrlDirty}
-                >
-                  {savingRepoUrl ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Check className="h-4 w-4 mr-2" />
-                  )}
-                  {savingRepoUrl ? "Saving..." : savedRepoUrl ? "Save Changes" : "Save GitHub URL"}
-                </Button>
-              </div>
-
-              <div className="text-xs text-muted-foreground">
-                {savedRepoUrl ? (
-                  <>
-                    Saved repo: <span className="text-foreground break-all">{savedRepoUrl}</span>
-                    {project.githubBranch ? <span> ({project.githubBranch})</span> : null}
-                  </>
-                ) : hasWebsiteDraft ? (
-                  "No repo saved yet. Deploy can create one automatically from the saved website draft."
-                ) : (
-                  "No repo saved yet. Add a GitHub URL here or create a website draft first."
-                )}
-              </div>
-            </div>
-
+          <CardContent className="space-y-2">
             {p.liveUrl && (
               <a
                 href={p.liveUrl}
@@ -1891,9 +1365,9 @@ export default function ProjectDetailPage({
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </a>
             )}
-            {savedRepoUrl && (
+            {p.repoUrl && (
               <a
-                href={savedRepoUrl}
+                href={p.repoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
@@ -1902,8 +1376,8 @@ export default function ProjectDetailPage({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">GitHub Repository</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {savedRepoUrl}
-                    {project.githubBranch && <span className="ml-2 text-purple-400">({project.githubBranch})</span>}
+                    {p.repoUrl}
+                    {p.githubBranch && <span className="ml-2 text-purple-400">({p.githubBranch})</span>}
                   </p>
                 </div>
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -2023,100 +1497,16 @@ export default function ProjectDetailPage({
                 Upload
               </Button>
             </div>
-            {!p.liveUrl && !p.previewUrl && !savedRepoUrl && (
+            {!p.liveUrl && !p.previewUrl && !p.repoUrl && (
               <p className="text-sm text-muted-foreground py-2">
-                No saved project links yet
+                No links available
               </p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Deployment</CardTitle>
-          <CardDescription>
-            One deploy path: use the saved repo, or create one from the latest website draft and deploy in one step.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">GitHub Repo</p>
-              <p className="mt-1 text-sm font-medium break-all">
-                {savedRepoUrl || (canAutoCreateRepo ? "Will be created from website draft" : "Not ready")}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Website Draft</p>
-              <p className="mt-1 text-sm font-medium">
-                {hasWebsiteDraft ? "Ready" : "Missing"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-3">
-              <p className="text-xs text-muted-foreground">Vercel Token</p>
-              <p className="mt-1 text-sm font-medium">
-                {websiteDeployStatus?.configured ? "Configured" : "Missing"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-3 md:col-span-3">
-              <p className="text-xs text-muted-foreground">Team Scope</p>
-              <p className="mt-1 text-sm font-medium">
-                {websiteDeployStatus?.teamConfigured ? "Configured" : "Default account"}
-              </p>
-            </div>
-          </div>
-
-          {(deployPreviewUrl || deployVercelUrl) ? (
-            <div className="rounded-lg border border-border p-3 space-y-2 text-sm">
-              {deployPreviewUrl && (
-                <div>
-                  <span className="font-medium">Latest preview:</span>{" "}
-                  <a href={deployPreviewUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline break-all">
-                    {deployPreviewUrl}
-                  </a>
-                </div>
-              )}
-              {deployVercelUrl && (
-                <div>
-                  <span className="font-medium">Vercel project:</span>{" "}
-                  <a href={deployVercelUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline break-all">
-                    {deployVercelUrl}
-                  </a>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-              No deployment has been started from this page yet.
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={deployWebsiteBuild} disabled={deployingWebsite || !canDeployProject || !websiteDeployStatus?.configured}>
-              {deployingWebsite ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-              {deployButtonLabel}
-            </Button>
-            {!savedRepoUrl && hasWebsiteDraft && (
-              <span className="text-xs text-cyan-600">
-                Deploy will create the GitHub repo from the latest website draft first.
-              </span>
-            )}
-            {!canDeployProject && (
-              <span className="text-xs text-amber-600">
-                Save a GitHub repo URL or create a website draft first.
-              </span>
-            )}
-            {canDeployProject && !websiteDeployStatus?.configured && (
-              <span className="text-xs text-amber-600">
-                `VERCEL_TOKEN` is not configured in the app environment yet.
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Live Preview + Website Changes */}
+      {/* Live Preview + AI Code Changes */}
       {(p.liveUrl || p.previewUrl) && (
         <LivePreviewWithAI 
           url={p.liveUrl || p.previewUrl || ''} 
@@ -2126,488 +1516,123 @@ export default function ProjectDetailPage({
         />
       )}
 
-      {/* Website draft first, then SEO + deck tools on wider desktop layouts */}
-      {!p.liveUrl && !p.previewUrl && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Create Website Draft</CardTitle>
-          <CardDescription>
-            Generate a richer website concept using project/client context plus Atlas design-pattern references, then save it as a planning draft.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="inline-flex rounded-lg border border-border bg-muted/30 p-1">
-            <button
-              type="button"
-              onClick={() => setWebpageMode('quick')}
-              className={`px-3 py-1.5 text-sm rounded-md ${webpageMode === 'quick' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
-            >
-              Quick Prompt
-            </button>
-            <button
-              type="button"
-              onClick={() => setWebpageMode('guided')}
-              className={`px-3 py-1.5 text-sm rounded-md ${webpageMode === 'guided' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
-            >
-              Guided Intake
-            </button>
-          </div>
-
-          {webpageMode === 'quick' ? (
-            <textarea
-              value={webpagePrompt}
-              onChange={(e) => setWebpagePrompt(e.target.value)}
-              placeholder="Example: Build a modern local service website for an Atlanta roofing company with financing CTA, trust badges, before/after photos, and a quote form."
-              className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Input value={webpageGuidedAnswers.siteType} onChange={(e) => updateWebpageGuidedAnswer('siteType', e.target.value)} placeholder="Site type, e.g. medspa, roofer, agency, SaaS" />
-              <Input value={webpageGuidedAnswers.audience} onChange={(e) => updateWebpageGuidedAnswer('audience', e.target.value)} placeholder="Target audience" />
-              <Input value={webpageGuidedAnswers.goal} onChange={(e) => updateWebpageGuidedAnswer('goal', e.target.value)} placeholder="Primary goal, e.g. book calls, generate leads, sell" />
-              <Input value={webpageGuidedAnswers.style} onChange={(e) => updateWebpageGuidedAnswer('style', e.target.value)} placeholder="Style/vibe, e.g. premium, modern, clinical, bold" />
-              <Input value={webpageGuidedAnswers.pages} onChange={(e) => updateWebpageGuidedAnswer('pages', e.target.value)} placeholder="Pages needed, e.g. home, about, services, contact" />
-              <Input value={webpageGuidedAnswers.cta} onChange={(e) => updateWebpageGuidedAnswer('cta', e.target.value)} placeholder="Main CTA, e.g. book now, get quote, apply" />
-              <Input value={webpageGuidedAnswers.mustHave} onChange={(e) => updateWebpageGuidedAnswer('mustHave', e.target.value)} placeholder="Must-have sections/features" className="md:col-span-2" />
-              <Input value={webpageGuidedAnswers.brand} onChange={(e) => updateWebpageGuidedAnswer('brand', e.target.value)} placeholder="Brand/colors/logo notes" className="md:col-span-2" />
-              <Input value={webpageGuidedAnswers.content} onChange={(e) => updateWebpageGuidedAnswer('content', e.target.value)} placeholder="Existing content/assets available" className="md:col-span-2" />
-              <textarea value={webpageGuidedAnswers.notes} onChange={(e) => updateWebpageGuidedAnswer('notes', e.target.value)} placeholder="Extra notes, constraints, differentiators, service areas, offers, etc." className="md:col-span-2 w-full min-h-[96px] rounded-md border border-input bg-background px-3 py-2 text-sm" />
-            </div>
-          )}
-
-          <Input
-            value={webpageReferenceUrl}
-            onChange={(e) => setWebpageReferenceUrl(e.target.value)}
-            placeholder="Optional reference URL for structure/style inspiration"
-          />
-
-          <div className="rounded-md border border-border p-3 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium">Inspiration images</div>
-                <div className="text-xs text-muted-foreground">Upload logos, moodboards, screenshots, or photos to steer the website draft.</div>
-              </div>
-              <input
-                ref={webpageImagesInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                multiple
-                className="hidden"
-                onChange={(e) => uploadWebpageInspirationImages(e.target.files)}
-              />
-              <Button type="button" variant="outline" size="sm" disabled={uploadingWebpageImages} onClick={() => webpageImagesInputRef.current?.click()}>
-                {uploadingWebpageImages ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                {uploadingWebpageImages ? 'Uploading…' : 'Upload Images'}
-              </Button>
-            </div>
-            {webpageInspirationImages.length > 0 && (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {webpageInspirationImages.map((url) => (
-                  <div key={url} className="rounded-md border border-border p-2 bg-muted/20 space-y-2">
-                    <img src={url} alt="Inspiration" className="h-24 w-full object-cover rounded" />
-                    <button type="button" className="text-xs text-red-400 hover:underline" onClick={() => setWebpageInspirationImages((prev) => prev.filter((item) => item !== url))}>Remove</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Input
-            value={webpagePreferredConcept}
-            onChange={(e) => setWebpagePreferredConcept(e.target.value)}
-            placeholder="Optional preferred concept name, e.g. 'editorial authority' or the exact recommended concept"
-          />
-          <Input
-            value={webpageCompetitorQuery}
-            onChange={(e) => setWebpageCompetitorQuery(e.target.value)}
-            placeholder="Optional competitor search query, e.g. 'Atlanta behavioral health clinic intensive outpatient'"
-          />
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={webpageResearchCompetitors}
-              onChange={(e) => setWebpageResearchCompetitors(e.target.checked)}
-            />
-            Research competitors for inspiration (structure + messaging ideas only, never copy)
-          </label>
-          {(p.liveUrl || p.previewUrl) && (
-            <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-              Existing site detected. This tool is safe: it only creates a separate draft record and will not overwrite the live or preview site.
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              This creates a saved website draft record tied to the project with concepts, copy guidance, and optional competitor inspiration. No deploy happens here.
-            </p>
-            <Button onClick={generateWebpageDraft} disabled={generatingWebpage || (webpageMode === 'quick' ? !webpagePrompt.trim() : (!Object.values(webpageGuidedAnswers).some((value) => String(value || '').trim()) && !webpageReferenceUrl.trim() && webpageInspirationImages.length === 0))}>
-              {generatingWebpage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {generatingWebpage ? 'Generating Draft…' : (p.liveUrl || p.previewUrl ? 'Create Separate Redesign Draft' : 'Generate Website Draft')}
-            </Button>
-          </div>
-          {latestWebpageDraft && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-3">
-              <div><span className="font-medium">Saved draft:</span> {latestWebpageDraft.name}</div>
-              {latestWebpageDraft.concept && <div><span className="font-medium">Concept:</span> {latestWebpageDraft.concept}</div>}
-              {latestWebpageDraft.designDirection && <div><span className="font-medium">Direction:</span> {latestWebpageDraft.designDirection}</div>}
-              {latestWebpageDraft.headline && <div><span className="font-medium">Headline:</span> {latestWebpageDraft.headline}</div>}
-              {latestWebpageDraft.cta && <div><span className="font-medium">CTA:</span> {latestWebpageDraft.cta}</div>}
-              {latestWebpageDraft.mode && <div><span className="font-medium">Mode:</span> {latestWebpageDraft.mode}</div>}
-              {latestWebpageDraft.referenceUrl && <div><span className="font-medium">Reference:</span> <a href={latestWebpageDraft.referenceUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebpageDraft.referenceUrl}</a></div>}
-              {Array.isArray(latestWebpageDraft.inspirationImages) && latestWebpageDraft.inspirationImages.length > 0 && <div><span className="font-medium">Inspiration images:</span> {latestWebpageDraft.inspirationImages.length}</div>}
-              {!p.liveUrl && !p.previewUrl && (
-                <div className="rounded-md border border-cyan-500/20 bg-cyan-500/10 p-3 space-y-3">
-                  <div className="text-sm text-cyan-100">This project has no live site yet. You can now create a real GitHub-backed website repo from this draft.</div>
-                  {latestWebsiteBuild ? (
-                    <div className="space-y-3 text-sm">
-                      <div className="space-y-1">
-                        <div><span className="font-medium text-foreground">Repo:</span> <a href={latestWebsiteBuild.repoUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{latestWebsiteBuild.repoUrl}</a></div>
-                        <div><span className="font-medium text-foreground">Status:</span> {latestWebsiteBuild.status}</div>
-                      </div>
-                      {websiteDeployStatus?.previewUrl && (
-                        <div className="space-y-1">
-                          <div><span className="font-medium text-foreground">Preview:</span> <a href={websiteDeployStatus.previewUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{websiteDeployStatus.previewUrl}</a></div>
-                          {websiteDeployStatus.vercelUrl && <div><span className="font-medium text-foreground">Vercel:</span> <a href={websiteDeployStatus.vercelUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{websiteDeployStatus.vercelUrl}</a></div>}
-                        </div>
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        Use the Deployment card above to manually trigger Vercel deploys for this repo.
-                      </div>
-                    </div>
-                  ) : (
-                    <Button onClick={createWebsiteBuild} disabled={creatingWebsiteBuild}>
-                      {creatingWebsiteBuild ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                      {creatingWebsiteBuild ? 'Creating Repo…' : 'Create Real Website Repo'}
-                    </Button>
-                  )}
-                  <div className="text-xs text-muted-foreground">This creates the actual site codebase in GitHub, then can deploy it to Vercel once the dashboard has a Vercel token configured.</div>
-                </div>
-              )}
-              {Array.isArray(latestWebpageDraft.concepts) && latestWebpageDraft.concepts.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">Three design directions:</span>
-                    {latestWebpageDraft.recommendedConcept && (
-                      <span className="text-xs rounded-full px-2 py-0.5 bg-orange-600/10 text-orange-600 border border-orange-600/20">
-                        Recommended: {latestWebpageDraft.recommendedConcept}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 grid gap-2 md:grid-cols-3">
-                    {latestWebpageDraft.concepts.map((concept: any, idx: number) => (
-                      <div key={idx} className="rounded-md border border-border p-2 bg-muted/30">
-                        <div className="font-medium">{concept.name || concept.direction}</div>
-                        {concept.headline && <div className="text-xs mt-1 text-foreground/90">{concept.headline}</div>}
-                        {concept.signatureMove && <div className="text-xs text-muted-foreground mt-1">{concept.signatureMove}</div>}
-                        {concept.whyItCouldWork && <div className="text-xs mt-2">{concept.whyItCouldWork}</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {Array.isArray(latestWebpageDraft.sections) && latestWebpageDraft.sections.length > 0 && (
-                <div>
-                  <span className="font-medium">Sections:</span>
-                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
-                    {latestWebpageDraft.sections.slice(0, 6).map((section: string, idx: number) => (
-                      <li key={idx}>{section}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {latestWebpageDraft.sectionCopy && (
-                <div>
-                  <span className="font-medium">Section copy guidance:</span>
-                  <div className="mt-1 text-muted-foreground space-y-1">
-                    {Object.entries(latestWebpageDraft.sectionCopy).slice(0, 5).map(([key, value]: [string, any]) => (
-                      <div key={key}><span className="capitalize font-medium text-foreground">{key}:</span> {Array.isArray(value) ? value.join(' • ') : String(value)}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {Array.isArray(latestWebpageDraft.competitors) && latestWebpageDraft.competitors.length > 0 && (
-                <div>
-                  <span className="font-medium">Competitor inspiration:</span>
-                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
-                    {latestWebpageDraft.competitors.slice(0, 5).map((item: any, idx: number) => (
-                      <li key={idx}>
-                        <span className="text-foreground">{item.title}</span>
-                        {item.url && <span className="text-xs ml-1">({item.url})</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {latestWebpageDraft.competitorSummary && (
-                <div>
-                  <span className="font-medium">Competitor insight summary:</span>
-                  <div className="mt-1 space-y-1 text-muted-foreground">
-                    {Object.entries(latestWebpageDraft.competitorSummary).map(([key, value]: [string, any]) => (
-                      Array.isArray(value) && value.length > 0 ? (
-                        <div key={key}>
-                          <span className="capitalize font-medium text-foreground">{key.replace(/([A-Z])/g, ' $1').trim()}:</span> {value.slice(0, 4).join(' • ')}
-                        </div>
-                      ) : null
-                    ))}
-                  </div>
-                </div>
-              )}
-              {Array.isArray(latestWebpageDraft.competitorIdeas) && latestWebpageDraft.competitorIdeas.length > 0 && (
-                <div>
-                  <span className="font-medium">Borrowable ideas:</span>
-                  <ul className="list-disc ml-5 mt-1 space-y-1 text-muted-foreground">
-                    {latestWebpageDraft.competitorIdeas.slice(0, 5).map((item: string, idx: number) => (
-                      <li key={idx}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {latestWebpageDraft.pageDraft && (
-                <div>
-                  <span className="font-medium">Implementation-ready page draft:</span>
-                  <div className="mt-2 rounded-md border border-border bg-muted/20 p-3 space-y-2 text-muted-foreground">
-                    {latestWebpageDraft.pageDraft.hero && (
-                      <div>
-                        <span className="font-medium text-foreground">Hero:</span>{' '}
-                        {[latestWebpageDraft.pageDraft.hero.eyebrow, latestWebpageDraft.pageDraft.hero.headline, latestWebpageDraft.pageDraft.hero.subheadline].filter(Boolean).join(' • ')}
-                      </div>
-                    )}
-                    {Array.isArray(latestWebpageDraft.pageDraft.proofItems) && latestWebpageDraft.pageDraft.proofItems.length > 0 && (
-                      <div><span className="font-medium text-foreground">Proof:</span> {latestWebpageDraft.pageDraft.proofItems.join(' • ')}</div>
-                    )}
-                    {Array.isArray(latestWebpageDraft.pageDraft.services) && latestWebpageDraft.pageDraft.services.length > 0 && (
-                      <div><span className="font-medium text-foreground">Services:</span> {latestWebpageDraft.pageDraft.services.slice(0, 3).join(' • ')}</div>
-                    )}
-                    {Array.isArray(latestWebpageDraft.pageDraft.processSteps) && latestWebpageDraft.pageDraft.processSteps.length > 0 && (
-                      <div><span className="font-medium text-foreground">Process:</span> {latestWebpageDraft.pageDraft.processSteps.join(' → ')}</div>
-                    )}
-                    {Array.isArray(latestWebpageDraft.pageDraft.faq) && latestWebpageDraft.pageDraft.faq.length > 0 && (
-                      <div><span className="font-medium text-foreground">FAQ angles:</span> {latestWebpageDraft.pageDraft.faq.join(' • ')}</div>
-                    )}
-                    {latestWebpageDraft.pageDraft.finalCta && (
-                      <div><span className="font-medium text-foreground">Final CTA:</span> {[latestWebpageDraft.pageDraft.finalCta.headline, latestWebpageDraft.pageDraft.finalCta.action, latestWebpageDraft.pageDraft.finalCta.reassurance].filter(Boolean).join(' • ')}</div>
-                    )}
-                    {Array.isArray(latestWebpageDraft.pageDraft.componentSuggestions) && latestWebpageDraft.pageDraft.componentSuggestions.length > 0 && (
-                      <div><span className="font-medium text-foreground">Suggested components:</span> {latestWebpageDraft.pageDraft.componentSuggestions.join(' • ')}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {latestWebpageDraft.pageCodeDraft && (
-                <div>
-                  <span className="font-medium">Code draft:</span>
-                  <pre className="mt-2 max-h-80 overflow-auto rounded-md border border-border bg-black/90 p-3 text-xs text-green-200 whitespace-pre-wrap">
-{latestWebpageDraft.pageCodeDraft}
-                  </pre>
-                </div>
-              )}
-              {latestWebpageDraft.seoLayer && (
-                <div>
-                  <span className="font-medium">SEO + AISO layer:</span>
-                  <div className="mt-2 rounded-md border border-border bg-muted/20 p-3 space-y-2 text-muted-foreground text-xs">
-                    {latestWebpageDraft.seoLayer.suggestedTitle && <div><span className="font-medium text-foreground">Title:</span> {latestWebpageDraft.seoLayer.suggestedTitle}</div>}
-                    {latestWebpageDraft.seoLayer.suggestedMeta && <div><span className="font-medium text-foreground">Meta:</span> {latestWebpageDraft.seoLayer.suggestedMeta}</div>}
-                    {latestWebpageDraft.seoLayer.h1 && <div><span className="font-medium text-foreground">H1:</span> {latestWebpageDraft.seoLayer.h1}</div>}
-                    {Array.isArray(latestWebpageDraft.seoLayer.h2s) && latestWebpageDraft.seoLayer.h2s.length > 0 && <div><span className="font-medium text-foreground">H2s:</span> {latestWebpageDraft.seoLayer.h2s.join(' • ')}</div>}
-                    {latestWebpageDraft.seoLayer.schemaType && <div><span className="font-medium text-foreground">Schema:</span> {latestWebpageDraft.seoLayer.schemaType}</div>}
-                    {Array.isArray(latestWebpageDraft.seoLayer.faqQuestions) && latestWebpageDraft.seoLayer.faqQuestions.length > 0 && <div><span className="font-medium text-foreground">FAQ:</span> {latestWebpageDraft.seoLayer.faqQuestions.join(' • ')}</div>}
-                    {Array.isArray(latestWebpageDraft.seoLayer.internalLinkOpportunities) && latestWebpageDraft.seoLayer.internalLinkOpportunities.length > 0 && <div><span className="font-medium text-foreground">Internal links:</span> {latestWebpageDraft.seoLayer.internalLinkOpportunities.join(' • ')}</div>}
-                  </div>
-                </div>
-              )}
-              {latestWebpageDraft.notes && <div className="text-muted-foreground">{latestWebpageDraft.notes}</div>}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Brain section - always show in edit mode, or when brain has content */}
+      {(hasBrain || editing) && (
+        <BrainSection
+          brain={(editing && draft ? draft.brain : project.brain) || {}}
+          editing={editing}
+          onChange={(brain) => updateDraft("brain", brain)}
+          projectId={id}
+        />
       )}
 
-      <div className="grid gap-6 2xl:grid-cols-[1fr_1.1fr] items-start">
+      {/* Voice Memos linked to this project */}
+      {voiceMemos.length > 0 && (
         <Card>
-        <CardHeader>
-          <CardTitle className="text-base">SEO + AISO Audit</CardTitle>
-          <CardDescription>
-            Run a combined traditional SEO and AI-search audit from the project page and generate a dark client-ready report with fix prompts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            value={seoUrl}
-            onChange={(e) => setSeoUrl(e.target.value)}
-            placeholder={p.liveUrl || p.previewUrl || 'https://example.com'}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Uses the project site by default if available. Current phase generates the audit report and fix prompts; selective/apply-all fixes will be the next phase.
-            </p>
-            <div className="flex items-center gap-2">
-              <Link href="/seo" className="text-sm text-cyan-400 hover:underline">Open standalone page</Link>
-              <Button onClick={generateSeoAudit} disabled={generatingSeo || !(seoUrl.trim() || p.liveUrl || p.previewUrl)}>
-                {generatingSeo ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-                {generatingSeo ? 'Running Audit…' : 'Run SEO Audit'}
-              </Button>
-            </div>
-          </div>
-          {latestSeoReport && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-2">
-              <div><span className="font-medium">Latest report:</span> {latestSeoReport.title}</div>
-              <div><span className="font-medium">Score:</span> {latestSeoReport.combinedScore}/100 ({latestSeoReport.combinedGrade})</div>
-              <div><span className="font-medium">SEO:</span> {latestSeoReport.seoScore} • <span className="font-medium">AISO:</span> {latestSeoReport.aisoScore}</div>
-              {latestSeoReport.summary && <div className="text-muted-foreground">{latestSeoReport.summary}</div>}
-              {Array.isArray(latestSeoReport.quickWins) && latestSeoReport.quickWins.length > 0 && (
-                <div><span className="font-medium">Quick wins:</span> {latestSeoReport.quickWins.slice(0, 4).join(' • ')}</div>
-              )}
-              {Array.isArray(latestSeoReport.findings) && latestSeoReport.findings.length > 0 && (
-                <div><span className="font-medium">Top findings:</span> {latestSeoReport.findings.slice(0, 4).map((f) => `[${f.priority}] ${f.issue}`).join(' • ')}</div>
-              )}
-              <div className="flex items-center gap-3 pt-1">
-                <Link href={latestSeoReport.shareUrl || `/seo-reports/${latestSeoReport.id}`} className="text-cyan-400 hover:underline">Open report</Link>
-                <span className="text-xs text-muted-foreground">here.now publishing pending integration</span>
-              </div>
-            </div>
-          )}
-          {seoReports.length > 1 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Recent project reports</div>
-              {seoReports.slice(0, 5).map((report) => (
-                <div key={report.id} className="rounded-md border border-border p-2 text-sm flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{report.title}</div>
-                    <div className="text-xs text-muted-foreground">{report.combinedScore}/100 • {report.createdAt || ''}</div>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="h-4 w-4 text-orange-500" />
+              Voice Memos ({voiceMemos.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {voiceMemos.map((memo) => {
+              const isVmExpanded = expandedVoiceMemos.has(memo.id);
+              return (
+                <div key={memo.id} className="border rounded-lg p-3 transition-shadow hover:shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <button
+                        onClick={() => setExpandedVoiceMemos((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(memo.id)) next.delete(memo.id);
+                          else next.add(memo.id);
+                          return next;
+                        })}
+                        className="font-medium text-sm text-left hover:text-orange-600 transition-colors"
+                      >
+                        {memo.title}
+                      </button>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span>{new Date(memo.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        <span>&middot;</span>
+                        <span>{memo.speakers}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setExpandedVoiceMemos((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(memo.id)) next.delete(memo.id);
+                        else next.add(memo.id);
+                        return next;
+                      })}
+                      className="shrink-0 p-1"
+                    >
+                      {isVmExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
                   </div>
-                  <Link href={report.shareUrl || `/seo-reports/${report.id}`} className="text-cyan-400 hover:underline">View</Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-        </Card>
 
+                  {/* Preview */}
+                  {!isVmExpanded && memo.summary && (
+                    <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                      {memo.summary}
+                    </p>
+                  )}
 
-        <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Create Deck Draft</CardTitle>
-          <CardDescription>
-            Build a source-selectable slide-deck outline from project, brain, client, and webpage context.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input value={deckType} onChange={(e) => setDeckType(e.target.value)} placeholder="Deck type, e.g. pitch-deck, client-proposal, investor-summary, project-update" />
-          <textarea
-            value={deckPrompt}
-            onChange={(e) => setDeckPrompt(e.target.value)}
-            placeholder="Example: Create a concise investor-style deck for this project focused on opportunity, differentiation, traction, and next step."
-            className="w-full min-h-[110px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-          <div className="grid gap-2 md:grid-cols-2 text-sm text-muted-foreground">
-            {Object.entries(deckSources).map(([key, value]) => (
-              <label key={key} className="flex items-center gap-2">
-                <input type="checkbox" checked={value} onChange={(e) => setDeckSources((prev) => ({ ...prev, [key]: e.target.checked }))} />
-                {key.replace(/([A-Z])/g, ' $1').trim()}
-              </label>
-            ))}
-          </div>
-          <Input value={deckVisualStylePreset} onChange={(e) => setDeckVisualStylePreset(e.target.value)} placeholder="Visual style preset, e.g. dark modern strategic, premium minimal, cinematic technical" />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Phase 3 adds saved visual prompts: a cover prompt plus per-slide image prompts you can use for later slide rendering.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={reuseDeckSettings} disabled={!latestDeck}>
-                Reuse Latest Settings
-              </Button>
-              <Button variant="outline" onClick={generateDeckVisualPrompts} disabled={generatingDeckVisuals || !latestDeck}>
-                {generatingDeckVisuals ? 'Generating Visuals…' : 'Generate Visual Prompts'}
-              </Button>
-              <Button onClick={generateDeckDraft} disabled={generatingDeck || !deckPrompt.trim()}>
-                {generatingDeck ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
-                {generatingDeck ? 'Generating Deck…' : 'Generate Deck Draft'}
-              </Button>
-            </div>
-          </div>
-          {latestDeck && activeDeck && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div><span className="font-medium">Deck:</span> {activeDeck.title}</div>
-                <div className="flex items-center gap-2">
-                  {!editingDeck ? (
-                    <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(true); }}>
-                      Edit Deck
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => { setDeckDraft(JSON.parse(JSON.stringify(latestDeck))); setEditingDeck(false); }}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={saveDeckDraft} disabled={savingDeck}>
-                        {savingDeck ? 'Saving…' : 'Save Deck'}
-                      </Button>
-                    </>
+                  {/* Expanded */}
+                  {isVmExpanded && (
+                    <div className="mt-2 space-y-2">
+                      {memo.summary && (
+                        <div className="bg-muted/40 rounded p-2">
+                          <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Summary
+                          </p>
+                          <p className="text-xs leading-relaxed">{memo.summary}</p>
+                        </div>
+                      )}
+                      {memo.actionItems && memo.actionItems.length > 0 && (
+                        <div className="bg-green-600/10 border border-green-600/20 rounded p-2">
+                          <p className="text-xs font-semibold text-green-500 mb-1 flex items-center gap-1">
+                            <CheckSquare className="h-3 w-3" /> Action Items
+                          </p>
+                          <ul className="space-y-0.5">
+                            {memo.actionItems.map((item, i) => (
+                              <li key={i} className="text-xs flex items-start gap-1.5">
+                                <span className="text-green-500 mt-0.5">&bull;</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {memo.keyDecisions && memo.keyDecisions.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium mb-1">Key Decisions</p>
+                          <ul className="space-y-0.5">
+                            {memo.keyDecisions.map((d, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                                <span className="text-orange-500 shrink-0">&bull;</span>
+                                {d}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {memo.topics && memo.topics.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {memo.topics.map((t, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-              {editingDeck ? (
-                <>
-                  <Input value={deckDraft?.title || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, title: e.target.value } : prev)} placeholder="Deck title" />
-                  <Input value={deckDraft?.subtitle || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, subtitle: e.target.value } : prev)} placeholder="Deck subtitle" />
-                  <Input value={deckDraft?.audience || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, audience: e.target.value } : prev)} placeholder="Audience" />
-                  <textarea value={deckDraft?.objective || ''} onChange={(e) => setDeckDraft((prev) => prev ? { ...prev, objective: e.target.value } : prev)} className="w-full min-h-[70px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Objective" />
-                </>
-              ) : (
-                <>
-                  {activeDeck.subtitle && <div><span className="font-medium">Subtitle:</span> {activeDeck.subtitle}</div>}
-                  {activeDeck.deckType && <div><span className="font-medium">Type:</span> {activeDeck.deckType}</div>}
-                  {activeDeck.audience && <div><span className="font-medium">Audience:</span> {activeDeck.audience}</div>}
-                  {activeDeck.objective && <div><span className="font-medium">Objective:</span> {activeDeck.objective}</div>}
-                </>
-              )}
-              {activeDeck.visualStylePreset && <div><span className="font-medium">Visual style:</span> {activeDeck.visualStylePreset}</div>}
-              {activeDeck.coverImagePrompt && <div><span className="font-medium">Cover prompt:</span> <span className="text-muted-foreground">{activeDeck.coverImagePrompt}</span></div>}
-              {Array.isArray(activeDeck.chosenSources) && activeDeck.chosenSources.length > 0 && <div><span className="font-medium">Sources:</span> {activeDeck.chosenSources.join(' • ')}</div>}
-              {Array.isArray(activeDeck.narrativeArc) && activeDeck.narrativeArc.length > 0 && <div><span className="font-medium">Narrative arc:</span> {activeDeck.narrativeArc.join(' → ')}</div>}
-              {Array.isArray(activeDeck.slides) && activeDeck.slides.length > 0 && (
-                <div>
-                  <span className="font-medium">Slides:</span>
-                  <div className="mt-2 space-y-2">
-                    {(activeDeck.slides || []).slice(0, 12).map((slide, idx) => (
-                      <div key={idx} className="rounded-md border border-border bg-muted/20 p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{idx + 1}. {slide.title}</div>
-                          {editingDeck && (
-                            <div className="flex items-center gap-1">
-                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, -1)} disabled={idx === 0}>↑</Button>
-                              <Button size="sm" variant="outline" onClick={() => moveDeckSlide(idx, 1)} disabled={idx === ((deckDraft?.slides?.length || 1) - 1)}>↓</Button>
-                              <Button size="sm" variant="outline" onClick={() => removeDeckSlide(idx)}>Remove</Button>
-                            </div>
-                          )}
-                        </div>
-                        {editingDeck ? (
-                          <div className="space-y-2">
-                            <Input value={slide.title || ''} onChange={(e) => updateDeckSlide(idx, 'title', e.target.value)} placeholder="Slide title" />
-                            <Input value={slide.purpose || ''} onChange={(e) => updateDeckSlide(idx, 'purpose', e.target.value)} placeholder="Purpose" />
-                            <textarea value={Array.isArray(slide.bullets) ? slide.bullets.join('\n') : ''} onChange={(e) => updateDeckSlide(idx, 'bullets', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="One bullet per line" />
-                            <Input value={slide.visualIdea || ''} onChange={(e) => updateDeckSlide(idx, 'visualIdea', e.target.value)} placeholder="Visual idea" />
-                            <textarea value={slide.speakerNotes || ''} onChange={(e) => updateDeckSlide(idx, 'speakerNotes', e.target.value)} className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Speaker notes" />
-                          </div>
-                        ) : (
-                          <>
-                            {slide.purpose && <div className="text-xs text-muted-foreground mt-1">{slide.purpose}</div>}
-                            {Array.isArray(slide.bullets) && slide.bullets.length > 0 && <div className="text-xs mt-2">{slide.bullets.join(' • ')}</div>}
-                            {slide.visualIdea && <div className="text-xs mt-2 text-muted-foreground">Visual: {slide.visualIdea}</div>}
-                            {slide.speakerNotes && <div className="text-xs mt-2 text-muted-foreground">Notes: {slide.speakerNotes}</div>}
-                            {slide.imagePrompt && <div className="text-xs mt-2 text-cyan-300">Image prompt: {slide.imagePrompt}</div>}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
+              );
+            })}
+          </CardContent>
         </Card>
-
-      </div>
+      )}
 
       {/* Affiliate section */}
       {(hasAffiliate || editing) && (
@@ -2620,30 +1645,11 @@ export default function ProjectDetailPage({
         />
       )}
 
+      {/* Calls */}
+      <ProjectCalls projectId={id} />
+
       {/* Changelog */}
       <ChangelogSection projectId={id} />
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">Project Knowledge & Files</h2>
-          <p className="text-sm text-muted-foreground">
-            Internal reference material and supporting uploads live here, below the execution and delivery tools.
-          </p>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          <SupportingDocsSection
-            brain={(editing && draft ? draft.brain : project.brain) || {}}
-            editing={editing}
-            onChange={(brain) => updateDraft("brain", brain)}
-            projectId={id}
-          />
-          <BrainKnowledgeSection
-            brain={(editing && draft ? draft.brain : project.brain) || {}}
-            editing={editing}
-            onChange={(brain) => updateDraft("brain", brain)}
-          />
-        </div>
-      </section>
 
       {/* AI Chat */}
       <ProjectChat projectId={id} projectName={project.name} />
@@ -2756,7 +1762,7 @@ function LivePreview({
   const iframeWidth = currentPreset.width;
   
   // Calculate scale to fit smaller devices in the container
-  const maxContainerWidth = 1500; // Wider desktop layout for larger project workspace
+  const maxContainerWidth = 1200; // Approximate max width of card content
   const baseScale = device === 'desktop' 
     ? 1 
     : Math.min(1, maxContainerWidth / iframeWidth);
@@ -2883,7 +1889,7 @@ function LivePreview({
   );
 }
 
-// ── Live Preview with Website Changes ──
+// ── Live Preview with AI Code Changes ──
 function LivePreviewWithAI({ 
   url, 
   projectName,
@@ -2955,14 +1961,14 @@ function LivePreviewWithAI({
         projectId={projectId}
       />
       
-      {/* Website Changes */}
+      {/* AI Code Changes */}
       {project.repoUrl && (
         <Card className="border-purple-500/20">
           <CardHeader>
             <CardTitle className="text-base flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-purple-500" />
-                Website Changes
+                AI Code Changes
               </span>
               <Button
                 variant="outline"
@@ -2977,7 +1983,7 @@ function LivePreviewWithAI({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Make Website Changes
+                    Make Changes
                   </>
                 )}
               </Button>
@@ -2988,7 +1994,7 @@ function LivePreviewWithAI({
             <CardContent>
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Describe the website changes you want. Atlas will modify the site code and create a PR.
+                  Describe the changes you want to make. AI will modify the code and create a PR.
                 </p>
                 
                 <div className="space-y-2">

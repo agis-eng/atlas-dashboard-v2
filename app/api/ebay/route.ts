@@ -1,7 +1,22 @@
 import { NextRequest } from "next/server";
+import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
+const EBAY_TOKEN = process.env.EBAY_USER_TOKEN || "";
 const SANDBOX_API = "https://api.sandbox.ebay.com";
 const PRODUCTION_API = "https://api.ebay.com";
+
+async function getTokenFromRedis(): Promise<string> {
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(REDIS_KEYS.ebayToken);
+    if (!raw) return "";
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (data.expires_at && new Date(data.expires_at) < new Date()) return "";
+    return data.access_token || "";
+  } catch {
+    return "";
+  }
+}
 
 function getBaseUrl(env: string) {
   return env === "production" ? PRODUCTION_API : SANDBOX_API;
@@ -13,37 +28,29 @@ function ebayHeaders(token: string): Record<string, string> {
     Accept: "application/json",
     "Accept-Language": "en-US",
     "Content-Language": "en-US",
-    Authorization: `Bearer ${token}`,
+    "Authorization": `Bearer ${token}`,
   };
-}
-
-async function getToken(request: NextRequest, explicitToken?: string | null): Promise<string> {
-  if (explicitToken) return explicitToken;
-  // Auto-fetch from OAuth token store
-  const origin = new URL(request.url).origin;
-  const res = await fetch(`${origin}/api/ebay/auth?action=token`);
-  if (!res.ok) throw new Error("Not connected to eBay. Please authorize first.");
-  const data = await res.json();
-  return data.access_token;
 }
 
 // GET - Proxy eBay API reads (listings, orders, inventory)
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
-  const env = searchParams.get("env") || "production";
+  const env = searchParams.get("env") || "sandbox";
+  let token = searchParams.get("token") || EBAY_TOKEN;
+  if (!token) {
+    token = await getTokenFromRedis();
+  }
   const baseUrl = getBaseUrl(env);
 
-  let token: string;
-  try {
-    token = await getToken(request, searchParams.get("token"));
-  } catch {
-    return Response.json({ error: "Not connected to eBay. Please authorize first." }, { status: 401 });
+  if (!token) {
+    return Response.json({ error: "No eBay token configured" }, { status: 401 });
   }
 
   try {
     switch (action) {
       case "test-connection": {
+        const tokenType = "OAuth Bearer";
         const res = await fetch(
           `${baseUrl}/sell/inventory/v1/inventory_item?limit=1`,
           { headers: ebayHeaders(token) }
@@ -52,6 +59,7 @@ export async function GET(request: NextRequest) {
           return Response.json({
             connected: true,
             environment: env,
+            tokenType,
           });
         }
         const errText = await res.text().catch(() => "");
@@ -66,7 +74,9 @@ export async function GET(request: NextRequest) {
           {
             connected: false,
             error: errorDetail,
+            tokenType,
             httpStatus: res.status,
+            apiResponse: errBody || errText || null,
           },
           { status: res.status }
         );
@@ -141,13 +151,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, env = "production", token: bodyToken, ...payload } = body;
+  let token = bodyToken || EBAY_TOKEN;
+
+  // Fall back to Redis-stored OAuth token
+  if (!token) {
+    token = await getTokenFromRedis();
+  }
+
   const baseUrl = getBaseUrl(env);
 
-  let token: string;
-  try {
-    token = await getToken(request, bodyToken);
-  } catch {
-    return Response.json({ error: "Not connected to eBay. Please authorize first." }, { status: 401 });
+  if (!token) {
+    return Response.json({ error: "No eBay token configured" }, { status: 401 });
   }
 
   try {

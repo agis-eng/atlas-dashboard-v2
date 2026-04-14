@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
-import { getSessionUserFromRequest } from "@/lib/auth";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -14,6 +13,7 @@ type BackupRecord = {
 
 export async function GET(request: NextRequest) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {

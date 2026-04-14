@@ -3,8 +3,7 @@ import type { NextRequest } from "next/server";
 import { decryptSessionFromCookie } from "@/lib/session";
 
 const PUBLIC_PATHS = ["/login", "/register"];
-const PUBLIC_PREFIXES = ["/api/auth/", "/api/twilio/", "/api/ebay/auth", "/api/tiktok/auth", "/_next/", "/favicon.ico"];
-const INTERNAL_API_KEY = process.env.ATLAS_INTERNAL_API_KEY?.trim();
+const PUBLIC_PREFIXES = ["/api/auth/", "/api/webhooks/", "/api/voice-memos/process", "/_next/", "/favicon.ico"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
@@ -13,11 +12,6 @@ function isPublic(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  const internalHeader = request.headers.get("x-atlas-internal-key")?.trim();
-  if (INTERNAL_API_KEY && internalHeader && internalHeader === INTERNAL_API_KEY) {
-    return NextResponse.next();
-  }
 
   // Let public paths through immediately
   if (isPublic(pathname)) {

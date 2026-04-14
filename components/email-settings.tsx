@@ -758,7 +758,7 @@ export function EmailSettingsSheet() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-        ) : settings ? (
+        ) : settings?.accounts && settings?.digest ? (
           <div className="px-4 space-y-4 pb-4">
             {saveError && (
               <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">

@@ -1,40 +1,21 @@
-import {
-  computeRecordingStats,
-  loadBrainOptions,
-  loadPartnerOptions,
-  loadProjectOptions,
-  loadRecordingsStore,
-} from "@/lib/recordings-store";
+import { NextRequest } from "next/server";
+import { getRedis, REDIS_KEYS } from "@/lib/redis";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const [store, projects, partners, brains] = await Promise.all([
-      loadRecordingsStore(),
-      loadProjectOptions(),
-      loadPartnerOptions(),
-      loadBrainOptions(),
-    ]);
+    const redis = getRedis();
+    const recordings = (await redis.get(REDIS_KEYS.fathomRecordings)) as any[] | null;
+    const all = Array.isArray(recordings) ? recordings : [];
 
-    const recordings = [...store.recordings].sort((a, b) =>
-      b.occurredAt.localeCompare(a.occurredAt)
-    );
+    const projectId = request.nextUrl.searchParams.get("projectId");
+    if (projectId) {
+      return Response.json({
+        recordings: all.filter((r) => r.projectId === projectId),
+      });
+    }
 
-    return Response.json({
-      updatedAt: store.updatedAt,
-      recordings,
-      stats: computeRecordingStats(recordings),
-      projects,
-      partners,
-      brains,
-    });
+    return Response.json({ recordings: all });
   } catch (error: any) {
-    console.error("Recordings API error:", error);
-    return Response.json(
-      {
-        error: "Failed to load recordings",
-        details: error?.message || "Unknown error",
-      },
-      { status: 500 }
-    );
+    return Response.json({ error: error.message }, { status: 500 });
   }
 }

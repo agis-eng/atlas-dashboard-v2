@@ -172,6 +172,19 @@ export async function POST(request: Request) {
         password: body.smtp?.password || "",
         secure: body.smtp?.secure ?? true,
       };
+    } else if (newAccount.type === "google") {
+      // Google uses IMAP with app password
+      newAccount.smtp = {
+        host: body.smtp?.host || "imap.gmail.com",
+        port: body.smtp?.port || 993,
+        username: body.smtp?.username || body.email?.trim() || "",
+        password: body.smtp?.password || "",
+        secure: true,
+      };
+      // Mark as connected if credentials provided
+      if (newAccount.smtp.password) {
+        newAccount.connected = true;
+      }
     }
 
     settings.accounts.push(newAccount);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Archive } from "lucide-react";
+import { Trash2, Archive, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Email {
@@ -25,15 +25,16 @@ interface EmailRowProps {
   onOpen: (email: Email) => void;
   onDelete: (id: string) => void;
   onArchive: (id: string) => void;
+  onSpam?: (email: Email) => void;
 }
 
-export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, onArchive }: EmailRowProps) {
+export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, onArchive, onSpam }: EmailRowProps) {
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     setDeleting(true);
     try {
       await onDelete(email.id);
@@ -44,13 +45,18 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     setArchiving(true);
     try {
       await onArchive(email.id);
     } finally {
       setArchiving(false);
     }
+  };
+
+  const handleSpam = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSpam?.(email);
   };
 
   return (
@@ -62,7 +68,7 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
         onClick={(e) => e.stopPropagation()}
         className="mt-1 cursor-pointer"
       />
-      <div 
+      <div
         className="flex-1 min-w-0 cursor-pointer"
         onClick={() => onOpen(email)}
       >
@@ -80,6 +86,17 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
           <div>{new Date(email.date).toLocaleDateString()}</div>
           <div className="text-[10px]">{new Date(email.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
+        {onSpam && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={handleSpam}
+            title="Mark as spam & block sender"
+          >
+            <ShieldOff className="h-3.5 w-3.5 text-orange-500" />
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"

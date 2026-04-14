@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Search,
@@ -27,9 +27,6 @@ import {
   X,
   Pencil,
   Copy,
-  Upload,
-  Camera,
-  Sparkles,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -111,10 +108,6 @@ interface DraftListing {
   condition: string;
   categoryId: string;
   imageUrls: string[];
-  weightLbs?: string;
-  lengthIn?: string;
-  widthIn?: string;
-  heightIn?: string;
 }
 
 type Tab = "settings" | "listings" | "drafts" | "create" | "orders";
@@ -156,9 +149,11 @@ export default function EbayPage() {
   const [activeTab, setActiveTab] = useState<Tab>("settings");
 
   // Settings
-  const [environment, setEnvironment] = useState<"production" | "sandbox">("production");
+  const [token, setToken] = useState("");
+  const [environment, setEnvironment] = useState<"sandbox" | "production">("sandbox");
   const [connectionStatus, setConnectionStatus] = useState<"untested" | "testing" | "connected" | "failed">("untested");
   const [connectionError, setConnectionError] = useState("");
+  const [showToken, setShowToken] = useState(false);
 
   // Listings
   const [listings, setListings] = useState<EbayOffer[]>([]);
@@ -183,22 +178,11 @@ export default function EbayPage() {
     categorySearch: "",
     imageUrls: [""],
     upc: "",
-    weightLbs: "",
-    lengthIn: "",
-    widthIn: "",
-    heightIn: "",
   });
   const [categorySuggestions, setCategorySuggestions] = useState<{ category: { categoryId: string; categoryName: string } }[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createResult, setCreateResult] = useState<{ success?: boolean; error?: string } | null>(null);
-
-  // Photo upload + AI
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
-  const [photoError, setPhotoError] = useState("");
 
   // Orders
   const [orders, setOrders] = useState<EbayOrder[]>([]);
@@ -208,14 +192,44 @@ export default function EbayPage() {
   const [shipForm, setShipForm] = useState<{ orderId: string; trackingNumber: string; carrier: string } | null>(null);
   const [shipping, setShipping] = useState(false);
 
-  // Check OAuth connection status + load drafts on mount
+  // Load saved settings & drafts on mount, check for OAuth token
   useEffect(() => {
-    checkConnection();
+    // Check for OAuth token from server first
+    fetch("/api/ebay/token")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.connected && data.token) {
+          setToken(data.token);
+          setEnvironment("production");
+          setConnectionStatus("connected");
+        } else {
+          // Fall back to localStorage
+          const saved = localStorage.getItem("ebay-settings");
+          if (saved) {
+            try {
+              const s = JSON.parse(saved);
+              if (s.token) setToken(s.token);
+              if (s.environment) setEnvironment(s.environment);
+            } catch { /* ignore */ }
+          }
+        }
+      })
+      .catch(() => {
+        // Fall back to localStorage
+        const saved = localStorage.getItem("ebay-settings");
+        if (saved) {
+          try {
+            const s = JSON.parse(saved);
+            if (s.token) setToken(s.token);
+            if (s.environment) setEnvironment(s.environment);
+          } catch { /* ignore */ }
+        }
+      });
     const savedDrafts = localStorage.getItem(DRAFT_STORAGE_KEY);
     if (savedDrafts) {
       try { setDrafts(JSON.parse(savedDrafts)); } catch { /* ignore */ }
     }
-    // Check for OAuth callback params
+    // Check for OAuth callback status in URL
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "true") {
       setConnectionStatus("connected");
@@ -223,10 +237,17 @@ export default function EbayPage() {
     }
     if (params.get("error")) {
       setConnectionStatus("failed");
-      setConnectionError(params.get("error") || "Authorization failed");
+      alert("eBay OAuth error: " + decodeURIComponent(params.get("error") || "Unknown error"));
       window.history.replaceState({}, "", "/ebay");
     }
   }, []);
+
+  // Save settings when changed
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem("ebay-settings", JSON.stringify({ token, environment }));
+    }
+  }, [token, environment]);
 
   // Save drafts
   useEffect(() => {
@@ -236,183 +257,47 @@ export default function EbayPage() {
   // ─── API Helpers ───────────────────────────────────────────────────────
 
   const apiGet = useCallback(async (action: string, extra: Record<string, string> = {}) => {
-    const params = new URLSearchParams({ action, env: environment, ...extra });
+    const params = new URLSearchParams({ action, env: environment, token, ...extra });
     const res = await fetch(`/api/ebay?${params}`);
     return res.json();
-  }, [environment]);
+  }, [environment, token]);
 
   const apiPost = useCallback(async (action: string, payload: Record<string, unknown> = {}) => {
     const res = await fetch("/api/ebay", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, env: environment, ...payload }),
+      body: JSON.stringify({ action, env: environment, token, ...payload }),
     });
     return res.json();
-  }, [environment]);
+  }, [environment, token]);
 
   // ─── Settings ──────────────────────────────────────────────────────────
 
-  async function checkConnection() {
+  const [tokenType, setTokenType] = useState("");
+
+  async function testConnection() {
+    if (!token) return;
     setConnectionStatus("testing");
     setConnectionError("");
+    setTokenType("");
     try {
-      const res = await fetch("/api/ebay/auth?action=status");
-      const data = await res.json();
+      const data = await apiGet("test-connection");
+      if (data.tokenType) setTokenType(data.tokenType);
       if (data.connected) {
-        const test = await apiGet("test-connection");
-        if (test.connected) {
-          setConnectionStatus("connected");
-        } else {
-          // Try refreshing token
-          const refreshRes = await fetch("/api/ebay/auth?action=token");
-          if (refreshRes.ok) {
-            const retest = await apiGet("test-connection");
-            setConnectionStatus(retest.connected ? "connected" : "failed");
-            if (!retest.connected) setConnectionError(retest.error || "Connection failed after refresh");
-          } else {
-            setConnectionStatus("failed");
-            setConnectionError("Token expired. Please reconnect.");
-          }
-        }
+        setConnectionStatus("connected");
       } else {
-        setConnectionStatus("untested");
-      }
-    } catch {
-      setConnectionStatus("untested");
-    }
-  }
-
-  function connectEbay() {
-    window.location.href = "/api/ebay/auth?action=login";
-  }
-
-  // ─── Photo Upload + AI ─────────────────────────────────────────────────
-
-  async function handlePhotoUpload(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
-    setPhotoError("");
-
-    const allUrls: string[] = [];
-    const allErrors: string[] = [];
-
-    // Upload one at a time to avoid Vercel's 4.5MB body limit
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("photos", file);
-
-      try {
-        const res = await fetch("/api/ebay/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (data.urls?.length) allUrls.push(...data.urls);
-        if (data.errors?.length) allErrors.push(...data.errors);
-        if (data.error) allErrors.push(data.error);
-      } catch {
-        allErrors.push(`${file.name}: Upload failed`);
-      }
-    }
-
-    if (allErrors.length) setPhotoError(allErrors.join("; "));
-    if (allUrls.length) {
-      const newPhotos = [...uploadedPhotos, ...allUrls];
-      setUploadedPhotos(newPhotos);
-      setCreateForm((prev) => ({ ...prev, imageUrls: newPhotos }));
-    }
-
-    setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  async function analyzePhotos() {
-    if (!uploadedPhotos.length) return;
-    setAnalyzing(true);
-    setPhotoError("");
-
-    try {
-      const res = await fetch("/api/ebay/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrls: uploadedPhotos }),
-      });
-      const data = await res.json();
-
-      if (data.error) {
-        setPhotoError(data.error);
-        return;
-      }
-
-      // Auto-fill the form with AI suggestions
-      setCreateForm((prev) => ({
-        ...prev,
-        title: data.title || prev.title,
-        description: data.description || prev.description,
-        price: data.price || prev.price,
-        condition: data.condition || prev.condition,
-        categorySearch: data.categoryKeywords || prev.categorySearch,
-        sku: prev.sku || `AI-${Date.now().toString(36).toUpperCase()}`,
-        weightLbs: data.shipping?.weightLbs ? String(data.shipping.weightLbs) : prev.weightLbs,
-        lengthIn: data.shipping?.lengthIn ? String(data.shipping.lengthIn) : prev.lengthIn,
-        widthIn: data.shipping?.widthIn ? String(data.shipping.widthIn) : prev.widthIn,
-        heightIn: data.shipping?.heightIn ? String(data.shipping.heightIn) : prev.heightIn,
-      }));
-
-      // Auto-search for category and select the first match
-      if (data.categoryKeywords) {
-        try {
-          const catData = await apiGet("categories", { q: data.categoryKeywords });
-          const suggestions = catData.categorySuggestions || [];
-          setCategorySuggestions(suggestions);
-          if (suggestions.length > 0) {
-            setCreateForm((prev) => ({
-              ...prev,
-              categoryId: suggestions[0].category.categoryId,
-              categorySearch: suggestions[0].category.categoryName,
-            }));
-          }
-        } catch {
-          searchCategories(data.categoryKeywords);
+        setConnectionStatus("failed");
+        const errorMsg = data.error || "Connection failed";
+        const statusInfo = data.httpStatus ? ` (HTTP ${data.httpStatus})` : "";
+        setConnectionError(`${errorMsg}${statusInfo}`);
+        if (data.apiResponse) {
+          console.error("eBay API response:", data.apiResponse);
         }
       }
-
-      // Save to shared listings store so it's available on Mercari/Facebook page
-      try {
-        await fetch("/api/listings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            photos: uploadedPhotos,
-            title: data.title || "",
-            description: data.description || "",
-            price: data.price ? parseFloat(data.price) : null,
-            quantity: 1,
-            condition: data.condition || "NEW",
-            category: data.categoryKeywords || "",
-            platforms: ["ebay"],
-            status: "ready",
-            aiAnalysis: {
-              suggestedTitle: data.title || "",
-              suggestedDescription: data.description || "",
-              suggestedPrice: data.price ? parseFloat(data.price) : 0,
-              suggestedCategory: data.categoryKeywords || "",
-              suggestedCondition: data.condition || "NEW",
-              confidence: "high",
-            },
-          }),
-        });
-      } catch {
-        // Non-critical — listing still works on eBay
-      }
     } catch {
-      setPhotoError("AI analysis failed. Please try again.");
-    } finally {
-      setAnalyzing(false);
+      setConnectionStatus("failed");
+      setConnectionError("Network error — check console");
     }
-  }
-
-  function removePhoto(idx: number) {
-    const newPhotos = uploadedPhotos.filter((_, i) => i !== idx);
-    setUploadedPhotos(newPhotos);
-    setCreateForm((prev) => ({ ...prev, imageUrls: newPhotos.length ? newPhotos : [""] }));
   }
 
   // ─── Listings ──────────────────────────────────────────────────────────
@@ -498,7 +383,6 @@ export default function EbayPage() {
     setCreateResult(null);
     try {
       // Step 1: Create inventory item
-      const hasShipping = createForm.weightLbs && createForm.lengthIn && createForm.widthIn && createForm.heightIn;
       const invResult = await apiPost("create-inventory-item", {
         sku: createForm.sku,
         product: {
@@ -513,21 +397,6 @@ export default function EbayPage() {
             quantity: createForm.quantity,
           },
         },
-        ...(hasShipping ? {
-          packageWeightAndSize: {
-            weight: {
-              value: parseFloat(createForm.weightLbs),
-              unit: "POUND",
-            },
-            dimensions: {
-              length: parseFloat(createForm.lengthIn),
-              width: parseFloat(createForm.widthIn),
-              height: parseFloat(createForm.heightIn),
-              unit: "INCH",
-            },
-            packageType: "PACKAGE",
-          },
-        } : {}),
       });
 
       if (invResult.error || invResult.errors) {
@@ -542,12 +411,14 @@ export default function EbayPage() {
         format: "FIXED_PRICE",
         availableQuantity: createForm.quantity,
         categoryId: createForm.categoryId,
-        listingDescription: createForm.description,
-        countryCode: "US",
-        merchantLocationKey: "default",
+        listingPolicies: {
+          fulfillmentPolicyId: "",
+          paymentPolicyId: "",
+          returnPolicyId: "",
+        },
         pricingSummary: {
           price: {
-            value: String(createForm.price),
+            value: createForm.price,
             currency: "USD",
           },
         },
@@ -556,15 +427,6 @@ export default function EbayPage() {
       if (offerResult.error || offerResult.errors) {
         setCreateResult({ error: offerResult.errors?.[0]?.message || offerResult.error || "Failed to create offer" });
         return;
-      }
-
-      // Step 3: Publish the offer
-      if (offerResult.offerId) {
-        const publishResult = await apiPost("publish-offer", { offerId: offerResult.offerId });
-        if (publishResult.error || publishResult.errors) {
-          setCreateResult({ error: publishResult.errors?.[0]?.message || publishResult.error || "Failed to publish listing" });
-          return;
-        }
       }
 
       setCreateResult({ success: true });
@@ -588,14 +450,8 @@ export default function EbayPage() {
       categorySearch: "",
       imageUrls: [""],
       upc: "",
-      weightLbs: "",
-      lengthIn: "",
-      widthIn: "",
-      heightIn: "",
     });
     setCategorySuggestions([]);
-    setUploadedPhotos([]);
-    setPhotoError("");
   }
 
   // ─── Drafts ────────────────────────────────────────────────────────────
@@ -616,10 +472,6 @@ export default function EbayPage() {
       categorySearch: "",
       imageUrls: draft.imageUrls.length ? draft.imageUrls : [""],
       upc: "",
-      weightLbs: draft.weightLbs || "",
-      lengthIn: draft.lengthIn || "",
-      widthIn: draft.widthIn || "",
-      heightIn: draft.heightIn || "",
     });
     deleteDraft(draft.id);
     setActiveTab("create");
@@ -649,11 +501,8 @@ export default function EbayPage() {
         format: "FIXED_PRICE",
         availableQuantity: draft.quantity,
         categoryId: draft.categoryId,
-        listingDescription: draft.description,
-        countryCode: "US",
-        merchantLocationKey: "default",
         pricingSummary: {
-          price: { value: String(draft.price), currency: "USD" },
+          price: { value: draft.price, currency: "USD" },
         },
       });
 
@@ -741,8 +590,8 @@ export default function EbayPage() {
               key={tab.key}
               onClick={() => {
                 setActiveTab(tab.key);
-                if (tab.key === "listings" && listings.length === 0 && connectionStatus === "connected") loadListings();
-                if (tab.key === "orders" && orders.length === 0 && connectionStatus === "connected") loadOrders();
+                if (tab.key === "listings" && listings.length === 0 && token) loadListings();
+                if (tab.key === "orders" && orders.length === 0 && token) loadOrders();
               }}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] ${
                 isActive
@@ -774,56 +623,89 @@ export default function EbayPage() {
                   "bg-zinc-400"
                 }`} />
                 <span className="text-sm font-medium">
-                  {connectionStatus === "connected" && "Connected to eBay"}
+                  {connectionStatus === "connected" && "Connected"}
                   {connectionStatus === "failed" && "Connection Failed"}
-                  {connectionStatus === "testing" && "Checking..."}
+                  {connectionStatus === "testing" && "Testing..."}
                   {connectionStatus === "untested" && "Not Connected"}
                 </span>
+                {tokenType && (
+                  <span className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    {tokenType}
+                  </span>
+                )}
               </div>
               {connectionError && (
                 <p className="text-xs text-red-500 mt-1">{connectionError}</p>
               )}
+            </div>
 
+            {/* Environment */}
+            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+              <h2 className="text-lg font-semibold">Environment</h2>
               <div className="flex gap-3">
-                {connectionStatus === "connected" ? (
-                  <>
-                    <button
-                      onClick={checkConnection}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-border rounded-lg hover:bg-muted transition-colors"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Test Connection
-                    </button>
-                    <button
-                      onClick={connectEbay}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-border rounded-lg hover:bg-muted transition-colors"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Reconnect
-                    </button>
-                  </>
-                ) : connectionStatus === "testing" ? (
+                {(["sandbox", "production"] as const).map((env) => (
                   <button
-                    disabled
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg opacity-50"
+                    key={env}
+                    onClick={() => {
+                      setEnvironment(env);
+                      setConnectionStatus("untested");
+                    }}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                      environment === env
+                        ? "border-orange-600 bg-orange-600/10 text-orange-600"
+                        : "border-border hover:border-foreground/20"
+                    }`}
                   >
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Checking...
+                    {env === "sandbox" ? "Sandbox" : "Production"}
                   </button>
-                ) : (
+                ))}
+              </div>
+              {environment === "production" && (
+                <p className="text-xs text-yellow-500 flex items-center gap-1">
+                  <XCircle className="h-3 w-3" /> Production mode — actions affect real listings
+                </p>
+              )}
+            </div>
+
+            {/* Token */}
+            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+              <h2 className="text-lg font-semibold">User Token</h2>
+              <div className="space-y-2">
+                <div className="relative">
+                  <Input
+                    type={showToken ? "text" : "password"}
+                    value={token}
+                    onChange={(e) => {
+                      setToken(e.target.value);
+                      setConnectionStatus("untested");
+                    }}
+                    placeholder="Enter your eBay User Token"
+                    className="pr-20 font-mono text-xs"
+                  />
                   <button
-                    onClick={connectEbay}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground px-2 py-1"
                   >
-                    <ExternalLink className="h-4 w-4" />
-                    Connect eBay Account
+                    {showToken ? "Hide" : "Show"}
                   </button>
-                )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Token is stored in browser localStorage. For production, set <code className="bg-muted px-1 py-0.5 rounded text-[11px]">EBAY_USER_TOKEN</code> environment variable.
+                </p>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                OAuth 2.0 — tokens are stored server-side and auto-refresh when expired.
-              </p>
+              <button
+                onClick={testConnection}
+                disabled={!token || connectionStatus === "testing"}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
+              >
+                {connectionStatus === "testing" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Test Connection
+              </button>
             </div>
 
             {/* Quick Info */}
@@ -866,7 +748,7 @@ export default function EbayPage() {
               </div>
               <button
                 onClick={loadListings}
-                disabled={listingsLoading || connectionStatus !== "connected"}
+                disabled={listingsLoading || !token}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
               >
                 {listingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -874,14 +756,14 @@ export default function EbayPage() {
               </button>
             </div>
 
-            {connectionStatus !== "connected" && (
+            {!token && (
               <div className="rounded-lg border border-border bg-card p-12 text-center">
                 <Settings className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">Connect your eBay account in Settings first</p>
+                <p className="text-muted-foreground">Configure your eBay token in Settings first</p>
               </div>
             )}
 
-            {connectionStatus === "connected" && listingsLoading && (
+            {token && listingsLoading && (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div key={i} className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -893,7 +775,7 @@ export default function EbayPage() {
               </div>
             )}
 
-            {connectionStatus === "connected" && !listingsLoading && filteredListings.length === 0 && (
+            {token && !listingsLoading && filteredListings.length === 0 && (
               <div className="rounded-lg border border-border bg-card p-12 text-center">
                 <ShoppingBag className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground">
@@ -1033,7 +915,7 @@ export default function EbayPage() {
                       </button>
                       <button
                         onClick={() => publishDraft(draft)}
-                        disabled={publishingDraft === draft.id || connectionStatus !== "connected"}
+                        disabled={publishingDraft === draft.id || !token}
                         className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50"
                       >
                         {publishingDraft === draft.id ? (
@@ -1072,84 +954,8 @@ export default function EbayPage() {
               </div>
             )}
 
-            {/* Photo Upload + AI */}
-            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Camera className="h-5 w-5" />
-                  Quick List from Photos
-                </h2>
-                {uploadedPhotos.length > 0 && (
-                  <button
-                    onClick={analyzePhotos}
-                    disabled={analyzing}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
-                  >
-                    {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {analyzing ? "Analyzing..." : "Generate Listing with AI"}
-                  </button>
-                )}
-              </div>
-
-              <p className="text-sm text-muted-foreground">
-                Upload product photos and AI will generate the title, description, price, and category for you.
-              </p>
-
-              {/* Drop zone / Upload button */}
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handlePhotoUpload(e.dataTransfer.files); }}
-                className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-orange-600/50 hover:bg-orange-600/5 transition-colors"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => handlePhotoUpload(e.target.files)}
-                />
-                {uploading ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
-                    <span className="text-sm text-muted-foreground">Uploading...</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-sm font-medium">Drop photos here or tap to upload</span>
-                    <span className="text-xs text-muted-foreground">JPEG, PNG, or WebP up to 10MB each</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Photo previews */}
-              {uploadedPhotos.length > 0 && (
-                <div className="flex gap-3 flex-wrap">
-                  {uploadedPhotos.map((url, idx) => (
-                    <div key={idx} className="relative group">
-                      <div className="h-24 w-24 rounded-lg border border-border overflow-hidden bg-muted">
-                        <img src={url} alt="" className="h-full w-full object-cover" />
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removePhoto(idx); }}
-                        className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {photoError && (
-                <p className="text-xs text-red-500">{photoError}</p>
-              )}
-            </div>
-
             <div className="rounded-lg border border-border bg-card p-6 space-y-5">
-              <h2 className="text-lg font-semibold">Listing Details</h2>
+              <h2 className="text-lg font-semibold">New Listing</h2>
 
               {/* Title */}
               <div>
@@ -1198,16 +1004,8 @@ export default function EbayPage() {
                   <Input
                     type="number"
                     min="1"
-                    value={createForm.quantity || ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setCreateForm({ ...createForm, quantity: val === "" ? 0 : parseInt(val) || 0 });
-                    }}
-                    onBlur={() => {
-                      if (!createForm.quantity || createForm.quantity < 1) {
-                        setCreateForm({ ...createForm, quantity: 1 });
-                      }
-                    }}
+                    value={createForm.quantity}
+                    onChange={(e) => setCreateForm({ ...createForm, quantity: parseInt(e.target.value) || 1 })}
                     className="mt-1"
                   />
                 </div>
@@ -1295,87 +1093,58 @@ export default function EbayPage() {
 
               {/* Images */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Photos</label>
-                {uploadedPhotos.length > 0 ? (
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {uploadedPhotos.map((url, idx) => (
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Image URLs</label>
+                <div className="mt-1 space-y-2">
+                  {createForm.imageUrls.map((url, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        value={url}
+                        onChange={(e) => {
+                          const urls = [...createForm.imageUrls];
+                          urls[idx] = e.target.value;
+                          setCreateForm({ ...createForm, imageUrls: urls });
+                        }}
+                        placeholder="https://..."
+                        className="flex-1"
+                      />
+                      {createForm.imageUrls.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const urls = createForm.imageUrls.filter((_, i) => i !== idx);
+                            setCreateForm({ ...createForm, imageUrls: urls });
+                          }}
+                          className="px-2 text-red-500 hover:text-red-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setCreateForm({ ...createForm, imageUrls: [...createForm.imageUrls, ""] })}
+                    className="text-xs text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                  >
+                    <PlusCircle className="h-3 w-3" /> Add another image
+                  </button>
+                </div>
+
+                {/* Image previews */}
+                {createForm.imageUrls.some(Boolean) && (
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    {createForm.imageUrls.filter(Boolean).map((url, idx) => (
                       <div key={idx} className="h-16 w-16 rounded border border-border overflow-hidden bg-muted">
-                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        <img src={url} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                       </div>
                     ))}
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-16 w-16 rounded border-2 border-dashed border-border flex items-center justify-center hover:border-orange-600/50 transition-colors"
-                    >
-                      <PlusCircle className="h-5 w-5 text-muted-foreground" />
-                    </button>
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-1">Upload photos above to attach to this listing.</p>
                 )}
-              </div>
-
-              {/* Shipping Dimensions */}
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shipping (AI Estimated)</label>
-                <div className="grid grid-cols-4 gap-3 mt-1">
-                  <div>
-                    <label className="text-[10px] text-muted-foreground">Weight (lbs)</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={createForm.weightLbs}
-                      onChange={(e) => setCreateForm({ ...createForm, weightLbs: e.target.value })}
-                      placeholder="0.0"
-                      className="mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted-foreground">Length (in)</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={createForm.lengthIn}
-                      onChange={(e) => setCreateForm({ ...createForm, lengthIn: e.target.value })}
-                      placeholder="0"
-                      className="mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted-foreground">Width (in)</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={createForm.widthIn}
-                      onChange={(e) => setCreateForm({ ...createForm, widthIn: e.target.value })}
-                      placeholder="0"
-                      className="mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted-foreground">Height (in)</label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={createForm.heightIn}
-                      onChange={(e) => setCreateForm({ ...createForm, heightIn: e.target.value })}
-                      placeholder="0"
-                      className="mt-0.5"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">AI estimates package dimensions. Verify before publishing — affects shipping cost.</p>
               </div>
 
               {/* Submit Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={submitListing}
-                  disabled={createSubmitting || !createForm.title || !createForm.sku || !createForm.price || connectionStatus !== "connected"}
+                  disabled={createSubmitting || !createForm.title || !createForm.sku || !createForm.price || !token}
                   className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
                 >
                   {createSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -1416,7 +1185,7 @@ export default function EbayPage() {
               </div>
               <button
                 onClick={loadOrders}
-                disabled={ordersLoading || connectionStatus !== "connected"}
+                disabled={ordersLoading || !token}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
               >
                 {ordersLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -1424,14 +1193,14 @@ export default function EbayPage() {
               </button>
             </div>
 
-            {connectionStatus !== "connected" && (
+            {!token && (
               <div className="rounded-lg border border-border bg-card p-12 text-center">
                 <Settings className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">Connect your eBay account in Settings first</p>
+                <p className="text-muted-foreground">Configure your eBay token in Settings first</p>
               </div>
             )}
 
-            {connectionStatus === "connected" && ordersLoading && (
+            {token && ordersLoading && (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="rounded-lg border border-border bg-card p-4 space-y-2">
@@ -1443,7 +1212,7 @@ export default function EbayPage() {
               </div>
             )}
 
-            {connectionStatus === "connected" && !ordersLoading && filteredOrders.length === 0 && (
+            {token && !ordersLoading && filteredOrders.length === 0 && (
               <div className="rounded-lg border border-border bg-card p-12 text-center">
                 <Package className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground">

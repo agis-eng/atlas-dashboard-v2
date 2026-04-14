@@ -10,6 +10,15 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Link from "next/link";
 import {
   ExternalLink,
@@ -19,7 +28,10 @@ import {
   Filter,
   CheckCircle2,
   Plus,
+  ArrowUpDown,
 } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface ProjectItem {
   id: string;
@@ -108,16 +120,10 @@ function SitePreview({ url, projectId }: { url: string; projectId: string }) {
   );
 }
 
-function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPriorityChange: (id: string, priority: string) => void }) {
-  const [priorityOpen, setPriorityOpen] = useState(false);
-  const priorityColors: Record<string, string> = {
-    high: "text-red-500 bg-red-500/10",
-    medium: "text-yellow-500 bg-yellow-500/10",
-    low: "text-muted-foreground bg-muted",
-  };
+const PRIORITY_CYCLE = ["low", "medium", "high", ""];
 
+function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPriorityChange: (id: string, priority: string) => void }) {
   return (
-    <div className="relative">
     <Link href={`/projects/${project.id}`} className="block">
       <Card className="group hover:shadow-md transition-shadow cursor-pointer overflow-hidden">
         {(project.liveUrl || project.previewUrl) && (
@@ -179,36 +185,52 @@ function ProjectCard({ project, onPriorityChange }: { project: ProjectItem; onPr
               </span>
             </div>
             <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPriorityOpen((v) => !v); }}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${priorityColors[project.priority || 'low'] || priorityColors.low}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const currentIdx = PRIORITY_CYCLE.indexOf(project.priority || "");
+                const next = PRIORITY_CYCLE[(currentIdx + 1) % PRIORITY_CYCLE.length];
+                onPriorityChange(project.id, next);
+                fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ priority: next }),
+                });
+              }}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase transition-colors hover:ring-1 hover:ring-foreground/20 ${
+                project.priority === "high"
+                  ? "bg-red-500/10 text-red-500"
+                  : project.priority === "medium"
+                    ? "bg-yellow-500/10 text-yellow-500"
+                    : project.priority === "low"
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-muted/50 text-muted-foreground/50"
+              }`}
             >
-              {project.priority || "low"} ▾
+              {project.priority || "priority"}
             </button>
           </div>
         </CardContent>
       </Card>
     </Link>
-    {priorityOpen && (
-      <div
-        className="absolute bottom-10 right-3 z-50 w-28 rounded-md border border-border bg-popover shadow-lg text-sm text-popover-foreground"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {["high", "medium", "low"].map((pr) => (
-          <button
-            key={pr}
-            type="button"
-            className="w-full text-left px-3 py-1.5 hover:bg-muted capitalize"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPriorityChange(project.id, pr); setPriorityOpen(false); }}
-          >
-            {pr}
-          </button>
-        ))}
-      </div>
-    )}
-    </div>
   );
 }
+
+const STAGE_OPTIONS = ["Client", "Internal", "Lead", "Contractor", "Live", "Design", "QA", "Partner", "Active", "Done"];
+const PRIORITY_OPTIONS = ["high", "medium", "low"];
+
+const emptyForm = {
+  name: "",
+  clientId: "",
+  owner: "",
+  stage: "",
+  status: "",
+  summary: "",
+  previewUrl: "",
+  liveUrl: "",
+  repoUrl: "",
+  priority: "",
+};
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -216,91 +238,52 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
-  const [showCreate, setShowCreate] = useState(false);
+  const [sortBy, setSortBy] = useState<"priority" | "name" | "client">("priority");
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: "",
-    clientId: "",
-    owner: "Erik",
-    stage: "Lead",
-    status: "New project",
-    summary: "",
-    priority: "medium",
-  });
+  const [formData, setFormData] = useState(emptyForm);
+
+  async function handleCreateProject() {
+    if (!formData.name.trim()) {
+      toast.error("Project name is required");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        toast.success("Project created");
+        setDialogOpen(false);
+        setFormData(emptyForm);
+        await loadProjects();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to create project");
+      }
+    } catch {
+      toast.error("Failed to create project");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => {
     loadProjects();
-
-    const handleRefresh = () => loadProjects();
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") loadProjects();
-    };
-
-    window.addEventListener("focus", handleRefresh);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.removeEventListener("focus", handleRefresh);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
   }, []);
 
   async function loadProjects() {
     try {
-      const res = await fetch("/api/projects", { cache: "no-store" });
+      const res = await fetch("/api/projects");
       const data = await res.json();
       setProjects(data.projects || []);
     } catch {
       console.error("Failed to load projects");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function updateProjectPriority(id: string, priority: string) {
-    const previous = projects;
-    setProjects((current) =>
-      current
-        .map((project) => (project.id === id ? { ...project, priority } : project))
-        .sort((a, b) => {
-          const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-          return (order[a.priority || 'low'] ?? 3) - (order[b.priority || 'low'] ?? 3);
-        })
-    );
-
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority }),
-      });
-      if (!res.ok) throw new Error('Priority update failed');
-      await loadProjects();
-    } catch (error) {
-      console.error(error);
-      setProjects(previous);
-    }
-  }
-
-  async function createProject() {
-    if (!newProject.name.trim()) return;
-    setCreating(true);
-    try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProject),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create project');
-      setShowCreate(false);
-      setNewProject({
-        name: '', clientId: '', owner: 'Erik', stage: 'Lead', status: 'New project', summary: '', priority: 'medium'
-      });
-      await loadProjects();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setCreating(false);
     }
   }
 
@@ -324,11 +307,28 @@ export default function ProjectsPage() {
     return matchesSearch && matchesStage && matchesOwner;
   });
 
-  const activeProjects = filtered.filter(isActiveProject);
-  const completedProjects = filtered.filter(isCompletedProject);
-  const otherProjects = filtered.filter(
+  const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  function sortProjects(items: ProjectItem[]): ProjectItem[] {
+    return [...items].sort((a, b) => {
+      if (sortBy === "priority") {
+        const pa = priorityOrder[a.priority || ""] ?? 3;
+        const pb = priorityOrder[b.priority || ""] ?? 3;
+        if (pa !== pb) return pa - pb;
+        return (a.name || "").localeCompare(b.name || "");
+      }
+      if (sortBy === "client") {
+        return (a.clientId || "zzz").localeCompare(b.clientId || "zzz") || (a.name || "").localeCompare(b.name || "");
+      }
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }
+
+  const activeProjects = sortProjects(filtered.filter(isActiveProject));
+  const completedProjects = sortProjects(filtered.filter(isCompletedProject));
+  const otherProjects = sortProjects(filtered.filter(
     (p) => !isActiveProject(p) && !isCompletedProject(p)
-  );
+  ));
 
   function renderProjectGrid(items: ProjectItem[]) {
     if (items.length === 0) {
@@ -341,7 +341,9 @@ export default function ProjectsPage() {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((project) => (
-          <ProjectCard key={project.id} project={project} onPriorityChange={updateProjectPriority} />
+          <ProjectCard key={project.id} project={project} onPriorityChange={(id, priority) => {
+                setProjects((prev) => prev.map((p) => p.id === id ? { ...p, priority: priority || undefined } : p));
+              }} />
         ))}
       </div>
     );
@@ -350,7 +352,7 @@ export default function ProjectsPage() {
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-end justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Projects</h1>
           <p className="text-muted-foreground mt-1">
@@ -359,45 +361,126 @@ export default function ProjectsPage() {
               : `${filtered.length} of ${projects.length} projects`}
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Project
-        </Button>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Project
+          </Button>
+          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>New Project</DialogTitle>
+              <DialogDescription>
+                Add a new project to your dashboard.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Name *</label>
+                <Input
+                  placeholder="Project name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Client ID</label>
+                  <Input
+                    placeholder="e.g. john-doe"
+                    value={formData.clientId}
+                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Owner</label>
+                  <Input
+                    placeholder="e.g. Anton"
+                    value={formData.owner}
+                    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Stage</label>
+                  <select
+                    value={formData.stage}
+                    onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="">Select stage</option>
+                    {STAGE_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Priority</label>
+                  <select
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="">None</option>
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Status</label>
+                <Input
+                  placeholder="e.g. Active Client"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Summary</label>
+                <Textarea
+                  placeholder="Brief project description"
+                  value={formData.summary}
+                  onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Preview URL</label>
+                <Input
+                  placeholder="https://..."
+                  value={formData.previewUrl}
+                  onChange={(e) => setFormData({ ...formData, previewUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Live URL</label>
+                <Input
+                  placeholder="https://..."
+                  value={formData.liveUrl}
+                  onChange={(e) => setFormData({ ...formData, liveUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Repo URL</label>
+                <Input
+                  placeholder="https://github.com/..."
+                  value={formData.repoUrl}
+                  onChange={(e) => setFormData({ ...formData, repoUrl: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateProject} disabled={creating}>
+                {creating ? "Creating..." : "Create Project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-background border rounded-lg shadow-lg w-full max-w-lg p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Create Project</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input placeholder="Project name" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} className="sm:col-span-2" />
-              <Input placeholder="Client ID" value={newProject.clientId} onChange={(e) => setNewProject({ ...newProject, clientId: e.target.value })} />
-              <select value={newProject.owner} onChange={(e) => setNewProject({ ...newProject, owner: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="Erik">Erik</option>
-                <option value="Anton">Anton</option>
-              </select>
-              <select value={newProject.stage} onChange={(e) => setNewProject({ ...newProject, stage: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="Lead">Lead</option>
-                <option value="Client">Client</option>
-                <option value="Internal">Internal</option>
-                <option value="Contractor">Contractor</option>
-                <option value="Live">Live</option>
-              </select>
-              <select value={newProject.priority} onChange={(e) => setNewProject({ ...newProject, priority: e.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-              <Input placeholder="Status" value={newProject.status} onChange={(e) => setNewProject({ ...newProject, status: e.target.value })} className="sm:col-span-2" />
-              <textarea placeholder="Summary" value={newProject.summary} onChange={(e) => setNewProject({ ...newProject, summary: e.target.value })} className="sm:col-span-2 min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm" />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button onClick={createProject} disabled={creating || !newProject.name.trim()}>{creating ? 'Creating...' : 'Create Project'}</Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="space-y-8">
         {/* Search & Filters */}
@@ -412,6 +495,22 @@ export default function ProjectsPage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+            {(["priority", "name", "client"] as const).map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant={sortBy === s ? "default" : "outline"}
+                onClick={() => setSortBy(s)}
+                className={cn(
+                  "text-xs capitalize",
+                  sortBy === s && "bg-orange-600 hover:bg-orange-700 text-white"
+                )}
+              >
+                {s}
+              </Button>
+            ))}
+            <span className="w-px h-5 bg-border" />
             <Filter className="h-4 w-4 text-muted-foreground" />
             <select
               value={stageFilter}

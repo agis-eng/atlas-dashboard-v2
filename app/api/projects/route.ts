@@ -1,6 +1,7 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
+import { getRedis } from "@/lib/redis";
 
 interface YamlProject {
   id: string;
@@ -20,32 +21,44 @@ interface YamlProject {
   tags?: string[];
 }
 
-const PROJECTS_PATH = join(process.cwd(), "data", "projects.yaml");
+async function loadAllProjects(userProfile: string): Promise<YamlProject[]> {
+  // Load from YAML (static)
+  let yamlProjects: YamlProject[] = [];
+  try {
+    const projectsPath = join(process.cwd(), "data", "projects.yaml");
+    const fileContents = await readFile(projectsPath, "utf8");
+    const data = yaml.load(fileContents) as { projects: YamlProject[] };
+    yamlProjects = data.projects || [];
+  } catch {
+    // YAML might not exist
+  }
 
-async function loadProjectsData(): Promise<{ projects: YamlProject[] }> {
-  const fileContents = await readFile(PROJECTS_PATH, "utf8");
-  return yaml.load(fileContents, { schema: yaml.JSON_SCHEMA }) as {
-    projects: YamlProject[];
-  };
-}
+  // Load from Redis (user-created projects)
+  const redis = getRedis();
+  const redisProjects =
+    ((await redis.get(`projects:custom:${userProfile}`)) as YamlProject[]) || [];
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+  // Merge: Redis projects override YAML by ID
+  const yamlMap = new Map(yamlProjects.map((p) => [p.id, p]));
+  for (const rp of redisProjects) {
+    yamlMap.set(rp.id, rp);
+  }
+
+  return Array.from(yamlMap.values());
 }
 
 export async function GET(request: Request) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+
     const { searchParams } = new URL(request.url);
     const owner = searchParams.get("owner");
     const stage = searchParams.get("stage");
 
-    const data = await loadProjectsData();
-    let projects = data.projects || [];
+    let projects = await loadAllProjects(user?.profile || "erik");
 
+    // Filter out archived
     projects = projects.filter((p) => !p.archived);
 
     if (owner) {
@@ -59,15 +72,13 @@ export async function GET(request: Request) {
       );
     }
 
+    // Sort by priority then rank then alpha
     const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
     projects.sort((a, b) => {
       const pa = a.priority ? (priorityOrder[a.priority] ?? 3) : 3;
       const pb = b.priority ? (priorityOrder[b.priority] ?? 3) : 3;
       if (pa !== pb) return pa - pb;
-
-      if (a.rank !== undefined && b.rank !== undefined) {
-        return a.rank - b.rank;
-      }
+      if (a.rank !== undefined && b.rank !== undefined) return a.rank - b.rank;
       if (a.rank !== undefined) return -1;
       if (b.rank !== undefined) return 1;
       return (a.name || "").localeCompare(b.name || "");
@@ -85,48 +96,54 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    if (!user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const name = (body.name || "").trim();
+    const { name, clientId, owner, stage, status, summary, previewUrl, liveUrl, repoUrl, priority } = body;
 
     if (!name) {
-      return Response.json({ error: "Project name is required" }, { status: 400 });
+      return Response.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const data = await loadProjectsData();
-    const baseId = `${slugify(body.clientId || name)}-${slugify(name)}`;
-    let id = baseId || `project-${Date.now()}`;
-    let counter = 2;
-    while ((data.projects || []).some((project) => project.id === id)) {
-      id = `${baseId}-${counter++}`;
-    }
+    const slug = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const id = clientId ? `${slug(clientId)}-${slug(name)}` : slug(name);
 
-    const project: YamlProject = {
+    const newProject: YamlProject = {
       id,
       name,
-      clientId: (body.clientId || "").trim() || undefined,
-      owner: (body.owner || "Erik").trim() || "Erik",
-      stage: (body.stage || "Lead").trim() || "Lead",
-      status: (body.status || "New project").trim() || "New project",
-      summary: (body.summary || "").trim() || undefined,
-      priority: (body.priority || "medium").trim() || "medium",
-      tags: Array.isArray(body.tags) ? body.tags.filter(Boolean) : [],
+      ...(clientId && { clientId }),
+      ...(owner && { owner }),
+      ...(stage && { stage }),
+      ...(status && { status }),
+      ...(summary && { summary }),
+      ...(previewUrl && { previewUrl }),
+      ...(liveUrl && { liveUrl }),
+      ...(repoUrl && { repoUrl }),
+      ...(priority && { priority }),
       lastUpdate: new Date().toISOString().split("T")[0],
-      archived: false,
     };
 
-    data.projects = [project, ...(data.projects || [])];
+    // Check for duplicate
+    const allProjects = await loadAllProjects(user.profile);
+    if (allProjects.some((p) => p.id === id)) {
+      return Response.json({ error: "A project with this ID already exists" }, { status: 409 });
+    }
 
-    const yamlStr = yaml.dump(data, {
-      lineWidth: -1,
-      noRefs: true,
-      quotingType: '"',
-      forceQuotes: false,
-    });
-    await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+    // Save to Redis (not filesystem — Vercel is read-only)
+    const redis = getRedis();
+    const key = `projects:custom:${user.profile}`;
+    const existing = ((await redis.get(key)) as YamlProject[]) || [];
+    existing.push(newProject);
+    await redis.set(key, existing);
 
-    return Response.json({ project }, { status: 201 });
+    return Response.json(newProject, { status: 201 });
   } catch (error: any) {
-    console.error("Project create API error:", error);
+    console.error("Create project error:", error);
     return Response.json(
       { error: "Failed to create project", details: error.message },
       { status: 500 }

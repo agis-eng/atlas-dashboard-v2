@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUserFromRequest } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 
@@ -10,6 +9,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
     const user = await getSessionUserFromRequest(request);
     
     if (!user || user.profile !== 'erik') {

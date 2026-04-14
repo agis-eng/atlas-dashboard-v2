@@ -2,6 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import yaml from "js-yaml";
 import { captureProjectScreenshot } from "@/lib/screenshot";
+import { getRedis } from "@/lib/redis";
 
 interface BrainLink {
   url: string;
@@ -20,8 +21,6 @@ interface YamlProject {
   previewUrl?: string;
   liveUrl?: string;
   repoUrl?: string;
-  vercelUrl?: string;
-  githubBranch?: string;
   rank?: number;
   priority?: string;
   archived?: boolean;
@@ -56,14 +55,39 @@ async function loadProjectsData(): Promise<{ projects: YamlProject[] }> {
   };
 }
 
+async function findProjectById(id: string, request: Request): Promise<YamlProject | null> {
+  // Check YAML first
+  try {
+    const data = await loadProjectsData();
+    const yamlProject = (data.projects || []).find((p) => p.id === id);
+    if (yamlProject) return yamlProject;
+  } catch {
+    // YAML might not exist
+  }
+
+  // Check Redis for user-created projects
+  try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    const redis = getRedis();
+    const redisProjects =
+      ((await redis.get(`projects:custom:${user?.profile || "erik"}`)) as YamlProject[]) || [];
+    const redisProject = redisProjects.find((p) => p.id === id);
+    if (redisProject) return redisProject;
+  } catch {
+    // Redis might not be available
+  }
+
+  return null;
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const data = await loadProjectsData();
-    const project = (data.projects || []).find((p) => p.id === id);
+    const project = await findProjectById(id, request);
 
     if (!project) {
       return Response.json({ error: "Project not found" }, { status: 404 });
@@ -80,32 +104,47 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+
+    // Try YAML first
     const data = await loadProjectsData();
     const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
 
-    if (projectIndex === -1) {
-      return Response.json({ error: "Project not found" }, { status: 404 });
+    if (projectIndex !== -1) {
+      // Soft delete in YAML
+      data.projects[projectIndex].archived = true;
+      data.projects[projectIndex].lastUpdate = new Date().toISOString().split("T")[0];
+
+      const yamlStr = yaml.dump(data, {
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false,
+      });
+      await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+      return Response.json({ success: true });
     }
 
-    // Soft delete: mark as archived
-    data.projects[projectIndex].archived = true;
-    data.projects[projectIndex].lastUpdate = new Date().toISOString().split("T")[0];
+    // Try Redis
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    const redis = getRedis();
+    const key = `projects:custom:${user?.profile || "erik"}`;
+    const redisProjects = ((await redis.get(key)) as YamlProject[]) || [];
+    const redisIdx = redisProjects.findIndex((p) => p.id === id);
 
-    // Write back to YAML
-    const yamlStr = yaml.dump(data, {
-      lineWidth: -1,
-      noRefs: true,
-      quotingType: '"',
-      forceQuotes: false,
-    });
-    await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+    if (redisIdx !== -1) {
+      redisProjects[redisIdx].archived = true;
+      redisProjects[redisIdx].lastUpdate = new Date().toISOString().split("T")[0];
+      await redis.set(key, redisProjects);
+      return Response.json({ success: true });
+    }
 
-    return Response.json({ success: true });
+    return Response.json({ error: "Project not found" }, { status: 404 });
   } catch (error: any) {
     console.error("Project delete API error:", error);
     return Response.json(
@@ -122,8 +161,6 @@ const EDITABLE_FIELDS = [
   "stage",
   "status",
   "priority",
-  "repoUrl",
-  "githubBranch",
   "tags",
   "summary",
   "affiliate",
@@ -137,23 +174,9 @@ export async function PUT(
   try {
     const { id } = await params;
     const updates = await request.json();
-    const normalizedUpdates =
-      updates && typeof updates === "object" ? { ...updates } : {};
-
-    if ("githubUrl" in normalizedUpdates) {
-      normalizedUpdates.repoUrl = normalizedUpdates.githubUrl;
-      delete normalizedUpdates.githubUrl;
-    }
-
-    const data = await loadProjectsData();
-    const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
-
-    if (projectIndex === -1) {
-      return Response.json({ error: "Project not found" }, { status: 404 });
-    }
 
     // Only allow updating known editable fields
-    for (const key of Object.keys(normalizedUpdates)) {
+    for (const key of Object.keys(updates)) {
       if (!(EDITABLE_FIELDS as readonly string[]).includes(key)) {
         return Response.json(
           { error: `Field '${key}' is not editable` },
@@ -162,57 +185,68 @@ export async function PUT(
       }
     }
 
-    const normalizeString = (value: unknown) => {
-      if (typeof value !== "string") return value;
-      const trimmed = value.trim();
-      return trimmed;
-    };
+    // Try YAML first
+    const data = await loadProjectsData();
+    const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
 
-    // Merge updates into existing project
-    const project = data.projects[projectIndex];
-    for (const key of EDITABLE_FIELDS) {
-      if (key in normalizedUpdates) {
-        if (
-          key === "name" ||
-          key === "owner" ||
-          key === "clientId" ||
-          key === "stage" ||
-          key === "status" ||
-          key === "priority" ||
-          key === "repoUrl" ||
-          key === "githubBranch" ||
-          key === "summary"
-        ) {
-          (project as any)[key] = normalizeString(normalizedUpdates[key]);
-          continue;
+    if (projectIndex !== -1) {
+      // Update in YAML
+      const project = data.projects[projectIndex];
+      for (const key of EDITABLE_FIELDS) {
+        if (key in updates) {
+          (project as any)[key] = updates[key];
         }
-
-        (project as any)[key] = normalizedUpdates[key];
       }
+      project.lastUpdate = new Date().toISOString().split("T")[0];
+
+      const yamlStr = yaml.dump(data, {
+        lineWidth: -1,
+        noRefs: true,
+        quotingType: '"',
+        forceQuotes: false,
+      });
+      await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+
+      // Auto-capture screenshot if URL was added/changed
+      const url = project.liveUrl || project.previewUrl;
+      if (url && (updates.liveUrl || updates.previewUrl)) {
+        captureProjectScreenshot(project.id, url).catch((err) =>
+          console.error("Screenshot capture failed:", err)
+        );
+      }
+
+      return Response.json({ project });
     }
 
-    // Update lastUpdate timestamp
-    project.lastUpdate = new Date().toISOString().split("T")[0];
+    // Try Redis
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    const redis = getRedis();
+    const key = `projects:custom:${user?.profile || "erik"}`;
+    const redisProjects = ((await redis.get(key)) as YamlProject[]) || [];
+    const redisIdx = redisProjects.findIndex((p) => p.id === id);
 
-    // Write back to YAML
-    const yamlStr = yaml.dump(data, {
-      lineWidth: -1,
-      noRefs: true,
-      quotingType: '"',
-      forceQuotes: false,
-    });
-    await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+    if (redisIdx !== -1) {
+      const project = redisProjects[redisIdx];
+      for (const k of EDITABLE_FIELDS) {
+        if (k in updates) {
+          (project as any)[k] = updates[k];
+        }
+      }
+      project.lastUpdate = new Date().toISOString().split("T")[0];
+      await redis.set(key, redisProjects);
 
-    // Auto-capture screenshot if URL was added/changed
-    const url = project.liveUrl || project.previewUrl;
-    if (url && (normalizedUpdates.liveUrl || normalizedUpdates.previewUrl)) {
-      // Run in background, don't wait for it
-      captureProjectScreenshot(project.id, url).catch((err) =>
-        console.error("Screenshot capture failed:", err)
-      );
+      const url = project.liveUrl || project.previewUrl;
+      if (url && (updates.liveUrl || updates.previewUrl)) {
+        captureProjectScreenshot(project.id, url).catch((err) =>
+          console.error("Screenshot capture failed:", err)
+        );
+      }
+
+      return Response.json({ project });
     }
 
-    return Response.json({ project });
+    return Response.json({ error: "Project not found" }, { status: 404 });
   } catch (error: any) {
     console.error("Project update API error:", error);
     return Response.json(

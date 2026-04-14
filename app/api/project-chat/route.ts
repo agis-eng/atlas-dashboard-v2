@@ -141,9 +141,22 @@ async function storeMessage(projectId: string, msg: StoredMessage) {
   }
 }
 
+async function getProjectVoiceMemos(projectId: string): Promise<Array<Record<string, unknown>>> {
+  try {
+    const redis = getRedis();
+    const memos = ((await redis.get("voice-memos:processed")) as any[]) || [];
+    return memos.filter(
+      (m: any) => m.projectMatch === projectId || m.clientMatch === projectId
+    );
+  } catch {
+    return [];
+  }
+}
+
 function buildSystemPrompt(
   project: Record<string, unknown> | null,
-  tasks: Array<Record<string, unknown>>
+  tasks: Array<Record<string, unknown>>,
+  voiceMemos: Array<Record<string, unknown>> = []
 ): string {
   if (!project) {
     return `You are Atlas AI, an assistant for project management. The project could not be loaded.`;
@@ -178,6 +191,23 @@ ${
     ? `## Brain / Knowledge
 ${brainNotes.length ? `**Notes:**\n${brainNotes.map((n) => `- ${n}`).join("\n")}` : ""}
 ${brainLinks.length ? `**Links:**\n${brainLinks.map((l) => `- [${l.label}](${l.url})`).join("\n")}` : ""}`
+    : ""
+}
+
+${
+  voiceMemos.length
+    ? `## Voice Memos (${voiceMemos.length})
+${voiceMemos
+  .map(
+    (m) =>
+      `### ${m.title} (${(m.date as string || "").split("T")[0]})
+- **Speakers:** ${m.speakers || "Unknown"}
+- **Summary:** ${m.summary}
+${(m.actionItems as string[] || []).length ? `- **Action Items:** ${(m.actionItems as string[]).map((a) => `\n  - ${a}`).join("")}` : ""}
+${(m.keyDecisions as string[] || []).length ? `- **Key Decisions:** ${(m.keyDecisions as string[]).map((d) => `\n  - ${d}`).join("")}` : ""}
+`
+  )
+  .join("\n\n")}`
     : ""
 }
 
@@ -252,15 +282,17 @@ export async function POST(request: Request) {
     const client = new Anthropic({ apiKey });
     const origin = new URL(request.url).origin;
 
-    // Load project context and tasks in parallel
-    const [project, tasks] = await Promise.all([
+    // Load project context, tasks, and voice memos in parallel
+    const [project, tasks, voiceMemos] = await Promise.all([
       getProjectDetails({ project_id: projectId }).catch(() => null),
       getTasks({ project: projectId }).catch(() => []),
+      getProjectVoiceMemos(projectId),
     ]);
 
     const systemPrompt = buildSystemPrompt(
       project as Record<string, unknown> | null,
-      (tasks || []) as Array<Record<string, unknown>>
+      (tasks || []) as Array<Record<string, unknown>>,
+      voiceMemos
     );
 
     // Store user message

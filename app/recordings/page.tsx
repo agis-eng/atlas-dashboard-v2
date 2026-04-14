@@ -1,484 +1,795 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  AlertCircle,
-  Brain,
-  CheckCircle2,
-  FileAudio,
-  Link2,
-  Loader2,
-  Mic,
-  Video,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Film,
+  RefreshCw,
+  Search,
+  ExternalLink,
+  Loader2,
+  FolderOpen,
+  Clock,
+  Users,
+  Sparkles,
+  CheckSquare,
+  Trash2,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Mail,
+  Plus,
+  Pencil,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
 
-type ReviewStatus = "needs_review" | "manual_reviewed" | "linked" | "ignored";
-
-interface AssignmentOption {
-  id: string;
-  name: string;
+/** Strip Fathom video links from markdown — they clutter the summary */
+function cleanSummary(text: string): string {
+  // Remove [text](https://fathom.video/...) → keep just text
+  return text.replace(/\[([^\]]*)\]\(https?:\/\/fathom\.video[^)]*\)/g, "$1");
 }
 
-interface RecordingItem {
+interface FathomRecording {
   id: string;
-  source: "voice_memo" | "fathom";
-  kind: "voice_memo" | "call";
   title: string;
-  occurredAt: string;
-  participants: string[];
-  project: {
-    suggested: {
-      id: string | null;
-      label: string | null;
-      confidence: string;
-      reason: string | null;
-    };
-    manual: {
-      id: string | null;
-      label: string | null;
-    };
-  };
-  partner: {
-    suggested: {
-      id: string | null;
-      label: string | null;
-      confidence: string;
-      reason: string | null;
-    };
-    manual: {
-      id: string | null;
-      label: string | null;
-    };
-  };
-  brain: {
-    suggested: {
-      id: string | null;
-      label: string | null;
-      confidence: string;
-      reason: string | null;
-    };
-    manual: {
-      id: string | null;
-      label: string | null;
-    };
-  };
-  review: {
-    status: ReviewStatus;
-    notes: string;
-  };
-  content: {
-    summary: string;
-    keyPoints: string[];
-    actionItems: string[];
-  };
-  links: {
-    sourceUrl: string | null;
-    shareUrl: string | null;
-    notionUrl: string | null;
-    audioPath: string | null;
-  };
-  metadata: {
-    manualFields: {
-      projectRequired: boolean;
-      partnerRequired: boolean;
-      brainRequired: boolean;
-    };
-  };
+  date: string;
+  duration?: number;
+  participants?: string[];
+  attendeeEmails?: string[];
+  summary?: string;
+  actionItems?: string[];
+  url?: string;
+  projectId?: string;
+  projectName?: string;
+  suggestedProjectId?: string;
+  suggestedProjectName?: string;
+  matchConfidence?: "high" | "medium" | null;
+  status: "pending" | "processed";
+  source?: "webhook" | "api-sync";
 }
 
-interface RecordingsStats {
-  total: number;
-  voiceMemos: number;
-  fathomCalls: number;
-  needsReview: number;
-  linked: number;
-  unresolvedAssignments: number;
-}
-
-const statusTone: Record<ReviewStatus, string> = {
-  needs_review: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-  manual_reviewed: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  linked: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-  ignored: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-};
-
-const statusOptions: ReviewStatus[] = [
-  "needs_review",
-  "manual_reviewed",
-  "linked",
-  "ignored",
-];
-
-function AssignmentRow(props: {
-  label: string;
-  icon: React.ReactNode;
-  suggestedLabel: string | null;
-  suggestedReason: string | null;
-  manualValue: string;
-  options: AssignmentOption[];
-  onChange: (value: string) => void;
-}) {
-  const { label, icon, suggestedLabel, suggestedReason, manualValue, options, onChange } = props;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="rounded-lg border border-border/70 bg-background/60 p-3">
-        <p className="text-sm">
-          Suggested:{" "}
-          <span className="font-medium">
-            {suggestedLabel || "No suggestion"}
-          </span>
-        </p>
-        {suggestedReason ? (
-          <p className="mt-1 text-xs text-muted-foreground">{suggestedReason}</p>
-        ) : null}
-        <select
-          className="mt-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          value={manualValue}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          <option value="">No manual assignment</option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
-
-function RecordingCard(props: {
-  recording: RecordingItem;
-  projects: AssignmentOption[];
-  partners: AssignmentOption[];
-  brains: AssignmentOption[];
-  onSaved: (nextRecording: RecordingItem) => void;
-}) {
-  const { recording, projects, partners, brains, onSaved } = props;
-  const [manualProjectId, setManualProjectId] = useState(recording.project.manual.id || "");
-  const [manualPartnerId, setManualPartnerId] = useState(recording.partner.manual.id || "");
-  const [manualBrainId, setManualBrainId] = useState(recording.brain.manual.id || "");
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>(recording.review.status);
-  const [reviewNotes, setReviewNotes] = useState(recording.review.notes || "");
-  const [saving, setSaving] = useState(false);
-  const resolvedProject = recording.project.manual.label || recording.project.suggested.label;
-  const resolvedPartner = recording.partner.manual.label || recording.partner.suggested.label;
-  const resolvedBrain = recording.brain.manual.label || recording.brain.suggested.label;
-
-  async function saveAssignments() {
-    setSaving(true);
-    try {
-      const response = await fetch(`/api/recordings/${recording.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          manualProjectId: manualProjectId || null,
-          manualPartnerId: manualPartnerId || null,
-          manualBrainId: manualBrainId || null,
-          reviewStatus,
-          reviewNotes,
-          assignedBy: "dashboard",
-        }),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.recording) {
-        onSaved(data.recording);
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card className="border-border/70">
-      <CardHeader className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="gap-1">
-                {recording.kind === "voice_memo" ? (
-                  <Mic className="h-3 w-3" />
-                ) : (
-                  <Video className="h-3 w-3" />
-                )}
-                {recording.source === "voice_memo" ? "Voice memo" : "Fathom"}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={statusTone[reviewStatus]}
-              >
-                {reviewStatus.replaceAll("_", " ")}
-              </Badge>
-            </div>
-            <CardTitle className="text-xl">{recording.title}</CardTitle>
-            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span>{new Date(recording.occurredAt).toLocaleString()}</span>
-              <span>{recording.participants.join(", ") || "No participants"}</span>
-            </div>
-          </div>
-          <div className="grid gap-2 text-sm">
-            <div className="rounded-lg border border-border/70 px-3 py-2">
-              <span className="text-muted-foreground">Resolved project: </span>
-              <span className="font-medium">{resolvedProject || "Unassigned"}</span>
-            </div>
-            <div className="rounded-lg border border-border/70 px-3 py-2">
-              <span className="text-muted-foreground">Resolved partner: </span>
-              <span className="font-medium">{resolvedPartner || "Unassigned"}</span>
-            </div>
-            <div className="rounded-lg border border-border/70 px-3 py-2">
-              <span className="text-muted-foreground">Resolved brain: </span>
-              <span className="font-medium">{resolvedBrain || "Unassigned"}</span>
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <AssignmentRow
-            label="Project"
-            icon={<Link2 className="h-4 w-4 text-orange-600" />}
-            suggestedLabel={recording.project.suggested.label}
-            suggestedReason={recording.project.suggested.reason}
-            manualValue={manualProjectId}
-            options={projects}
-            onChange={setManualProjectId}
-          />
-          <AssignmentRow
-            label="Partner"
-            icon={<Link2 className="h-4 w-4 text-orange-600" />}
-            suggestedLabel={recording.partner.suggested.label}
-            suggestedReason={recording.partner.suggested.reason}
-            manualValue={manualPartnerId}
-            options={partners}
-            onChange={setManualPartnerId}
-          />
-          <AssignmentRow
-            label="Brain"
-            icon={<Brain className="h-4 w-4 text-orange-600" />}
-            suggestedLabel={recording.brain.suggested.label}
-            suggestedReason={recording.brain.suggested.reason}
-            manualValue={manualBrainId}
-            options={brains}
-            onChange={setManualBrainId}
-          />
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-          <div>
-            <label className="mb-2 block text-sm font-medium">Review status</label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={reviewStatus}
-              onChange={(event) => setReviewStatus(event.target.value as ReviewStatus)}
-            >
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status.replaceAll("_", " ")}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium">Manual notes</label>
-            <Textarea
-              value={reviewNotes}
-              onChange={(event) => setReviewNotes(event.target.value)}
-              placeholder="Review notes, routing rationale, or follow-up detail"
-              className="min-h-24"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
-          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <FileAudio className="h-4 w-4 text-orange-600" />
-              Summary
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {recording.content.summary || "No summary available yet."}
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-              <div className="mb-2 text-sm font-medium">Action items</div>
-              {recording.content.actionItems.length ? (
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  {recording.content.actionItems.slice(0, 5).map((item) => (
-                    <li key={item} className="flex gap-2">
-                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-600" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No action items captured.</p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-              <div className="mb-2 text-sm font-medium">Links</div>
-              <div className="space-y-2 text-sm">
-                {recording.links.sourceUrl ? (
-                  <a className="block text-orange-600 underline-offset-4 hover:underline" href={recording.links.sourceUrl} target="_blank" rel="noreferrer">
-                    Source link
-                  </a>
-                ) : null}
-                {recording.links.shareUrl ? (
-                  <a className="block text-orange-600 underline-offset-4 hover:underline" href={recording.links.shareUrl} target="_blank" rel="noreferrer">
-                    Share link
-                  </a>
-                ) : null}
-                {recording.links.notionUrl ? (
-                  <a className="block text-orange-600 underline-offset-4 hover:underline" href={recording.links.notionUrl} target="_blank" rel="noreferrer">
-                    Notion note
-                  </a>
-                ) : null}
-                {recording.links.audioPath ? (
-                  <div className="text-muted-foreground">{recording.links.audioPath}</div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Button onClick={saveAssignments} disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Save review
-        </Button>
-      </CardContent>
-    </Card>
-  );
+function formatDuration(seconds?: number): string {
+  if (!seconds) return "";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 export default function RecordingsPage() {
-  const [recordings, setRecordings] = useState<RecordingItem[]>([]);
-  const [projects, setProjects] = useState<AssignmentOption[]>([]);
-  const [partners, setPartners] = useState<AssignmentOption[]>([]);
-  const [brains, setBrains] = useState<AssignmentOption[]>([]);
-  const [stats, setStats] = useState<RecordingsStats | null>(null);
+  const [recordings, setRecordings] = useState<FathomRecording[]>([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [projects, setProjects] = useState<any[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    apiKeyConfigured: boolean;
+    lastSyncAt: string | null;
+    totalRecordings: number;
+  } | null>(null);
 
   useEffect(() => {
     loadRecordings();
+    loadProjects();
+    loadSyncStatus();
   }, []);
 
   async function loadRecordings() {
     setLoading(true);
     try {
-      const response = await fetch("/api/recordings", { cache: "no-store" });
-      const data = await response.json();
-      setRecordings(data.recordings || []);
-      setProjects(data.projects || []);
-      setPartners(data.partners || []);
-      setBrains(data.brains || []);
-      setStats(data.stats || null);
+      const res = await fetch("/api/recordings");
+      if (res.ok) {
+        const data = await res.json();
+        setRecordings(data.recordings || []);
+      }
+    } catch (err) {
+      console.error("Failed to load recordings:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  const filteredRecordings = recordings.filter((recording) => {
-    const haystack = [
-      recording.title,
-      recording.content.summary,
-      recording.project.suggested.label,
-      recording.project.manual.label,
-      recording.partner.suggested.label,
-      recording.partner.manual.label,
-      recording.brain.suggested.label,
-      recording.brain.manual.label,
-      ...recording.participants,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+  async function loadProjects() {
+    try {
+      const res = await fetch("/api/projects");
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.projects || []);
+      }
+    } catch {}
+  }
 
-    return haystack.includes(query.toLowerCase());
-  });
+  async function loadSyncStatus() {
+    try {
+      const res = await fetch("/api/fathom/sync");
+      if (res.ok) {
+        setSyncStatus(await res.json());
+      }
+    } catch {}
+  }
+
+  async function syncFromFathom() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/fathom/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setSyncResult(
+          `Imported ${data.imported} new call${data.imported !== 1 ? "s" : ""} (${data.total} total)`
+        );
+        await loadRecordings();
+        await loadSyncStatus();
+      } else {
+        setSyncResult(data.error || "Sync failed");
+      }
+    } catch {
+      setSyncResult("Failed to sync from Fathom");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function assignProject(
+    recordingId: string,
+    projectId: string,
+    projectName: string
+  ) {
+    try {
+      await fetch(`/api/recordings/${recordingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, projectName }),
+      });
+      setRecordings((prev) =>
+        prev.map((r) =>
+          r.id === recordingId
+            ? { ...r, projectId, projectName, suggestedProjectId: undefined, suggestedProjectName: undefined }
+            : r
+        )
+      );
+    } catch {
+      alert("Failed to assign project");
+    }
+  }
+
+  async function unassignProject(recordingId: string) {
+    try {
+      await fetch(`/api/recordings/${recordingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: null, projectName: null }),
+      });
+      setRecordings((prev) =>
+        prev.map((r) =>
+          r.id === recordingId ? { ...r, projectId: undefined, projectName: undefined } : r
+        )
+      );
+    } catch {
+      alert("Failed to unassign project");
+    }
+  }
+
+  async function createAndAssignProject(recordingId: string, projectName: string) {
+    try {
+      // Create the project
+      const createRes = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: projectName }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) {
+        alert(createData.error || "Failed to create project");
+        return;
+      }
+
+      // API returns the project directly, not wrapped in { project: ... }
+      const newProject = createData.project || createData;
+
+      // Assign the recording to the new project
+      await assignProject(recordingId, newProject.id, newProject.name);
+
+      // Refresh projects list
+      await loadProjects();
+    } catch {
+      alert("Failed to create project");
+    }
+  }
+
+  function updateRecording(id: string, updates: Partial<FathomRecording>) {
+    setRecordings((prev) =>
+      prev.map((r) => r.id === id ? { ...r, ...updates } : r)
+    );
+  }
+
+  async function deleteRecording(id: string) {
+    try {
+      await fetch(`/api/recordings/${id}`, { method: "DELETE" });
+      setRecordings((prev) => prev.filter((r) => r.id !== id));
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch {
+      alert("Failed to delete recording");
+    }
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const filtered = recordings.filter(
+    (r) =>
+      !search ||
+      r.title.toLowerCase().includes(search.toLowerCase()) ||
+      r.summary?.toLowerCase().includes(search.toLowerCase()) ||
+      r.projectName?.toLowerCase().includes(search.toLowerCase()) ||
+      r.participants?.some((p) =>
+        p.toLowerCase().includes(search.toLowerCase())
+      )
+  );
+
+  const inbox = filtered.filter((r) => !r.projectId);
+  const assigned = filtered.filter((r) => r.projectId);
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Recordings Review</h1>
-          <p className="mt-1 text-muted-foreground">
-            Unified queue for local voice memos and Fathom meetings, with suggested routing into projects, partners, and brains.
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Film className="h-6 w-6 text-orange-600" />
+            Call Recordings
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {recordings.length} recording{recordings.length !== 1 ? "s" : ""} &mdash;{" "}
+            {inbox.length} in inbox, {assigned.length} assigned
           </p>
         </div>
-        <div className="w-full md:w-80">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search title, summary, participant, project, partner"
-          />
+        <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={syncFromFathom}
+            disabled={syncing}
+            className="bg-orange-600 hover:bg-orange-700 text-white"
+          >
+            {syncing ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {syncing ? "Syncing..." : "Sync from Fathom"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadRecordings}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      {stats ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "Total", value: stats.total },
-            { label: "Voice memos", value: stats.voiceMemos },
-            { label: "Fathom calls", value: stats.fathomCalls },
-            { label: "Needs review", value: stats.needsReview },
-          ].map((item) => (
-            <Card key={item.label} className="border-border/70">
-              <CardContent className="space-y-1 py-5">
-                <div className="text-sm text-muted-foreground">{item.label}</div>
-                <div className="text-2xl font-semibold">{item.value}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : null}
-
-      {loading ? (
-        <Card>
-          <CardContent className="flex items-center gap-3 py-12 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading recordings
+      {/* Sync status / setup */}
+      {syncStatus && !syncStatus.apiKeyConfigured && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4">
+            <p className="text-sm font-medium text-amber-500 mb-1">
+              Fathom API Key Required
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Add <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">FATHOM_API_KEY</code> to
+              your environment variables. Get your API key from{" "}
+              <span className="font-medium">Fathom Settings &rarr; Integrations &rarr; API</span>.
+            </p>
           </CardContent>
         </Card>
-      ) : filteredRecordings.length === 0 ? (
+      )}
+
+      {syncStatus?.lastSyncAt && (
+        <p className="text-xs text-muted-foreground">
+          Last synced: {new Date(syncStatus.lastSyncAt).toLocaleString()}
+        </p>
+      )}
+
+      {/* Sync result banner */}
+      {syncResult && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-muted/50 text-sm">
+          <span>{syncResult}</span>
+          <button
+            onClick={() => setSyncResult(null)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Search recordings, summaries, participants..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : recordings.length === 0 ? (
         <Card>
-          <CardContent className="flex items-center gap-3 py-12 text-muted-foreground">
-            <AlertCircle className="h-4 w-4" />
-            No recordings found for the current filter.
+          <CardContent className="py-12 text-center">
+            <Film className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+            <p className="text-muted-foreground mb-2">No recordings yet.</p>
+            <p className="text-xs text-muted-foreground">
+              Click &ldquo;Sync from Fathom&rdquo; to import your call recordings.
+            </p>
           </CardContent>
         </Card>
       ) : (
-        filteredRecordings.map((recording) => (
-          <RecordingCard
-            key={recording.id}
-            recording={recording}
-            projects={projects}
-            partners={partners}
-            brains={brains}
-            onSaved={(nextRecording) => {
-              setRecordings((current) =>
-                current.map((item) =>
-                  item.id === nextRecording.id ? nextRecording : item
-                )
-              );
-            }}
-          />
-        ))
+        <Tabs defaultValue="inbox">
+          <TabsList>
+            <TabsTrigger value="inbox">
+              Inbox ({inbox.length})
+            </TabsTrigger>
+            <TabsTrigger value="assigned">
+              Assigned ({assigned.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="inbox" className="mt-4">
+            {inbox.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <Check className="h-6 w-6 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm text-muted-foreground">
+                    All caught up! No unassigned recordings.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {inbox.map((rec) => (
+                  <RecordingCard
+                    key={rec.id}
+                    recording={rec}
+                    projects={projects}
+                    expanded={expanded.has(rec.id)}
+                    onToggleExpand={() => toggleExpand(rec.id)}
+                    onAssignProject={assignProject}
+                    onCreateProject={createAndAssignProject}
+                    onDelete={deleteRecording}
+                    onUpdate={updateRecording}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="assigned" className="mt-4">
+            {assigned.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <FolderOpen className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    No recordings assigned to projects yet.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {assigned.map((rec) => (
+                  <RecordingCard
+                    key={rec.id}
+                    recording={rec}
+                    projects={projects}
+                    expanded={expanded.has(rec.id)}
+                    onToggleExpand={() => toggleExpand(rec.id)}
+                    onAssignProject={assignProject}
+                    onCreateProject={createAndAssignProject}
+                    onUnassign={unassignProject}
+                    onDelete={deleteRecording}
+                    onUpdate={updateRecording}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
+  );
+}
+
+function RecordingCard({
+  recording,
+  projects,
+  expanded,
+  onToggleExpand,
+  onAssignProject,
+  onCreateProject,
+  onUnassign,
+  onDelete,
+  onUpdate,
+}: {
+  recording: FathomRecording;
+  projects: any[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onAssignProject: (id: string, projectId: string, projectName: string) => void;
+  onCreateProject: (recordingId: string, projectName: string) => void;
+  onUnassign?: (id: string) => void;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<FathomRecording>) => void;
+}) {
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(recording.title);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState(recording.summary || "");
+
+  const hasSuggestion =
+    recording.suggestedProjectId && !recording.projectId;
+
+  function saveTitle() {
+    if (titleDraft.trim() && titleDraft !== recording.title) {
+      fetch(`/api/recordings/${recording.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleDraft.trim() }),
+      });
+      onUpdate(recording.id, { title: titleDraft.trim() });
+    }
+    setEditingTitle(false);
+  }
+
+  function saveSummary() {
+    fetch(`/api/recordings/${recording.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: summaryDraft }),
+    });
+    onUpdate(recording.id, { summary: summaryDraft });
+    setEditingSummary(false);
+  }
+
+  return (
+    <Card className="transition-shadow hover:shadow-md cursor-pointer" onClick={onToggleExpand}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {editingTitle ? (
+                <Input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") { setTitleDraft(recording.title); setEditingTitle(false); }
+                  }}
+                  className="h-7 text-sm font-medium"
+                />
+              ) : (
+                <button
+                  onClick={onToggleExpand}
+                  onDoubleClick={(e) => { e.stopPropagation(); setEditingTitle(true); }}
+                  className="font-medium text-sm text-left hover:text-orange-600 transition-colors group flex items-center gap-1"
+                >
+                  {recording.title}
+                  <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                </button>
+              )}
+              {recording.projectName && (
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  <FolderOpen className="h-2.5 w-2.5 mr-1" />
+                  {recording.projectName}
+                </Badge>
+              )}
+              {hasSuggestion && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs shrink-0 bg-amber-500/10 text-amber-600 cursor-pointer hover:bg-amber-500/20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignProject(
+                      recording.id,
+                      recording.suggestedProjectId!,
+                      recording.suggestedProjectName!
+                    );
+                  }}
+                >
+                  <Sparkles className="h-2.5 w-2.5 mr-1" />
+                  Suggested: {recording.suggestedProjectName}
+                  {recording.matchConfidence === "high" ? " (high)" : " (med)"}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {new Date(recording.date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+              {recording.duration ? (
+                <>
+                  <span>&middot;</span>
+                  <span>{formatDuration(recording.duration)}</span>
+                </>
+              ) : null}
+              {recording.participants && recording.participants.length > 0 && (
+                <>
+                  <span>&middot;</span>
+                  <span className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    {recording.participants.slice(0, 3).join(", ")}
+                    {recording.participants.length > 3 &&
+                      ` +${recording.participants.length - 3}`}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <select
+              className="h-7 text-xs rounded border border-border bg-background px-1.5 text-muted-foreground max-w-[130px]"
+              value={recording.projectId || recording.suggestedProjectId || ""}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                if (e.target.value === "__new__") {
+                  setShowNewProject(true);
+                  e.target.value = "";
+                } else {
+                  const proj = projects.find((p: any) => p.id === e.target.value);
+                  if (proj) onAssignProject(recording.id, proj.id, proj.name);
+                  else onAssignProject(recording.id, "", "");
+                }
+              }}
+            >
+              <option value="">Project...</option>
+              <option value="__new__">+ New project</option>
+              {projects.map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {recording.url && (
+              <a
+                href={recording.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center h-7 px-2 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              >
+                <ExternalLink className="h-3 w-3 mr-1" />
+                Open
+              </a>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={onToggleExpand}
+            >
+              {expanded ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Inline new project creation — right below header */}
+        {showNewProject && (
+          <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+            <Plus className="h-3.5 w-3.5 text-orange-600 shrink-0" />
+            <Input
+              autoFocus
+              placeholder="New project name..."
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              className="flex-1 h-7 text-xs"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newProjectName.trim()) {
+                  setCreating(true);
+                  onCreateProject(recording.id, newProjectName.trim());
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                  setCreating(false);
+                } else if (e.key === "Escape") {
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+              disabled={!newProjectName.trim() || creating}
+              onClick={() => {
+                if (newProjectName.trim()) {
+                  setCreating(true);
+                  onCreateProject(recording.id, newProjectName.trim());
+                  setShowNewProject(false);
+                  setNewProjectName("");
+                  setCreating(false);
+                }
+              }}
+            >
+              {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => { setShowNewProject(false); setNewProjectName(""); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {/* Summary preview */}
+        {recording.summary && !expanded && (
+          <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
+            {cleanSummary(recording.summary).replace(/#{1,3}\s/g, "").slice(0, 200)}
+          </p>
+        )}
+
+        {/* Expanded Content */}
+        {expanded && (
+          <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
+            {recording.summary && (
+              <div className="bg-muted/40 rounded p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> Summary
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 text-[10px] text-muted-foreground px-1.5"
+                    onClick={() => {
+                      if (editingSummary) {
+                        saveSummary();
+                      } else {
+                        setEditingSummary(true);
+                        setSummaryDraft(recording.summary || "");
+                      }
+                    }}
+                  >
+                    <Pencil className="h-2.5 w-2.5 mr-0.5" />
+                    {editingSummary ? "Save" : "Edit"}
+                  </Button>
+                </div>
+                {editingSummary ? (
+                  <textarea
+                    autoFocus
+                    value={summaryDraft}
+                    onChange={(e) => setSummaryDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingSummary(false);
+                    }}
+                    className="w-full min-h-[200px] rounded border border-input bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_li]:my-0.5 [&_p]:my-1">
+                    <ReactMarkdown>{cleanSummary(recording.summary)}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {recording.actionItems && recording.actionItems.length > 0 && (
+              <div className="bg-green-600/10 border border-green-600/20 rounded p-3">
+                <p className="text-xs font-semibold text-green-500 mb-2 flex items-center gap-1">
+                  <CheckSquare className="h-3 w-3" /> Action Items
+                </p>
+                <ul className="space-y-1">
+                  {recording.actionItems.map((item, i) => (
+                    <li key={i} className="text-sm flex items-start gap-2">
+                      <span className="text-green-500 mt-0.5">&bull;</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {recording.attendeeEmails &&
+              recording.attendeeEmails.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium flex items-center gap-1 mb-1.5">
+                    <Mail className="h-3 w-3" /> Attendee Emails
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recording.attendeeEmails.map((email, i) => (
+                      <Badge
+                        key={i}
+                        variant="outline"
+                        className="text-xs font-normal"
+                      >
+                        {email}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t flex-wrap">
+              <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <select
+                className="flex-1 min-w-[140px] h-7 text-xs rounded border border-border bg-background px-2 text-muted-foreground"
+                value={recording.projectId || recording.suggestedProjectId || ""}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setShowNewProject(true);
+                    e.target.value = "";
+                  } else {
+                    const proj = projects.find((p: any) => p.id === e.target.value);
+                    if (proj) onAssignProject(recording.id, proj.id, proj.name);
+                    else onAssignProject(recording.id, "", "");
+                  }
+                }}
+              >
+                <option value="">Assign to project...</option>
+                <option value="__new__">+ Create new project</option>
+                {projects.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {recording.projectId && onUnassign && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => onUnassign(recording.id)}
+                >
+                  Unassign
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                onClick={() => onDelete(recording.id)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Delete
+              </Button>
+            </div>
+
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

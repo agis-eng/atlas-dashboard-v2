@@ -22,18 +22,11 @@ import {
   Activity,
   Video,
   Mic,
-  FileAudio,
-  Workflow,
-  Sparkles,
+  Film,
   Tag,
-  Search,
-  Image,
-  Presentation,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useVoice } from "@/components/voice-provider";
-import type { VoiceContext } from "@/lib/voice-context";
 import {
   Tooltip,
   TooltipContent,
@@ -47,22 +40,17 @@ import type { Profile } from "@/lib/redis";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-  { icon: Sparkles, label: "Agroktic", href: "/agroktic" },
   { icon: MessageSquare, label: "Chat", href: "/chat" },
   { icon: FolderOpen, label: "Projects", href: "/projects" },
   { icon: ListChecks, label: "Tasks", href: "/tasks" },
   { icon: Calendar, label: "Calendar", href: "/calendar" },
   { icon: Brain, label: "Brain", href: "/brain" },
-  { icon: Search, label: "Research", href: "/research" },
-  { icon: Workflow, label: "Orchestrator", href: "/orchestrator" },
   { icon: TrendingUp, label: "Trends", href: "/trends" },
   { icon: Mail, label: "Email", href: "/email" },
   { icon: Video, label: "Transcribe", href: "/transcribe" },
-  { icon: FileAudio, label: "Recordings", href: "/recordings" },
-  { icon: Mic, label: "Voice", href: "/voice" },
+  { icon: Mic, label: "Voice Memos", href: "/voice-memos" },
+  { icon: Film, label: "Recordings", href: "/recordings" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
-  { icon: Presentation, label: "SlideBoost", href: "/slideboost" },
-  { icon: Image, label: "LogoClear", href: "/logo" },
   { icon: Tag, label: "Listings", href: "/listings" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Activity, label: "Monitor", href: "/monitor" },
@@ -93,7 +81,6 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { openVoice } = useVoice();
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -113,17 +100,12 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
     : currentProfile[0].toUpperCase();
 
   const userLabel = currentUser?.name ?? profiles.find((p) => p.value === currentProfile)?.label ?? "User";
-  const activeNavItem = navItems.find((item) =>
-    item.href === "/"
-      ? pathname === "/"
-      : pathname.startsWith(item.href)
-  );
 
   return (
     <TooltipProvider delay={0}>
       <aside
         className={cn(
-          "relative hidden md:flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 ease-in-out",
+          "relative flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 ease-in-out",
           collapsed ? "w-16" : "w-56"
         )}
       >
@@ -221,71 +203,32 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
               item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
-            const isVoice = item.href === "/voice";
-
-            const handleVoiceClick = () => {
-              const voiceCtx: VoiceContext = {
-                source: "sidebar",
-                route: pathname || "/",
-                threadLabel: activeNavItem?.label,
-              };
-              openVoice(voiceCtx);
-            };
 
             if (collapsed) {
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger
-                    render={(props) =>
-                      isVoice ? (
-                        <button {...props} onClick={handleVoiceClick}>
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-center px-0 transition-all"
-                            size="icon"
-                            tabIndex={-1}
-                          >
-                            <Icon className="h-4 w-4 shrink-0" />
-                          </Button>
-                        </button>
-                      ) : (
-                        <Link href={item.href} {...props}>
-                          <Button
-                            variant={isActive ? "secondary" : "ghost"}
-                            className={cn(
-                              "w-full justify-center px-0 transition-all",
-                              isActive &&
-                                "bg-orange-600/10 text-orange-600 hover:bg-orange-600/15 hover:text-orange-600"
-                            )}
-                            size="icon"
-                            tabIndex={-1}
-                          >
-                            <Icon className="h-4 w-4 shrink-0" />
-                          </Button>
-                        </Link>
-                      )
-                    }
+                    render={(props) => (
+                      <Link href={item.href} {...props}>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className={cn(
+                            "w-full justify-center px-0 transition-all",
+                            isActive &&
+                              "bg-orange-600/10 text-orange-600 hover:bg-orange-600/15 hover:text-orange-600"
+                          )}
+                          size="icon"
+                          tabIndex={-1}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                        </Button>
+                      </Link>
+                    )}
                   />
                   <TooltipContent side="right" sideOffset={8}>
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
-              );
-            }
-
-            if (isVoice) {
-              return (
-                <button key={item.label} onClick={handleVoiceClick}>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-3 transition-all px-3"
-                    size="default"
-                    tabIndex={-1}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </Button>
-                </button>
               );
             }
 
@@ -309,22 +252,8 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
           })}
         </nav>
 
-        {/* Bottom: Collapse toggle + Logout */}
+        {/* Bottom: Logout + Collapse toggle */}
         <div className="border-t border-border p-2 space-y-1">
-          {/* Collapse toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-full h-9"
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </Button>
-
           {/* Logout */}
           {currentUser && (
             <Tooltip>
@@ -355,6 +284,20 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
               )}
             </Tooltip>
           )}
+
+          {/* Collapse toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-full h-9"
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
         </div>
       </aside>
     </TooltipProvider>
