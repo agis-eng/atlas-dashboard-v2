@@ -429,6 +429,7 @@ export default function EbayPage() {
       const data = await res.json();
       if (res.ok && data.analysis) {
         const a = data.analysis;
+        const autoSku = `ITEM-${Date.now().toString(36).toUpperCase()}`;
         setCreateForm((prev) => ({
           ...prev,
           title: a.suggestedTitle || prev.title,
@@ -437,7 +438,23 @@ export default function EbayPage() {
           condition: a.suggestedCondition
             ? CONDITIONS.find((c) => c.label.toLowerCase() === a.suggestedCondition.toLowerCase())?.value || prev.condition
             : prev.condition,
+          sku: prev.sku || autoSku,
         }));
+        // Auto-search and select eBay category from title
+        if (a.suggestedTitle) {
+          try {
+            const catData = await apiGet("categories", { q: a.suggestedTitle });
+            const cats = catData.categorySuggestions || [];
+            setCategorySuggestions(cats);
+            if (cats.length > 0) {
+              setCreateForm((prev) => ({
+                ...prev,
+                categoryId: cats[0].category.categoryId,
+                categorySearch: cats[0].category.categoryName,
+              }));
+            }
+          } catch {}
+        }
       } else {
         alert(data.error || "AI analysis failed");
       }
@@ -470,9 +487,13 @@ export default function EbayPage() {
     setCreateSubmitting(true);
     setCreateResult(null);
     try {
+      // Auto-generate SKU if empty
+      const sku = createForm.sku || `ITEM-${Date.now().toString(36).toUpperCase()}`;
+      if (!createForm.sku) setCreateForm((prev) => ({ ...prev, sku }));
+
       // Step 1: Create inventory item
       const invResult = await apiPost("create-inventory-item", {
-        sku: createForm.sku,
+        sku,
         product: {
           title: createForm.title,
           description: createForm.description,
@@ -492,18 +513,24 @@ export default function EbayPage() {
         return;
       }
 
+      // Fetch policies
+      let policies = { fulfillmentPolicyId: "", returnPolicyId: "", paymentPolicyId: "" };
+      try {
+        const polRes = await fetch("/api/ebay/policies");
+        if (polRes.ok) {
+          const polData = await polRes.json();
+          if (polData.policies) policies = polData.policies;
+        }
+      } catch {}
+
       // Step 2: Create offer
       const offerResult = await apiPost("create-offer", {
-        sku: createForm.sku,
+        sku,
         marketplaceId: "EBAY_US",
         format: "FIXED_PRICE",
-        availableQuantity: createForm.quantity,
+        availableQuantity: createForm.quantity || 1,
         categoryId: createForm.categoryId,
-        listingPolicies: {
-          fulfillmentPolicyId: "",
-          paymentPolicyId: "",
-          returnPolicyId: "",
-        },
+        listingPolicies: policies,
         pricingSummary: {
           price: {
             value: createForm.price,
@@ -1104,7 +1131,7 @@ export default function EbayPage() {
                     type="number"
                     min="1"
                     value={createForm.quantity}
-                    onChange={(e) => setCreateForm({ ...createForm, quantity: parseInt(e.target.value) || 1 })}
+                    onChange={(e) => setCreateForm({ ...createForm, quantity: e.target.value === "" ? (0 as any) : parseInt(e.target.value) || 0 })}
                     className="mt-1"
                   />
                 </div>
@@ -1292,7 +1319,7 @@ export default function EbayPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={submitListing}
-                  disabled={createSubmitting || !createForm.title || !createForm.sku || !createForm.price || !token}
+                  disabled={createSubmitting || !createForm.title || !createForm.price}
                   className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
                 >
                   {createSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
