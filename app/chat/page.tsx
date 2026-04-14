@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VoiceMessageAction } from "@/components/voice-message-action";
+import { useVoice } from "@/components/voice-provider";
 import {
   Send,
   Plus,
@@ -12,9 +13,12 @@ import {
   User,
   Bot,
   Loader2,
+  Mic,
   Search,
 } from "lucide-react";
 import type { ChatMessage, ChatSession } from "@/lib/redis";
+import type { VoiceContext } from "@/lib/voice-context";
+import { cn } from "@/lib/utils";
 
 const TOOL_LABELS: Record<string, string> = {
   search_projects: "Searching projects",
@@ -24,8 +28,94 @@ const TOOL_LABELS: Record<string, string> = {
   analyze_workload: "Analyzing workload",
 };
 
+const SUGGESTIONS = [
+  "What are my active projects?",
+  "Show overdue tasks",
+  "Compare workload Erik vs Anton",
+  "What's on my plate this week?",
+];
+
 function generateSessionId() {
   return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ── Simple inline markdown renderer ──
+
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={i}
+          className="text-xs bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded font-mono"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+function MarkdownMessage({ content, isUser }: { content: string; isUser: boolean }) {
+  const lines = content.split("\n");
+  return (
+    <div className="space-y-1 text-sm leading-relaxed">
+      {lines.map((line, i) => {
+        if (line.startsWith("```")) {
+          return <div key={i} className="font-mono text-xs opacity-70">{line}</div>;
+        }
+        if (line.startsWith("### ")) {
+          return (
+            <p key={i} className="font-semibold text-sm mt-2 first:mt-0">
+              {renderInline(line.slice(4))}
+            </p>
+          );
+        }
+        if (line.startsWith("## ") || line.startsWith("# ")) {
+          const text = line.replace(/^#{1,2}\s+/, "");
+          return (
+            <p key={i} className="font-semibold text-sm mt-2 first:mt-0">
+              {renderInline(text)}
+            </p>
+          );
+        }
+        if (line.match(/^[-*•]\s/)) {
+          return (
+            <div key={i} className="flex gap-1.5 pl-1">
+              <span className={cn("mt-0.5 flex-shrink-0", isUser ? "opacity-70" : "text-muted-foreground")}>•</span>
+              <span>{renderInline(line.replace(/^[-*•]\s/, ""))}</span>
+            </div>
+          );
+        }
+        if (line.match(/^\d+\.\s/)) {
+          const match = line.match(/^(\d+)\.\s(.*)$/);
+          if (match) {
+            return (
+              <div key={i} className="flex gap-1.5 pl-1">
+                <span className={cn("flex-shrink-0 tabular-nums", isUser ? "opacity-70" : "text-muted-foreground")}>{match[1]}.</span>
+                <span>{renderInline(match[2])}</span>
+              </div>
+            );
+          }
+        }
+        if (line.match(/^---+$/)) {
+          return <hr key={i} className="border-current opacity-20 my-1" />;
+        }
+        if (!line.trim()) {
+          return <div key={i} className="h-1" />;
+        }
+        return <p key={i}>{renderInline(line)}</p>;
+      })}
+    </div>
+  );
 }
 
 export default function ChatPage() {
@@ -38,7 +128,8 @@ export default function ChatPage() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { openVoice } = useVoice();
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,14 +139,12 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
-  // Save current session to localStorage
   useEffect(() => {
     if (currentSessionId) {
       localStorage.setItem("atlas-chat-last-session", currentSessionId);
     }
   }, [currentSessionId]);
 
-  // Load sessions on mount and restore last session
   useEffect(() => {
     loadSessions();
   }, []);
@@ -67,12 +156,10 @@ export default function ChatPage() {
       const loaded: ChatSession[] = data.sessions || [];
       setSessions(loaded);
 
-      // Auto-select last session if none is active
       if (loaded.length > 0) {
         const lastId = localStorage.getItem("atlas-chat-last-session");
         const target = loaded.find((s) => s.id === lastId) ? lastId! : loaded[0].id;
         setCurrentSessionId(target);
-        // Load messages for the restored session
         const msgRes = await fetch(`/api/chat-history?sessionId=${target}`);
         const msgData = await msgRes.json();
         setMessages(msgData.messages || []);
@@ -81,6 +168,17 @@ export default function ChatPage() {
       // Redis not configured yet — that's ok
     } finally {
       setLoadingSessions(false);
+    }
+  }
+
+  /** Refresh only the session sidebar without reloading messages */
+  async function refreshSessionList() {
+    try {
+      const res = await fetch("/api/chat-history?profile=erik");
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch {
+      // non-fatal
     }
   }
 
@@ -108,21 +206,19 @@ export default function ChatPage() {
     await loadMessages(sessionId);
   }
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+  async function sendMessage(e?: React.FormEvent, prefill?: string) {
+    if (e) e.preventDefault();
+    const messageText = (prefill ?? input).trim();
+    if (!messageText || isStreaming) return;
 
-    const messageText = input.trim();
     setInput("");
 
-    // Create session if needed
     let sessionId = currentSessionId;
     if (!sessionId) {
       sessionId = generateSessionId();
       setCurrentSessionId(sessionId);
     }
 
-    // Optimistic: add user message
     const userMsg: ChatMessage = {
       id: `msg_${Date.now()}_user`,
       role: "user",
@@ -132,7 +228,6 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Start streaming
     setIsStreaming(true);
     setStreamingContent("");
 
@@ -181,7 +276,6 @@ export default function ChatPage() {
         }
       }
 
-      // Add assistant message
       const assistantMsg: ChatMessage = {
         id: `msg_${Date.now()}_assistant`,
         role: "assistant",
@@ -192,8 +286,8 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, assistantMsg]);
       setStreamingContent("");
 
-      // Refresh sessions
-      loadSessions();
+      // Refresh sidebar only — don't reload messages (avoids clobbering optimistic state)
+      refreshSessionList();
     } catch (error) {
       console.error("Stream error:", error);
       const errorMsg: ChatMessage = {
@@ -209,6 +303,32 @@ export default function ChatPage() {
       setActiveTool(null);
     }
   }
+
+  function getVoiceContext(message?: ChatMessage): VoiceContext {
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
+    return {
+      source: "main-chat",
+      route: "/chat",
+      threadId: currentSessionId || undefined,
+      threadLabel: currentSession?.title,
+      sessionId: currentSessionId || undefined,
+      messageId: message?.id,
+      messageText: message?.content,
+    };
+  }
+
+  function handleVoiceLaunch() {
+    openVoice(getVoiceContext());
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  const showEmpty = messages.length === 0 && !streamingContent;
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -260,48 +380,74 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 && !streamingContent ? (
+          {showEmpty ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="h-16 w-16 rounded-2xl bg-orange-600/10 flex items-center justify-center mb-4">
                 <MessageSquare className="h-8 w-8 text-orange-600" />
               </div>
               <h2 className="text-xl font-semibold mb-2">Ask Atlas anything</h2>
-              <p className="text-muted-foreground text-sm max-w-md">
-                I can search your projects and tasks, analyze workload, and
-                answer questions about your dashboard data. Try &quot;What are my
-                active projects?&quot; or &quot;Show overdue tasks&quot;.
+              <p className="text-muted-foreground text-sm max-w-md mb-6">
+                Search projects and tasks, analyze workload, and get answers
+                about your dashboard data.
               </p>
+              <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => sendMessage(undefined, s)}
+                    disabled={isStreaming}
+                    className="text-sm px-4 py-2 rounded-full bg-muted hover:bg-orange-600/10 hover:text-orange-600 text-muted-foreground transition-colors border border-transparent hover:border-orange-600/20"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <>
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  {msg.role !== "user" && (
-                    <div className="h-8 w-8 rounded-full bg-orange-600/10 flex items-center justify-center shrink-0">
-                      <Bot className="h-4 w-4 text-orange-600" />
-                    </div>
-                  )}
-                  <Card
-                    className={`max-w-[70%] ${
-                      msg.role === "user"
-                        ? "bg-orange-600 text-white border-orange-600"
-                        : "bg-card"
-                    }`}
+              {messages.map((msg, idx) => {
+                const isLastAssistant =
+                  msg.role === "assistant" &&
+                  idx === messages.length - 1;
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    <CardContent className="p-3">
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    </CardContent>
-                  </Card>
-                  {msg.role === "user" && (
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                      <User className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-              ))}
+                    {msg.role !== "user" && (
+                      <div className="h-8 w-8 rounded-full bg-orange-600/10 flex items-center justify-center shrink-0">
+                        <Bot className="h-4 w-4 text-orange-600" />
+                      </div>
+                    )}
+                    <Card
+                      className={`max-w-[70%] ${
+                        msg.role === "user"
+                          ? "bg-orange-600 text-white border-orange-600"
+                          : "bg-card"
+                      }`}
+                    >
+                      <CardContent className="p-3">
+                        <MarkdownMessage content={msg.content} isUser={msg.role === "user"} />
+                        {isLastAssistant && msg.content ? (
+                          <div className="mt-2">
+                            <VoiceMessageAction
+                              context={getVoiceContext(msg)}
+                              label="Continue by voice"
+                              className="px-0"
+                            />
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                    {msg.role === "user" && (
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Streaming indicator */}
               {streamingContent && (
@@ -311,7 +457,7 @@ export default function ChatPage() {
                   </div>
                   <Card className="max-w-[70%] bg-card">
                     <CardContent className="p-3">
-                      <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                      <MarkdownMessage content={streamingContent} isUser={false} />
                     </CardContent>
                   </Card>
                 </div>
@@ -343,25 +489,45 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="border-t border-border p-4">
-          <form onSubmit={sendMessage} className="flex gap-2 max-w-3xl mx-auto">
-            <Input
+          <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2 max-w-3xl mx-auto items-end">
+            <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type a message..."
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Atlas anything..."
+              rows={1}
               disabled={isStreaming}
-              className="flex-1"
+              className="flex-1 resize-none rounded-xl border border-input bg-transparent px-4 py-2.5 text-sm outline-none focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20 disabled:opacity-50 leading-relaxed"
+              style={{ minHeight: "42px", maxHeight: "120px" }}
               autoFocus
             />
             <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleVoiceLaunch}
+              className="text-muted-foreground hover:text-orange-600 shrink-0"
+              title="Start voice session"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+            <Button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
               size="icon"
             >
               <Send className="h-4 w-4" />
             </Button>
           </form>
+          <p className="text-[10px] text-muted-foreground mt-1.5 text-center max-w-3xl mx-auto">
+            Enter to send · Shift+Enter for new line
+          </p>
         </div>
       </div>
     </div>

@@ -108,7 +108,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const { message, history } = await request.json();
+    const { message, history, selectedDocIndices, selectedNoteIndices } = await request.json();
 
     if (!message) {
       return new Response(
@@ -128,8 +128,21 @@ export async function POST(
       );
     }
 
-    // Build context
-    const systemContext = await loadBrainContext(user.profile, brain);
+    // Build context — optionally filter to selected documents and notes
+    let filteredBrain = brain;
+    if (selectedDocIndices && Array.isArray(selectedDocIndices)) {
+      filteredBrain = {
+        ...filteredBrain,
+        documents: brain.documents?.filter((_: any, i: number) => selectedDocIndices.includes(i)),
+      };
+    }
+    if (selectedNoteIndices && Array.isArray(selectedNoteIndices)) {
+      filteredBrain = {
+        ...filteredBrain,
+        notes: brain.notes?.filter((_: any, i: number) => selectedNoteIndices.includes(i)),
+      };
+    }
+    const systemContext = await loadBrainContext(user.profile, filteredBrain);
 
     // Build messages
     const messages: Anthropic.MessageParam[] = [];
@@ -152,8 +165,8 @@ export async function POST(
 
     // Stream response
     const stream = await anthropic.messages.stream({
-      model: "claude-haiku-4-5",
-      max_tokens: 2000,
+      model: "claude-sonnet-4-6",
+      max_tokens: 8000,
       system: systemContext,
       messages: messages,
     });

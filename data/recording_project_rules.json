@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-27T00:00:00.000Z",
+  "rules": [
+    {
+      "projectId": "echo-credentialing-credentialing",
+      "projectName": "Credentialing",
+      "keywords": ["credentialing", "medicaid", "insurance", "enrollment"]
+    },
+    {
+      "projectId": "capture-build-connect-capture-build-connect",
+      "projectName": "TED-Associates V2",
+      "keywords": ["ted talks automation", "ted associates", "website", "marketing package"]
+    },
+    {
+      "projectId": "caring-echo-bridge-caring-echo-bridge",
+      "projectName": "Caring Echo Bridge",
+      "keywords": ["echo", "mental health", "clinic", "foundation"]
+    },
+    {
+      "projectId": "mike-raiche-24social7",
+      "projectName": "24social7",
+      "keywords": ["24 social 7", "24social7", "social posts", "white-labeled marketing"]
+    }
+  ]
+}

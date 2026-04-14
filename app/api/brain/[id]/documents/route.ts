@@ -126,3 +126,44 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const { index } = await request.json();
+
+    if (index === undefined || index === null) {
+      return NextResponse.json({ error: "Document index required" }, { status: 400 });
+    }
+
+    const data = await readBrains(user.profile);
+    const brain = data.brains.find((b: any) => b.id === id);
+
+    if (!brain) {
+      return NextResponse.json({ error: "Brain not found" }, { status: 404 });
+    }
+
+    if (!brain.documents || index < 0 || index >= brain.documents.length) {
+      return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    }
+
+    brain.documents.splice(index, 1);
+    brain.lastUpdated = new Date().toISOString().split("T")[0];
+    await writeBrains(user.profile, data);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    return NextResponse.json({ error: "Failed to delete document" }, { status: 500 });
+  }
+}

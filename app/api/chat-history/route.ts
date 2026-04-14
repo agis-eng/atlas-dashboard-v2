@@ -19,7 +19,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Otherwise, return session list for profile
-    const sessionIds = await redis.lrange(REDIS_KEYS.chatSessions(profile), 0, 49);
+    let sessionIds: string[] = [];
+    try {
+      sessionIds = await redis.smembers(REDIS_KEYS.chatSessions(profile)) as string[];
+    } catch {
+      try {
+        sessionIds = await redis.lrange(REDIS_KEYS.chatSessions(profile), 0, 49) as string[];
+      } catch {
+        sessionIds = [];
+      }
+    }
+
     const sessions: ChatSession[] = [];
 
     for (const id of sessionIds) {
@@ -29,7 +39,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return Response.json({ sessions });
+    sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    return Response.json({ sessions: sessions.slice(0, 50) });
   } catch (error) {
     console.error("Chat history error:", error);
     // Return empty data instead of 500 so the UI doesn't break

@@ -6,12 +6,16 @@ import {
   Check,
   Loader2,
   MessageCircle,
+  Mic,
   Send,
   Sparkles,
   X,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VoiceMessageAction } from "@/components/voice-message-action";
+import { useVoice } from "@/components/voice-provider";
+import type { VoiceContext } from "@/lib/voice-context";
 import { cn } from "@/lib/utils";
 
 // ── Types ──
@@ -183,6 +187,8 @@ export function ProjectChat({ projectId, projectName }: ProjectChatProps) {
   const [completedTools, setCompletedTools] = useState<string[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
 
+  const { openVoice } = useVoice();
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -348,6 +354,23 @@ export function ProjectChat({ projectId, projectName }: ProjectChatProps) {
   const showGreeting = hasLoaded && messages.length === 0;
   const unreadCount = 0; // Could track unread later
 
+  function getVoiceContext(message?: Message): VoiceContext {
+    return {
+      source: "project-chat",
+      route: `/projects/${projectId}`,
+      threadId: projectId,
+      threadLabel: projectName,
+      projectId,
+      projectName,
+      messageId: message?.id,
+      messageText: message?.content,
+    };
+  }
+
+  function handleVoiceLaunch() {
+    openVoice(getVoiceContext());
+  }
+
   return (
     <>
       {/* ── Floating chat button ── */}
@@ -459,7 +482,23 @@ export function ProjectChat({ projectId, projectName }: ProjectChatProps) {
                 )}
               >
                 {msg.content ? (
-                  <MarkdownMessage content={msg.content} isUser={msg.role === "user"} />
+                  <>
+                    <MarkdownMessage content={msg.content} isUser={msg.role === "user"} />
+                    {msg.role === "assistant" && msg.content ? (
+                      <div className="mt-2">
+                        <VoiceMessageAction
+                          context={getVoiceContext(msg)}
+                          label="Continue by voice"
+                          className={cn(
+                            "px-0",
+                            msg.role === "assistant"
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "text-white/80 hover:text-white"
+                          )}
+                        />
+                      </div>
+                    ) : null}
+                  </>
                 ) : msg.isStreaming ? (
                   <TypingDots />
                 ) : null}
@@ -524,6 +563,15 @@ export function ProjectChat({ projectId, projectName }: ProjectChatProps) {
               className="flex-1 resize-none rounded-xl border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20 disabled:opacity-50 leading-relaxed"
               style={{ minHeight: "38px", maxHeight: "120px" }}
             />
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleVoiceLaunch}
+              className="text-muted-foreground hover:text-orange-600 flex-shrink-0 h-9 w-9 rounded-xl p-0"
+              title="Start voice session"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
             <Button
               onClick={() => sendMessage()}
               disabled={!input.trim() || sending}

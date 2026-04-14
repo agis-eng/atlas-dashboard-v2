@@ -1,0 +1,88 @@
+# Gemini Live Constrained WebSocket - Verified Working ✅
+
+## Verification Date
+2026-03-27
+
+## What Was Done
+
+### 1. Raw Repro Script Built & Executed
+- **File:** `scripts/gemini-live-raw-repro.js`
+- **Status:** ✅ EXECUTED SUCCESSFULLY
+- **Result:** End-to-end constrained WebSocket handshake verified working
+
+### 2. Contract Verified
+- Token minting: ✅ Works (via `@google/genai` API)
+- WebSocket endpoint: ✅ Correct URL format
+- Setup message: ✅ Sent as first message, accepted
+- Text input: ✅ Processed correctly
+- Audio response: ✅ Received and verified
+- Session completion: ✅ All messages in correct order
+
+### 3. Page Implementation Audit
+- **File:** `app/voice-lab-clean/page.tsx`
+- **Status:** ✅ CORRECT - Matches verified contract exactly
+  - Setup sent on `ws.onopen()`
+  - SystemInstruction included
+  - ResponseModalities set to ["AUDIO"]
+  - RealtimeInput text sent correctly
+  - Audio responses parsed and played
+
+### 4. Session Route Audit
+- **File:** `app/api/voice-lab/session/route.ts`
+- **Status:** ✅ CORRECT - Token generation matches repro
+
+### 5. Build Test
+- **Command:** `npm run build`
+- **Status:** ✅ SUCCESS
+- **Routes verified:**
+  - `/api/voice-lab/session` ✅ Built
+  - `/voice-lab-clean` ✅ Built
+
+---
+
+## The Verified Working Contract
+
+### WebSocket Handshake Flow
+
+1. **Client:** Mint ephemeral token from Google GenAI API
+2. **Client:** Open WebSocket to constrained endpoint with token
+3. **Client:** On `onopen`, send `setup` message (FIRST MESSAGE)
+4. **Server:** Respond with `setupComplete`
+5. **Client:** Send `realtimeInput` with text
+6. **Server:** Send `modelTurn` with audio chunks + `outputTranscription`
+7. **Server:** Send `generationComplete` then `turnComplete`
+
+### Critical Implementation Details
+
+✅ Token: Ephemeral, from `ai.authTokens.create()` with `liveConnectConstraints`
+✅ Setup: MUST be first message, includes model/systemInstruction/responseModalities
+✅ Model: "models/gemini-3.1-flash-live-preview"
+✅ Audio: PCM16 at 24kHz, base64-encoded in `inlineData.data`
+
+---
+
+## Known Working Code
+
+- Session route properly mints tokens
+- Clean page properly sends messages in correct order
+- Audio playback chain correctly queues responses
+
+---
+
+## Potential Remaining Issues
+
+If "setup must be the first message" error still occurs in production:
+
+1. **Token expiration:** Mint a fresh token (30-min lifetime)
+2. **Websocket reconnection:** Re-send setup on each new connection
+3. **Network latency:** Add a small delay before sending realtimeInput (500ms is safe)
+4. **Multiple setup messages:** Ensure setup is only sent once per connection
+
+---
+
+## Files
+
+- Session Route: `app/api/voice-lab/session/route.ts` ✅
+- Page: `app/voice-lab-clean/page.tsx` ✅
+- Contract Doc: `docs/GEMINI_LIVE_CONSTRAINED_CONTRACT.md` ✅
+- Raw Repro: `scripts/gemini-live-raw-repro.js` ✅ (Verified, kept for reference)

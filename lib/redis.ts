@@ -47,6 +47,16 @@ export const REDIS_KEYS = {
   memoryDates: (profile: string) => `memory:dates:${profile}`,
   memoryByProject: (projectId: string) => `memory:project:${projectId}`,
   memoryTags: (profile: string) => `memory:tags:${profile}`,
+
+  // Fathom
+  fathomRecordings: "fathom:recordings",
+  fathomTranscript: (id: string) => `fathom:transcript:${id}`,
+  fathomSyncMeta: "fathom:sync:meta",
+
+  // Listings
+  listings: "listings:all",
+  listing: (id: string) => `listing:${id}`,
+  marketplaceConnection: (platform: string) => `marketplace:connection:${platform}`,
 } as const;
 
 // Types
@@ -108,4 +118,70 @@ export interface MemoryEntry {
   projectIds: string[];
   tags: string[];
   type: "discussion" | "decision" | "update" | "note";
+}
+
+export interface ListingDraft {
+  id: string;
+  photos: string[];
+  title: string;
+  description: string;
+  price: number | null;
+  quantity: number;
+  condition: string;
+  category: string;
+  platforms: ("ebay" | "mercari" | "facebook" | "tiktok" | "nextdoor")[];
+  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
+  ebayListingId?: string;
+  mercariListingUrl?: string;
+  facebookListingUrl?: string;
+  aiAnalysis?: {
+    suggestedTitle: string;
+    suggestedDescription: string;
+    suggestedPrice: number;
+    suggestedCategory: string;
+    suggestedCondition: string;
+    confidence: string;
+  };
+  mercariStatus?: "pending" | "publishing" | "listed" | "error";
+  facebookStatus?: "pending" | "publishing" | "listed" | "error";
+  mercariError?: string;
+  facebookError?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketplaceConnection {
+  platform: "mercari" | "facebook";
+  profileName: string;
+  connected: boolean;
+  lastValidated: string;
+  username?: string;
+  error?: string;
+}
+
+export interface FathomRecording {
+  id: string;
+  title: string;
+  date: string;
+  duration?: number;
+  participants: string[];
+  attendeeEmails: string[];
+  summary: string | null;
+  actionItems: string[];
+  url: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  suggestedProjectId?: string | null;
+  suggestedProjectName?: string | null;
+  matchConfidence?: "high" | "medium" | null;
+  status: "pending" | "processed";
+  receivedAt: string;
+  source: "webhook" | "api-sync";
+}
+
+export interface FathomSyncMeta {
+  lastSyncAt: string;
+  totalImported: number;
+  apiKeyConfigured: boolean;
 }

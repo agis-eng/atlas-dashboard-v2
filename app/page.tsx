@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Activity,
   ArrowUpRight,
+  Radio,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -49,17 +50,27 @@ interface DeployStatusData {
   versionText: string;
 }
 
+interface RecordingsStatsData {
+  total: number;
+  fathomCalls: number;
+  voiceMemos: number;
+  linkedToProject: number;
+  unlinked: number;
+}
+
 export default function Home() {
   const [greeting, setGreeting] = useState("");
   const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<StatsData | null>(null);
   const [deployStatus, setDeployStatus] = useState<DeployStatusData | null>(null);
+  const [recordingsStats, setRecordingsStats] = useState<RecordingsStatsData | null>(null);
 
   useEffect(() => {
     setGreeting(getGreeting());
     setMounted(true);
     loadStats();
     loadDeployStatus();
+    loadRecordingsStats();
   }, []);
 
   async function loadStats() {
@@ -117,6 +128,17 @@ export default function Home() {
     }
   }
 
+  async function loadRecordingsStats() {
+    try {
+      const res = await fetch("/api/recordings?limit=1", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRecordingsStats(data.stats || null);
+    } catch {
+      console.error("Failed to load recordings stats");
+    }
+  }
+
   const quickStats = [
     {
       title: "Active Projects",
@@ -139,6 +161,15 @@ export default function Home() {
       description: "Tasks completed",
       icon: Activity,
       href: "/tasks",
+    },
+    {
+      title: "Recordings",
+      value: recordingsStats ? String(recordingsStats.total) : "–",
+      description: recordingsStats
+        ? `${recordingsStats.fathomCalls} Fathom • ${recordingsStats.voiceMemos} memos`
+        : "Loading...",
+      icon: Radio,
+      href: "/recordings",
     },
   ];
 
@@ -175,7 +206,7 @@ export default function Home() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {quickStats.map((stat, i) => {
           const Icon = stat.icon;
           return (
@@ -295,6 +326,7 @@ export default function Home() {
             {[
               { label: "View Tasks", icon: ListChecks, color: "text-blue-500", href: "/tasks" },
               { label: "Browse Projects", icon: FolderOpen, color: "text-green-500", href: "/projects" },
+              { label: "Open Recordings", icon: Radio, color: "text-orange-600", href: "/recordings" },
             ].map((action) => {
               const Icon = action.icon;
               return (

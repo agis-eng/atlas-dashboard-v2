@@ -54,7 +54,7 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
   };
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors group">
+    <div className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border hover:bg-muted/50 transition-colors group">
       <input
         type="checkbox"
         checked={selected}
@@ -75,8 +75,8 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
         <p className="text-xs text-muted-foreground truncate">{email.from}</p>
         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
       </div>
-      <div className="flex items-start gap-1">
-        <div className="text-xs text-muted-foreground whitespace-nowrap text-right">
+      <div className="flex items-start gap-1 sm:gap-1">
+        <div className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap text-right">
           <div>{new Date(email.date).toLocaleDateString()}</div>
           <div className="text-[10px]">{new Date(email.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
@@ -84,7 +84,7 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
           size="sm"
           variant="ghost"
           disabled={archiving}
-          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 w-6 p-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={handleArchive}
           title="Archive"
         >
@@ -94,7 +94,7 @@ export function EmailRow({ email, selected, onToggleSelect, onOpen, onDelete, on
           size="sm"
           variant="ghost"
           disabled={deleting}
-          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 w-6 p-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           onClick={handleDelete}
           title="Delete"
         >

@@ -20,6 +20,8 @@ interface YamlProject {
   previewUrl?: string;
   liveUrl?: string;
   repoUrl?: string;
+  vercelUrl?: string;
+  githubBranch?: string;
   rank?: number;
   priority?: string;
   archived?: boolean;
@@ -120,6 +122,8 @@ const EDITABLE_FIELDS = [
   "stage",
   "status",
   "priority",
+  "repoUrl",
+  "githubBranch",
   "tags",
   "summary",
   "affiliate",
@@ -133,6 +137,13 @@ export async function PUT(
   try {
     const { id } = await params;
     const updates = await request.json();
+    const normalizedUpdates =
+      updates && typeof updates === "object" ? { ...updates } : {};
+
+    if ("githubUrl" in normalizedUpdates) {
+      normalizedUpdates.repoUrl = normalizedUpdates.githubUrl;
+      delete normalizedUpdates.githubUrl;
+    }
 
     const data = await loadProjectsData();
     const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
@@ -142,7 +153,7 @@ export async function PUT(
     }
 
     // Only allow updating known editable fields
-    for (const key of Object.keys(updates)) {
+    for (const key of Object.keys(normalizedUpdates)) {
       if (!(EDITABLE_FIELDS as readonly string[]).includes(key)) {
         return Response.json(
           { error: `Field '${key}' is not editable` },
@@ -151,11 +162,32 @@ export async function PUT(
       }
     }
 
+    const normalizeString = (value: unknown) => {
+      if (typeof value !== "string") return value;
+      const trimmed = value.trim();
+      return trimmed;
+    };
+
     // Merge updates into existing project
     const project = data.projects[projectIndex];
     for (const key of EDITABLE_FIELDS) {
-      if (key in updates) {
-        (project as any)[key] = updates[key];
+      if (key in normalizedUpdates) {
+        if (
+          key === "name" ||
+          key === "owner" ||
+          key === "clientId" ||
+          key === "stage" ||
+          key === "status" ||
+          key === "priority" ||
+          key === "repoUrl" ||
+          key === "githubBranch" ||
+          key === "summary"
+        ) {
+          (project as any)[key] = normalizeString(normalizedUpdates[key]);
+          continue;
+        }
+
+        (project as any)[key] = normalizedUpdates[key];
       }
     }
 
@@ -173,7 +205,7 @@ export async function PUT(
 
     // Auto-capture screenshot if URL was added/changed
     const url = project.liveUrl || project.previewUrl;
-    if (url && (updates.liveUrl || updates.previewUrl)) {
+    if (url && (normalizedUpdates.liveUrl || normalizedUpdates.previewUrl)) {
       // Run in background, don't wait for it
       captureProjectScreenshot(project.id, url).catch((err) =>
         console.error("Screenshot capture failed:", err)

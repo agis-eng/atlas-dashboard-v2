@@ -163,6 +163,8 @@ interface WebsiteDeployStatus {
   teamConfigured?: boolean;
   vercelUrl?: string;
   previewUrl?: string;
+  error?: string;
+  needsConfig?: boolean;
 }
 
 // ── Constants ──
@@ -392,7 +394,13 @@ function TagsEditor({
 
 // ── Brain Section ──
 
-function BrainSection({
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function SupportingDocsSection({
   brain,
   editing,
   onChange,
@@ -403,8 +411,6 @@ function BrainSection({
   onChange: (brain: ProjectBrain) => void;
   projectId: string;
 }) {
-  const links = brain.links || [];
-  const notes = brain.notes || [];
   const files = brain.files || [];
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -453,12 +459,110 @@ function BrainSection({
     }
   };
 
-  function formatFileSize(bytes: number) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="h-4 w-4 text-cyan-500" />
+          Supporting Docs & Uploads
+          {files.length > 0 && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-500">
+              {files.length}
+            </span>
+          )}
+        </CardTitle>
+        <CardDescription>
+          Files attached to this project, like briefs, screenshots, decks, and source docs.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+          These uploads support the project record. They are separate from the project&apos;s public links and separate from brain/reference notes.
+        </div>
 
+        {files.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No supporting docs uploaded yet.
+          </p>
+        )}
+
+        <div className="space-y-1.5">
+          {files.map((file, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm group"
+            >
+              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="truncate">{file.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatFileSize(file.size)} &middot; {file.uploadedAt}
+                </p>
+              </div>
+              <a
+                href={file.path}
+                download
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+              {editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => deleteFile(file.path)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {editing && (
+          <div className="mt-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.csv,.zip"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Upload className="h-3 w-3 mr-1" />
+              )}
+              {uploading ? "Uploading..." : "Upload Supporting Docs"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BrainKnowledgeSection({
+  brain,
+  editing,
+  onChange,
+}: {
+  brain: ProjectBrain;
+  editing: boolean;
+  onChange: (brain: ProjectBrain) => void;
+}) {
+  const links = brain.links || [];
+  const notes = brain.notes || [];
   const addLink = () => {
     onChange({ ...brain, links: [...links, { url: "", label: "" }] });
   };
@@ -482,14 +586,14 @@ function BrainSection({
     onChange({ ...brain, notes: notes.filter((_, i) => i !== idx) });
   };
 
-  const totalItems = links.length + notes.length + files.length;
+  const totalItems = links.length + notes.length;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Brain className="h-4 w-4 text-purple-500" />
-          Project Brain
+          Brain / Reference Knowledge
           {totalItems > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-500">
               {totalItems}
@@ -497,20 +601,23 @@ function BrainSection({
           )}
         </CardTitle>
         <CardDescription>
-          Links, notes, and knowledge for this project
+          Internal reference material the team wants Atlas to remember for this project.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Links */}
+        <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+          Use this for reference knowledge, source material, and internal notes. This is not the public project-links area and not the upload bucket for source files.
+        </div>
+
         <div>
           <div className="flex items-center gap-2 mb-2">
             <LinkIcon className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Links
+              Reference Links
             </p>
           </div>
           {links.length === 0 && !editing && (
-            <p className="text-sm text-muted-foreground">No links yet</p>
+            <p className="text-sm text-muted-foreground">No reference links yet</p>
           )}
           <div className="space-y-2">
             {links.map((link, idx) =>
@@ -566,16 +673,15 @@ function BrainSection({
           )}
         </div>
 
-        {/* Notes */}
         <div>
           <div className="flex items-center gap-2 mb-2">
             <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Notes
+              Brain Notes
             </p>
           </div>
           {notes.length === 0 && !editing && (
-            <p className="text-sm text-muted-foreground">No notes yet</p>
+            <p className="text-sm text-muted-foreground">No brain notes yet</p>
           )}
           <div className="space-y-2">
             {notes.map((note, idx) =>
@@ -617,79 +723,6 @@ function BrainSection({
               <Plus className="h-3 w-3 mr-1" />
               Add Note
             </Button>
-          )}
-        </div>
-
-        {/* Files */}
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Files
-            </p>
-          </div>
-          {files.length === 0 && !editing && (
-            <p className="text-sm text-muted-foreground">No files uploaded</p>
-          )}
-          <div className="space-y-1.5">
-            {files.map((file, idx) => (
-              <div
-                key={idx}
-                className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm group"
-              >
-                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatFileSize(file.size)} &middot; {file.uploadedAt}
-                  </p>
-                </div>
-                <a
-                  href={file.path}
-                  download
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </a>
-                {editing && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteFile(file.path)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-          {editing && (
-            <div className="mt-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.svg,.txt,.csv,.zip"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Upload className="h-3 w-3 mr-1" />
-                )}
-                {uploading ? "Uploading..." : "Upload Files"}
-              </Button>
-            </div>
           )}
         </div>
       </CardContent>
@@ -938,6 +971,8 @@ export default function ProjectDetailPage({
   const [latestWebsiteBuild, setLatestWebsiteBuild] = useState<WebsiteBuild | null>(null);
   const [deployingWebsite, setDeployingWebsite] = useState(false);
   const [websiteDeployStatus, setWebsiteDeployStatus] = useState<WebsiteDeployStatus | null>(null);
+  const [repoUrlInput, setRepoUrlInput] = useState("");
+  const [savingRepoUrl, setSavingRepoUrl] = useState(false);
   const [seoUrl, setSeoUrl] = useState("");
   const [generatingSeo, setGeneratingSeo] = useState(false);
   const [seoReports, setSeoReports] = useState<SeoReport[]>([]);
@@ -974,6 +1009,7 @@ export default function ProjectDetailPage({
         }
         const data = await res.json();
         setProject(data.project);
+        setRepoUrlInput(data.project?.repoUrl || "");
         
         // Load client contact info if clientId exists
         if (data.project?.clientId) {
@@ -1059,6 +1095,19 @@ export default function ProjectDetailPage({
       setEditing(true);
     }
   }, [project]);
+
+  const refreshProject = useCallback(async () => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error("Failed to refresh project");
+    }
+    const data = await res.json();
+    setProject(data.project);
+    setRepoUrlInput(data.project?.repoUrl || "");
+    return data.project as ProjectDetail;
+  }, [id]);
 
   const cancelEditing = useCallback(() => {
     setDraft(null);
@@ -1217,6 +1266,7 @@ export default function ProjectDetailPage({
       if (!res.ok) throw new Error(data.error || 'Failed to create website repo');
       setLatestWebsiteBuild(data.build);
       setProject((prev) => prev ? { ...prev, repoUrl: data.build.repoUrl, githubBranch: data.build.branch } : prev);
+      setRepoUrlInput(data.build.repoUrl || "");
       setToast({ message: 'Website repo created', type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to create website repo', type: 'error' });
@@ -1224,6 +1274,31 @@ export default function ProjectDetailPage({
       setCreatingWebsiteBuild(false);
     }
   }, [id]);
+
+  const saveRepoUrl = useCallback(async () => {
+    const nextRepoUrl = repoUrlInput.trim();
+    const currentRepoUrl = (project?.repoUrl || "").trim();
+
+    if (!project || nextRepoUrl === currentRepoUrl) return;
+
+    setSavingRepoUrl(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: nextRepoUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save GitHub URL");
+      setProject(data.project);
+      setRepoUrlInput(data.project?.repoUrl || "");
+      setToast({ message: nextRepoUrl ? "GitHub URL saved" : "GitHub URL cleared", type: "success" });
+    } catch (err: any) {
+      setToast({ message: err.message || "Failed to save GitHub URL", type: "error" });
+    } finally {
+      setSavingRepoUrl(false);
+    }
+  }, [id, project, repoUrlInput]);
 
   const deployWebsiteBuild = useCallback(async () => {
     setDeployingWebsite(true);
@@ -1239,13 +1314,22 @@ export default function ProjectDetailPage({
         previewUrl: data.deploy?.previewUrl || '',
       });
       setProject((prev) => prev ? { ...prev, previewUrl: data.deploy?.previewUrl || prev.previewUrl, vercelUrl: data.deploy?.vercelUrl || prev.vercelUrl } : prev);
-      setToast({ message: 'Vercel deploy started', type: 'success' });
+      setWebsiteDeployStatus((prev) => ({
+        configured: true,
+        teamConfigured: prev?.teamConfigured,
+        previewUrl: data.deploy?.previewUrl || prev?.previewUrl || '',
+        vercelUrl: data.deploy?.vercelUrl || prev?.vercelUrl || '',
+      }));
+      await refreshProject();
+      setLatestWebsiteBuild((prev) => prev ? { ...prev, repoUrl: data.deploy?.repoUrl || prev.repoUrl, branch: data.deploy?.branch || prev.branch, status: data.deploy?.repoCreated ? "repo-created" : prev.status } : prev);
+      setRepoUrlInput((prev) => data.deploy?.repoUrl || prev);
+      setToast({ message: data.deploy?.repoCreated ? 'Repo created and Vercel deploy started' : 'Vercel deploy started', type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to start deploy', type: 'error' });
     } finally {
       setDeployingWebsite(false);
     }
-  }, [id]);
+  }, [id, refreshProject]);
 
   const generateSeoAudit = useCallback(async () => {
     const targetUrl = seoUrl.trim() || project?.liveUrl || project?.previewUrl || '';
@@ -1425,10 +1509,21 @@ export default function ProjectDetailPage({
   const activeDeck = (editingDeck ? deckDraft : latestDeck) || null;
   const hasAffiliate =
     p.affiliate && Object.keys(p.affiliate).length > 0;
-  const hasBrain =
-    p.brain &&
-    ((p.brain.links && p.brain.links.length > 0) ||
-      (p.brain.notes && p.brain.notes.length > 0));
+  const savedRepoUrl = (project.repoUrl || "").trim();
+  const repoUrlDraft = repoUrlInput.trim();
+  const repoUrlDirty = repoUrlDraft !== savedRepoUrl;
+  const hasWebsiteDraft = Boolean(latestWebpageDraft?.pageCodeDraft);
+  const canAutoCreateRepo = !savedRepoUrl && hasWebsiteDraft;
+  const canDeployProject = Boolean(savedRepoUrl || canAutoCreateRepo);
+  const deployPreviewUrl = websiteDeployStatus?.previewUrl || project.previewUrl || "";
+  const deployVercelUrl = websiteDeployStatus?.vercelUrl || project.vercelUrl || "";
+  const deployButtonLabel = deployingWebsite
+    ? canAutoCreateRepo
+      ? "Creating Repo + Starting Deploy..."
+      : "Starting Deploy..."
+    : canAutoCreateRepo
+      ? "Create Repo + Deploy to Vercel"
+      : "Deploy to Vercel";
 
   return (
     <div className="p-6 md:p-8 xl:p-10 max-w-[1600px] mx-auto space-y-6">
@@ -1698,12 +1793,70 @@ export default function ProjectDetailPage({
           </CardContent>
         </Card>
 
-        {/* Links */}
+        {/* Project Links */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Links</CardTitle>
+            <CardTitle className="text-base">Project Links & Repo</CardTitle>
+            <CardDescription>
+              Saved public project links plus the GitHub repo used for deploys.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-border p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">GitHub Repository</p>
+                  <p className="text-xs text-muted-foreground">
+                    Save the repo URL explicitly. Deploy uses the saved value, not what is currently typed.
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full border ${
+                    repoUrlDirty
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
+                      : savedRepoUrl
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+                        : "border-border bg-muted/50 text-muted-foreground"
+                  }`}
+                >
+                  {repoUrlDirty ? "Unsaved changes" : savedRepoUrl ? "Saved" : "Not saved"}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={repoUrlInput}
+                  onChange={(e) => setRepoUrlInput(e.target.value)}
+                  placeholder="https://github.com/org/repo"
+                  className="sm:flex-1"
+                />
+                <Button
+                  onClick={saveRepoUrl}
+                  disabled={savingRepoUrl || !repoUrlDirty}
+                >
+                  {savingRepoUrl ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-2" />
+                  )}
+                  {savingRepoUrl ? "Saving..." : savedRepoUrl ? "Save Changes" : "Save GitHub URL"}
+                </Button>
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                {savedRepoUrl ? (
+                  <>
+                    Saved repo: <span className="text-foreground break-all">{savedRepoUrl}</span>
+                    {project.githubBranch ? <span> ({project.githubBranch})</span> : null}
+                  </>
+                ) : hasWebsiteDraft ? (
+                  "No repo saved yet. Deploy can create one automatically from the saved website draft."
+                ) : (
+                  "No repo saved yet. Add a GitHub URL here or create a website draft first."
+                )}
+              </div>
+            </div>
+
             {p.liveUrl && (
               <a
                 href={p.liveUrl}
@@ -1738,9 +1891,9 @@ export default function ProjectDetailPage({
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </a>
             )}
-            {p.repoUrl && (
+            {savedRepoUrl && (
               <a
-                href={p.repoUrl}
+                href={savedRepoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
@@ -1749,8 +1902,8 @@ export default function ProjectDetailPage({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">GitHub Repository</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {p.repoUrl}
-                    {p.githubBranch && <span className="ml-2 text-purple-400">({p.githubBranch})</span>}
+                    {savedRepoUrl}
+                    {project.githubBranch && <span className="ml-2 text-purple-400">({project.githubBranch})</span>}
                   </p>
                 </div>
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1870,14 +2023,98 @@ export default function ProjectDetailPage({
                 Upload
               </Button>
             </div>
-            {!p.liveUrl && !p.previewUrl && !p.repoUrl && (
+            {!p.liveUrl && !p.previewUrl && !savedRepoUrl && (
               <p className="text-sm text-muted-foreground py-2">
-                No links available
+                No saved project links yet
               </p>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Deployment</CardTitle>
+          <CardDescription>
+            One deploy path: use the saved repo, or create one from the latest website draft and deploy in one step.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">GitHub Repo</p>
+              <p className="mt-1 text-sm font-medium break-all">
+                {savedRepoUrl || (canAutoCreateRepo ? "Will be created from website draft" : "Not ready")}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Website Draft</p>
+              <p className="mt-1 text-sm font-medium">
+                {hasWebsiteDraft ? "Ready" : "Missing"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Vercel Token</p>
+              <p className="mt-1 text-sm font-medium">
+                {websiteDeployStatus?.configured ? "Configured" : "Missing"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border p-3 md:col-span-3">
+              <p className="text-xs text-muted-foreground">Team Scope</p>
+              <p className="mt-1 text-sm font-medium">
+                {websiteDeployStatus?.teamConfigured ? "Configured" : "Default account"}
+              </p>
+            </div>
+          </div>
+
+          {(deployPreviewUrl || deployVercelUrl) ? (
+            <div className="rounded-lg border border-border p-3 space-y-2 text-sm">
+              {deployPreviewUrl && (
+                <div>
+                  <span className="font-medium">Latest preview:</span>{" "}
+                  <a href={deployPreviewUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline break-all">
+                    {deployPreviewUrl}
+                  </a>
+                </div>
+              )}
+              {deployVercelUrl && (
+                <div>
+                  <span className="font-medium">Vercel project:</span>{" "}
+                  <a href={deployVercelUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline break-all">
+                    {deployVercelUrl}
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+              No deployment has been started from this page yet.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={deployWebsiteBuild} disabled={deployingWebsite || !canDeployProject || !websiteDeployStatus?.configured}>
+              {deployingWebsite ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              {deployButtonLabel}
+            </Button>
+            {!savedRepoUrl && hasWebsiteDraft && (
+              <span className="text-xs text-cyan-600">
+                Deploy will create the GitHub repo from the latest website draft first.
+              </span>
+            )}
+            {!canDeployProject && (
+              <span className="text-xs text-amber-600">
+                Save a GitHub repo URL or create a website draft first.
+              </span>
+            )}
+            {canDeployProject && !websiteDeployStatus?.configured && (
+              <span className="text-xs text-amber-600">
+                `VERCEL_TOKEN` is not configured in the app environment yet.
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Live Preview + Website Changes */}
       {(p.liveUrl || p.previewUrl) && (
@@ -2032,14 +2269,8 @@ export default function ProjectDetailPage({
                           {websiteDeployStatus.vercelUrl && <div><span className="font-medium text-foreground">Vercel:</span> <a href={websiteDeployStatus.vercelUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">{websiteDeployStatus.vercelUrl}</a></div>}
                         </div>
                       )}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button onClick={deployWebsiteBuild} disabled={deployingWebsite || !websiteDeployStatus?.configured}>
-                          {deployingWebsite ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                          {deployingWebsite ? 'Starting Deploy…' : 'Deploy to Vercel'}
-                        </Button>
-                        {!websiteDeployStatus?.configured && (
-                          <span className="text-xs text-amber-300">Needs VERCEL_TOKEN in Railway env</span>
-                        )}
+                      <div className="text-xs text-muted-foreground">
+                        Use the Deployment card above to manually trigger Vercel deploys for this repo.
                       </div>
                     </div>
                   ) : (
@@ -2391,6 +2622,28 @@ export default function ProjectDetailPage({
 
       {/* Changelog */}
       <ChangelogSection projectId={id} />
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight">Project Knowledge & Files</h2>
+          <p className="text-sm text-muted-foreground">
+            Internal reference material and supporting uploads live here, below the execution and delivery tools.
+          </p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <SupportingDocsSection
+            brain={(editing && draft ? draft.brain : project.brain) || {}}
+            editing={editing}
+            onChange={(brain) => updateDraft("brain", brain)}
+            projectId={id}
+          />
+          <BrainKnowledgeSection
+            brain={(editing && draft ? draft.brain : project.brain) || {}}
+            editing={editing}
+            onChange={(brain) => updateDraft("brain", brain)}
+          />
+        </div>
+      </section>
 
       {/* AI Chat */}
       <ProjectChat projectId={id} projectName={project.name} />

@@ -6,19 +6,44 @@ import fs from "fs/promises";
 import path from "path";
 
 const execPromise = promisify(exec);
+const TRANSCRIPT_SERVER = process.env.TRANSCRIPT_SERVER_URL || "";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUserFromRequest(request);
-    
+
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { url } = await request.json();
 
-    if (!url || !url.includes('youtube.com') && !url.includes('youtu.be')) {
-      return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+    const isYouTube = url?.includes('youtube.com') || url?.includes('youtu.be');
+    const isFacebook = url?.includes('facebook.com') || url?.includes('fb.watch');
+    if (!url || (!isYouTube && !isFacebook)) {
+      return NextResponse.json({ error: "Please enter a YouTube or Facebook video URL" }, { status: 400 });
+    }
+
+    // On Vercel, route through the Mac transcript server
+    if (TRANSCRIPT_SERVER) {
+      try {
+        const proxyRes = await fetch(
+          `${TRANSCRIPT_SERVER}/transcribe-video?url=${encodeURIComponent(url)}`,
+          { signal: AbortSignal.timeout(600000) }
+        );
+        const data = await proxyRes.json();
+        if (data.error) {
+          return NextResponse.json({ error: data.error }, { status: 500 });
+        }
+        return NextResponse.json({
+          title: data.title,
+          transcript: data.transcript,
+          summary: `Transcribed via Mac server. ${data.transcript.length} characters.`,
+          duration: null,
+        });
+      } catch (err) {
+        return NextResponse.json({ error: `Mac server error: ${err instanceof Error ? err.message : "Unknown"}` }, { status: 500 });
+      }
     }
 
     const timestamp = Date.now();

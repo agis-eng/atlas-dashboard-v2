@@ -1,5 +1,49 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Recordings Pipeline Foundation
+
+Shared store:
+
+- `data/recordings.json` is the unified dashboard-readable store for local voice memos and Fathom calls.
+- `data/recording_project_rules.json` and `data/recording-keywords.yaml` contain commit-safe keyword routing rules for project, partner, and optional brain suggestions.
+- `/recordings` is the dashboard review queue for manual routing and review-state updates.
+
+Bootstrap the store from existing legacy files:
+
+```bash
+npm run recordings:bootstrap
+```
+
+Local voice memo runner:
+
+```bash
+python3 -m pip install -r scripts/recordings/requirements.txt
+cp .config/recordings/voice-memos.env.example .config/recordings/voice-memos.env
+# edit .config/recordings/voice-memos.env
+npm run sync:voice-memos
+npm run sync:voice-memos -- --apply
+```
+
+- Dry-run is the default.
+- Processing state is stored in `VOICE_MEMO_SOURCE_DIR/.voice_memo_ingestion_state.json` unless `--state` is passed.
+- The runner only writes local store/state when `--apply` is set.
+
+Fathom sync foundation:
+
+```bash
+python3 -m pip install -r scripts/recordings/requirements.txt
+cp .config/recordings/fathom.env.example .config/recordings/fathom.env
+# edit .config/recordings/fathom.env
+npm run sync:fathom
+npm run sync:fathom -- --apply
+```
+
+- Dry-run is the default.
+- The sync targets the last 7 days unless `--days` is passed.
+- Digest output is written to `data/fathom_digest.json` when applied.
+- Email delivery is intentionally stubbed; no email is sent by this foundation.
+- Secrets stay out of the repo: `.config/recordings/*.env` is gitignored, and only `.example` files are committed.
+
 ## Getting Started
 
 First, run the development server:

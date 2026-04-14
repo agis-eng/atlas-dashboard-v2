@@ -1,29 +1,32 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Brain, 
-  ArrowLeft, 
-  Mail, 
-  FileText, 
-  Link as LinkIcon, 
+import {
+  Brain,
+  ArrowLeft,
+  FileText,
+  Link as LinkIcon,
   StickyNote,
+  Send,
+  X,
+  CheckSquare,
+  Square,
+  Eye,
+  Upload,
   Plus,
   Trash2,
-  Upload,
-  Calendar,
-  MessageSquare,
-  Settings,
-  RefreshCw
+  Loader2,
+  Copy,
+  Check,
+  Search,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-interface Brain {
+interface BrainData {
   id: string;
   name: string;
   icon: string;
@@ -33,6 +36,7 @@ interface Brain {
   documents?: any[];
   links?: any[];
   notes?: any[];
+  summaries?: any[];
   created: string;
   lastUpdated: string;
 }
@@ -40,27 +44,62 @@ interface Brain {
 export default function BrainDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [brain, setBrain] = useState<Brain | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [brain, setBrain] = useState<BrainData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "sources" | "chat">("overview");
-  
-  // New content forms
-  const [newLink, setNewLink] = useState({ url: "", title: "" });
-  const [newNote, setNewNote] = useState("");
-  const [showLinkForm, setShowLinkForm] = useState(false);
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [summaries, setSummaries] = useState<any[]>([]);
-  const [loadingSummaries, setLoadingSummaries] = useState(true);
-  
-  // Chat state
-  const [chatMessages, setChatMessages] = useState<Array<{role: string, content: string}>>([]);
+
+  // Source selection
+  const [selectedDocs, setSelectedDocs] = useState<Set<number>>(new Set());
+  const [selectedNotes, setSelectedNotes] = useState<Set<number>>(new Set());
+  const [savedMsg, setSavedMsg] = useState<number | null>(null);
+
+  // Chat
+  const [chatMessages, setChatMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
+  // Document preview
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+
+  // Copy feedback
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  // Web search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Array<{ url: string; title: string; description: string }>>([]);
+  const [searchingWeb, setSearchingWeb] = useState(false);
+  const [addingUrl, setAddingUrl] = useState<string | null>(null);
+
+  async function copyMessage(content: string, idx: number) {
+    await navigator.clipboard.writeText(content);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  }
+
+  // Add content
+  const [showAddLink, setShowAddLink] = useState(false);
+  const [newLink, setNewLink] = useState({ url: "", title: "" });
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [newNote, setNewNote] = useState("");
+
   useEffect(() => {
     loadBrain();
-    loadSummaries();
   }, [id]);
+
+  // Auto-select all docs and notes when brain loads
+  useEffect(() => {
+    if (brain?.documents) {
+      setSelectedDocs(new Set(brain.documents.map((_, i) => i)));
+    }
+    if (brain?.notes) {
+      setSelectedNotes(new Set(brain.notes.map((_: any, i: number) => i)));
+    }
+  }, [brain?.documents?.length]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   async function loadBrain() {
     try {
@@ -69,624 +108,564 @@ export default function BrainDetailPage({ params }: { params: Promise<{ id: stri
         const data = await res.json();
         setBrain(data);
       }
-    } catch (err) {
-      console.error("Failed to load brain:", err);
+    } catch {
+      // ignore
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadSummaries() {
-    try {
-      const res = await fetch(`/api/brain/${id}/summaries`);
-      if (res.ok) {
-        const data = await res.json();
-        setSummaries(data.summaries || []);
-      }
-    } catch (err) {
-      console.error("Failed to load summaries:", err);
-    } finally {
-      setLoadingSummaries(false);
+  function toggleDoc(idx: number) {
+    setSelectedDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (!brain?.documents) return;
+    if (selectedDocs.size === brain.documents.length) {
+      setSelectedDocs(new Set());
+    } else {
+      setSelectedDocs(new Set(brain.documents.map((_, i) => i)));
     }
   }
 
-  async function addLink() {
-    if (!newLink.url) return;
-    
-    try {
-      await fetch(`/api/brain/${id}/links`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newLink),
-      });
-      
-      setNewLink({ url: "", title: "" });
-      setShowLinkForm(false);
-      await loadBrain();
-    } catch (err) {
-      console.error("Failed to add link:", err);
-      alert("Failed to add link");
-    }
-  }
-
-  async function addNote() {
-    if (!newNote.trim()) return;
-    
-    try {
-      await fetch(`/api/brain/${id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newNote }),
-      });
-      
-      setNewNote("");
-      setShowNoteForm(false);
-      await loadBrain();
-    } catch (err) {
-      console.error("Failed to add note:", err);
-      alert("Failed to add note");
-    }
-  }
-
-  async function removeSource(source: string) {
-    if (!confirm(`Remove ${source} from sources?`)) return;
-    
-    try {
-      await fetch(`/api/brain/${id}/sources`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: source }),
-      });
-      await loadBrain();
-    } catch (err) {
-      console.error("Failed to remove source:", err);
-      alert("Failed to remove source");
-    }
-  }
-
-  async function sendChatMessage() {
+  async function sendMessage() {
     if (!chatInput.trim() || chatLoading) return;
-    
+
     const userMessage = chatInput.trim();
     setChatInput("");
     setChatLoading(true);
-    
-    // Add user message
+
     const newMessages = [...chatMessages, { role: "user", content: userMessage }];
     setChatMessages(newMessages);
-    
+
     try {
       const res = await fetch(`/api/brain/${id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: userMessage,
-          history: chatMessages
+          history: chatMessages,
+          selectedDocIndices: [...selectedDocs],
+          selectedNoteIndices: [...selectedNotes],
         }),
       });
-      
-      if (!res.ok) {
-        throw new Error("Chat request failed");
-      }
-      
+
+      if (!res.ok) throw new Error("Chat failed");
+
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No reader");
-      
+
       let assistantMessage = "";
       const decoder = new TextDecoder();
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
+        for (const line of chunk.split("\n")) {
+          if (line.startsWith("data: ")) {
             const data = line.slice(6);
-            if (data === '[DONE]') continue;
-            
+            if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
               if (parsed.text) {
                 assistantMessage += parsed.text;
-                // Update UI with partial response
                 setChatMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
               }
-            } catch (e) {
-              // Ignore parse errors
-            }
+            } catch { /* ignore */ }
           }
         }
       }
-      
-    } catch (err) {
-      console.error("Chat error:", err);
-      setChatMessages([...newMessages, { 
-        role: "assistant", 
-        content: "Sorry, I encountered an error. Please try again." 
-      }]);
+    } catch {
+      setChatMessages([
+        ...newMessages,
+        { role: "assistant", content: "Sorry, I encountered an error. Please try again." },
+      ]);
     } finally {
       setChatLoading(false);
     }
   }
 
+  async function searchWeb() {
+    if (!searchQuery.trim()) return;
+    setSearchingWeb(true);
+    try {
+      const res = await fetch(`/api/brain/${id}/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearchingWeb(false);
+    }
+  }
+
+  async function addUrlToBrain(url: string, title: string) {
+    setAddingUrl(url);
+    try {
+      const res = await fetch(`/api/brain/${id}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, title }),
+      });
+      if (res.ok) {
+        setSearchResults((prev) => prev.filter((r) => r.url !== url));
+        loadBrain();
+      }
+    } catch { /* ignore */ }
+    finally { setAddingUrl(null); }
+  }
+
+  async function addLink() {
+    if (!newLink.url) return;
+    await fetch(`/api/brain/${id}/links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newLink),
+    });
+    setNewLink({ url: "", title: "" });
+    setShowAddLink(false);
+    loadBrain();
+  }
+
+  async function addNote() {
+    if (!newNote.trim()) return;
+    await fetch(`/api/brain/${id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: newNote }),
+    });
+    setNewNote("");
+    setShowAddNote(false);
+    loadBrain();
+  }
+
+  function toggleNote(idx: number) {
+    setSelectedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  async function saveMessageAsNote(content: string, idx: number) {
+    await fetch(`/api/brain/${id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    setSavedMsg(idx);
+    setTimeout(() => setSavedMsg(null), 2000);
+    loadBrain();
+  }
+
+  async function deleteNote(noteIndex: number) {
+    await fetch(`/api/brain/${id}/notes`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: noteIndex }),
+    });
+    loadBrain();
+  }
+
+  async function deleteDocument(docIndex: number) {
+    await fetch(`/api/brain/${id}/documents`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: docIndex }),
+    });
+    loadBrain();
+  }
+
   if (loading) {
     return (
-      <div className="p-6 md:p-10 max-w-7xl mx-auto">
-        <div className="animate-pulse space-y-6">
-          <div className="h-10 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
-        </div>
+      <div className="flex items-center justify-center h-[80vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!brain) {
     return (
-      <div className="p-6 md:p-10 max-w-7xl mx-auto">
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Brain className="h-16 w-16 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium mb-2">Brain not found</p>
-            <Button onClick={() => router.push("/brain")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Brains
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-[80vh] gap-4">
+        <Brain className="h-16 w-16 text-muted-foreground" />
+        <p className="text-lg font-medium">Brain not found</p>
+        <Button onClick={() => router.push("/brain")}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Brains
+        </Button>
       </div>
     );
   }
 
+  const allDocs = brain.documents || [];
+  const allLinks = brain.links || [];
+  const allNotes = brain.notes || [];
+  const totalSources = allDocs.length + allLinks.length + allNotes.length;
+
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-6">
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/brain")}>
+      <div className="flex items-center gap-3 px-6 py-3 border-b shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => router.push("/brain")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
-            <span className="text-4xl">{brain.icon}</span>
-            {brain.name}
-          </h1>
-          <p className="text-muted-foreground mt-1">{brain.description}</p>
+        <span className="text-2xl">{brain.icon}</span>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-semibold truncate">{brain.name}</h1>
+          <p className="text-xs text-muted-foreground truncate">{brain.description}</p>
         </div>
-        <Button variant="outline" size="sm">
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </Button>
+        <Badge variant="outline" className="shrink-0">
+          {selectedDocs.size}/{allDocs.length} sources active
+        </Badge>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        <button
-          onClick={() => setActiveTab("overview")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "overview"
-              ? "border-purple-600 text-purple-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab("sources")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "sources"
-              ? "border-purple-600 text-purple-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Sources & Content
-        </button>
-        <button
-          onClick={() => setActiveTab("chat")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "chat"
-              ? "border-purple-600 text-purple-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <MessageSquare className="h-4 w-4 inline mr-2" />
-          AI Chat
-        </button>
-      </div>
-
-      {/* Overview Tab */}
-      {activeTab === "overview" && (
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Stats */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Email Sources</span>
-                <Badge>{brain.email_sources.length}</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Documents</span>
-                <Badge>{brain.documents?.length || 0}</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Links</span>
-                <Badge>{brain.links?.length || 0}</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Notes</span>
-                <Badge>{brain.notes?.length || 0}</Badge>
-              </div>
-              <div className="flex items-center justify-between pt-3 border-t">
-                <span className="text-sm text-muted-foreground">Update Schedule</span>
-                <Badge variant="outline">{brain.schedule}</Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Latest Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                Latest Summary
-                <Button size="sm" variant="ghost" onClick={loadSummaries}>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingSummaries ? (
-                <div className="animate-pulse space-y-2">
-                  <div className="h-4 bg-muted rounded w-3/4"></div>
-                  <div className="h-4 bg-muted rounded w-full"></div>
-                  <div className="h-4 bg-muted rounded w-2/3"></div>
-                </div>
-              ) : summaries.length === 0 ? (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    No summaries yet. Summaries will be generated {brain.schedule} based on your email sources.
-                  </p>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="mt-4"
-                    onClick={async () => {
-                      setLoadingSummaries(true);
-                      try {
-                        const res = await fetch(`/api/brain/${id}/summaries`, {
-                          method: 'POST',
-                        });
-                        if (res.ok) {
-                          await loadSummaries();
-                          alert('Summary generated successfully!');
-                        } else {
-                          alert('Failed to generate summary');
-                        }
-                      } catch (err) {
-                        console.error('Generate summary error:', err);
-                        alert('Failed to generate summary');
-                      } finally {
-                        setLoadingSummaries(false);
-                      }
-                    }}
-                  >
-                    Generate Now
-                  </Button>
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-sm">
-                    <p className="text-xs text-muted-foreground mb-2">{summaries[0].date}</p>
-                    <div className="whitespace-pre-wrap text-sm border-l-2 border-purple-600/30 pl-3">
-                      {summaries[0].preview}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => setActiveTab("sources")}>
-                    View All Summaries
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Sources Tab */}
-      {activeTab === "sources" && (
-        <div className="space-y-6">
-          {/* Email Sources */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Mail className="h-4 w-4" />
-                Email Sources ({brain.email_sources.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {brain.email_sources.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No email sources yet. Open an email and click "Add to Brain" to start tracking senders.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {brain.email_sources.map((source, i) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded border hover:bg-muted/50 transition-colors">
-                      <a 
-                        href={`/email?from=${encodeURIComponent(source)}`}
-                        className="text-sm hover:underline flex-1"
-                        title="View emails from this sender"
-                      >
-                        {source}
-                      </a>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeSource(source)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Documents */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Documents ({brain.documents?.length || 0})
-                </span>
-                <Button size="sm" onClick={() => document.getElementById('doc-upload')?.click()}>
-                  <Upload className="h-3.5 w-3.5 mr-1" />
-                  Upload
-                </Button>
-                <input
-                  id="doc-upload"
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt,.md"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    
-                    try {
-                      const res = await fetch(`/api/brain/${id}/documents`, {
-                        method: 'POST',
-                        body: formData,
-                      });
-                      
-                      if (res.ok) {
-                        await loadBrain();
-                        alert('Document uploaded successfully');
-                      } else {
-                        alert('Failed to upload document');
-                      }
-                    } catch (err) {
-                      console.error('Upload failed:', err);
-                      alert('Upload failed');
-                    }
-                    
-                    e.target.value = '';
-                  }}
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {brain.documents && brain.documents.length > 0 ? (
-                <div className="space-y-2">
-                  {brain.documents.map((doc: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between p-2 rounded border">
-                      <div className="flex items-center gap-2 flex-1">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{doc.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {(doc.size / 1024).toFixed(1)} KB • {new Date(doc.uploadedAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No documents yet. Upload PDFs, Word docs, or text files.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Links */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <LinkIcon className="h-4 w-4" />
-                  Saved Links ({brain.links?.length || 0})
-                </span>
-                <Button size="sm" onClick={() => setShowLinkForm(!showLinkForm)}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  Add Link
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {showLinkForm && (
-                <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
-                  <Input
-                    placeholder="URL"
-                    value={newLink.url}
-                    onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Title (optional)"
-                    value={newLink.title}
-                    onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={addLink}>Save</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowLinkForm(false)}>Cancel</Button>
-                  </div>
-                </div>
-              )}
-              
-              {brain.links && brain.links.length > 0 ? (
-                <div className="space-y-2">
-                  {brain.links.map((link: any, i: number) => (
-                    <div key={i} className="flex items-start justify-between p-2 rounded border">
-                      <div className="flex-1">
-                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">
-                          {link.title || link.url}
-                        </a>
-                        <p className="text-xs text-muted-foreground">{new Date(link.saved).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : !showLinkForm && (
-                <p className="text-sm text-muted-foreground">No links yet</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <StickyNote className="h-4 w-4" />
-                  Notes ({brain.notes?.length || 0})
-                </span>
-                <Button size="sm" onClick={() => setShowNoteForm(!showNoteForm)}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  Add Note
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {showNoteForm && (
-                <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
-                  <Textarea
-                    placeholder="Add your note..."
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    rows={4}
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={addNote}>Save</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowNoteForm(false)}>Cancel</Button>
-                  </div>
-                </div>
-              )}
-              
-              {brain.notes && brain.notes.length > 0 ? (
-                <div className="space-y-3">
-                  {brain.notes.map((note: any, i: number) => (
-                    <div key={i} className="p-3 rounded border">
-                      <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                      <p className="text-xs text-muted-foreground mt-2">{new Date(note.date).toLocaleDateString()}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : !showNoteForm && (
-                <p className="text-sm text-muted-foreground">No notes yet</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Chat Tab */}
-      {activeTab === "chat" && (
-        <Card className="h-[600px] flex flex-col">
-          <CardHeader className="border-b">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-purple-600" />
-              AI Chat
-              <Badge variant="outline" className="ml-auto">
-                {brain.email_sources.length} sources • {summaries.length} summaries
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          
-          {/* Chat Messages */}
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Split Layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: AI Chat */}
+        <div className="flex-1 flex flex-col border-r min-w-0">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {chatMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <Brain className="h-12 w-12 text-purple-600 mb-3" />
-                <p className="font-medium mb-1">Ask me anything about {brain.name}</p>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  I have access to all summaries, links, notes, and knowledge from this Brain
+                <Brain className="h-12 w-12 text-purple-600/30 mb-3" />
+                <p className="font-medium mb-1">Chat with {brain.name}</p>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Ask questions about your sources. Use the checkboxes on the right to control which sources the AI reads from.
                 </p>
+                <div className="flex flex-wrap gap-2 mt-4 max-w-md">
+                  {[
+                    "Summarize all the key points",
+                    "Create a step-by-step plan",
+                    "What are the common themes?",
+                    "What's the most important takeaway?",
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setChatInput(suggestion)}
+                      className="text-xs px-3 py-1.5 rounded-full border border-border hover:border-purple-600/50 hover:text-purple-600 transition-colors"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      msg.role === "user"
-                        ? "bg-purple-600 text-white"
-                        : "bg-muted"
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={cn("max-w-[85%] group relative", msg.role === "user" ? "" : "")}>
+                    <div
+                      className={cn(
+                        "rounded-lg p-3 text-sm whitespace-pre-wrap",
+                        msg.role === "user" ? "bg-purple-600 text-white" : "bg-muted"
+                      )}
+                    >
+                      {msg.content}
+                    </div>
+                    {msg.role === "assistant" && msg.content && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <button
+                          onClick={() => copyMessage(msg.content, i)}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground bg-background border rounded-md shadow-sm transition-colors"
+                          title="Copy"
+                        >
+                          {copiedIdx === i ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                          {copiedIdx === i ? "Copied" : "Copy"}
+                        </button>
+                        <button
+                          onClick={() => saveMessageAsNote(msg.content, i)}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground bg-background border rounded-md shadow-sm transition-colors"
+                          title="Save to notes"
+                        >
+                          {savedMsg === i ? <Check className="h-3 w-3 text-green-500" /> : <StickyNote className="h-3 w-3" />}
+                          {savedMsg === i ? "Saved" : "Save to Notes"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
             )}
             {chatLoading && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-lg p-3">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  </div>
+                <div className="bg-muted rounded-lg p-3 flex gap-1">
+                  <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <div className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
             )}
-          </CardContent>
-          
-          {/* Chat Input */}
-          <div className="border-t p-4">
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="border-t p-3 shrink-0">
             <div className="flex gap-2">
               <Input
-                placeholder="Ask a question..."
+                placeholder="Ask about your sources..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && sendChatMessage()}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                 disabled={chatLoading}
+                className="flex-1"
               />
-              <Button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()}>
-                Send
+              <Button onClick={sendMessage} disabled={chatLoading || !chatInput.trim()} size="icon">
+                <Send className="h-4 w-4" />
               </Button>
             </div>
           </div>
-        </Card>
-      )}
+        </div>
 
-      {/* Floating AI Chat Bubble (visible on all tabs) */}
-      {activeTab !== "chat" && (
-        <button
-          onClick={() => setActiveTab("chat")}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110 z-50"
-          title="Open AI Chat"
-        >
-          <MessageSquare className="h-6 w-6" />
-        </button>
+        {/* Right: Sources Panel */}
+        <div className="w-80 lg:w-96 flex flex-col overflow-hidden shrink-0">
+          <div className="p-3 border-b flex items-center justify-between shrink-0">
+            <h2 className="text-sm font-semibold">Sources ({totalSources})</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => document.getElementById("brain-doc-upload")?.click()}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Upload className="h-3.5 w-3.5" />
+              </button>
+              <input
+                id="brain-doc-upload"
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.md"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  await fetch(`/api/brain/${id}/documents`, { method: "POST", body: formData });
+                  e.target.value = "";
+                  loadBrain();
+                }}
+              />
+              {allDocs.length > 0 && (
+                <button
+                  onClick={toggleAll}
+                  className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                >
+                  {selectedDocs.size === allDocs.length ? "Deselect All" : "Select All"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {/* Documents */}
+            {allDocs.map((doc: any, i: number) => (
+              <div
+                key={`doc-${i}`}
+                className={cn(
+                  "flex items-start gap-2 p-2 rounded-lg transition-colors group",
+                  selectedDocs.has(i) ? "bg-purple-600/5" : "hover:bg-muted/50"
+                )}
+              >
+                <button onClick={() => toggleDoc(i)} className="mt-0.5 shrink-0">
+                  {selectedDocs.has(i) ? (
+                    <CheckSquare className="h-4 w-4 text-purple-600" />
+                  ) : (
+                    <Square className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+                <button
+                  className="flex-1 min-w-0 text-left cursor-pointer"
+                  onClick={() => doc.content ? setPreviewDoc(doc) : toggleDoc(i)}
+                >
+                  <p className="text-xs font-medium truncate hover:text-purple-600 transition-colors">{doc.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {(doc.size / 1024).toFixed(1)} KB
+                  </p>
+                </button>
+                <button
+                  onClick={() => deleteDocument(i)}
+                  className="p-1 shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+
+            {/* Links */}
+            {allLinks.length > 0 && (
+              <>
+                <div className="pt-3 pb-1 px-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                    <LinkIcon className="h-3 w-3" /> Links ({allLinks.length})
+                  </p>
+                </div>
+                {allLinks.map((link: any, i: number) => (
+                  <a
+                    key={`link-${i}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <p className="text-xs font-medium text-purple-600 truncate">{link.title || link.url}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{link.url}</p>
+                  </a>
+                ))}
+              </>
+            )}
+
+            {/* Notes */}
+            {allNotes.length > 0 && (
+              <>
+                <div className="pt-3 pb-1 px-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                    <StickyNote className="h-3 w-3" /> Notes ({allNotes.length})
+                  </p>
+                </div>
+                {allNotes.map((note: any, i: number) => (
+                  <div
+                    key={`note-${i}`}
+                    className={cn(
+                      "flex items-start gap-2 p-2 rounded-lg transition-colors",
+                      selectedNotes.has(i) ? "bg-purple-600/5" : "hover:bg-muted/50"
+                    )}
+                  >
+                    <button onClick={() => toggleNote(i)} className="mt-0.5 shrink-0">
+                      {selectedNotes.has(i) ? (
+                        <CheckSquare className="h-4 w-4 text-purple-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setPreviewDoc({ name: `Note — ${new Date(note.date).toLocaleDateString()}`, content: note.content })}
+                      className="flex-1 text-left cursor-pointer min-w-0"
+                    >
+                      <p className="text-xs line-clamp-3 hover:text-purple-600 transition-colors">{note.content}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{new Date(note.date).toLocaleDateString()}</p>
+                    </button>
+                    <button
+                      onClick={() => deleteNote(i)}
+                      className="p-1 shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                      title="Delete note"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {totalSources === 0 && (
+              <div className="text-center py-8">
+                <FileText className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">No sources yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* Web Search + Add source */}
+          <div className="border-t p-2 shrink-0 space-y-2">
+            {/* Web Search */}
+            <div className="flex gap-1">
+              <Input
+                placeholder="Search the web..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && searchWeb()}
+                className="h-8 text-xs flex-1"
+              />
+              <Button size="sm" className="h-8 px-2" onClick={searchWeb} disabled={searchingWeb}>
+                {searchingWeb ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              </Button>
+            </div>
+            {searchResults.length > 0 && (
+              <div className="max-h-48 overflow-y-auto space-y-1 bg-muted/30 rounded-lg p-1.5">
+                {searchResults.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1.5 p-1.5 rounded hover:bg-muted/50">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{r.title}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{r.url}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-6 px-2 text-[10px] shrink-0"
+                      onClick={() => addUrlToBrain(r.url, r.title)}
+                      disabled={addingUrl === r.url}
+                    >
+                      {addingUrl === r.url ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t p-2 shrink-0 space-y-2">
+            {showAddLink && (
+              <div className="space-y-1.5 p-2 bg-muted/30 rounded-lg">
+                <Input placeholder="URL" value={newLink.url} onChange={(e) => setNewLink({ ...newLink, url: e.target.value })} className="h-8 text-xs" />
+                <Input placeholder="Title" value={newLink.title} onChange={(e) => setNewLink({ ...newLink, title: e.target.value })} className="h-8 text-xs" />
+                <div className="flex gap-1">
+                  <Button size="sm" className="h-7 text-xs" onClick={addLink}>Save</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAddLink(false)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            {showAddNote && (
+              <div className="space-y-1.5 p-2 bg-muted/30 rounded-lg">
+                <textarea
+                  placeholder="Add note..."
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  rows={3}
+                  className="w-full bg-background border border-input rounded px-2 py-1.5 text-xs resize-none"
+                />
+                <div className="flex gap-1">
+                  <Button size="sm" className="h-7 text-xs" onClick={addNote}>Save</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAddNote(false)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+            {!showAddLink && !showAddNote && (
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" className="flex-1 h-8 text-xs" onClick={() => setShowAddLink(true)}>
+                  <LinkIcon className="h-3 w-3 mr-1" /> Add Link
+                </Button>
+                <Button size="sm" variant="ghost" className="flex-1 h-8 text-xs" onClick={() => setShowAddNote(true)}>
+                  <StickyNote className="h-3 w-3 mr-1" /> Add Note
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Document Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setPreviewDoc(null)}>
+          <div
+            className="bg-background rounded-xl border shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-4 w-4 text-purple-600 shrink-0" />
+                <h3 className="font-medium text-sm truncate">{previewDoc.name}</h3>
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => setPreviewDoc(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{previewDoc.content}</pre>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,73 @@
+# Maintain explicit aliases here. The matcher also derives keywords from
+# project names, project ids, partner names, and partner slugs.
+
+settings:
+  derive_project_keywords_from_data: true
+  derive_partner_keywords_from_data: true
+
+projects:
+  - project_id: echo-credentialing-credentialing
+    keywords:
+      - echo credentialing
+      - credentialing
+      - echo care
+      - echo clinic
+  - project_id: chip-smith-hammersmith-hammersmith
+    keywords:
+      - chip smith
+      - chip smith training
+      - hammersmith sports
+      - chip's gym
+  - project_id: dan-bauman-legacy-foundations-builder
+    keywords:
+      - legacy foundations builder
+      - legacy lifestyle
+      - revify
+      - lumex
+      - oram
+  - project_id: med-dream-weaver-med-dream-weaver
+    keywords:
+      - med dream weaver
+      - medsource
+      - von marie
+      - vonmarie
+  - project_id: kd-foundation-kdfoundation
+    keywords:
+      - kd foundation
+      - kooper davis foundation
+      - kdfoundation
+
+partners:
+  - partner_id: echo
+    keywords:
+      - echo
+      - echo network
+      - echo healthcare partners
+      - echohcp
+  - partner_id: hammersmith
+    keywords:
+      - hammersmith
+      - chip smith
+      - tripp smith
+      - hammersmith sports
+  - partner_id: kd-foundation
+    keywords:
+      - kd foundation
+      - kooper davis foundation
+      - freddie
+      - matt davis
+  - partner_id: ted-associates
+    keywords:
+      - ted associates
+      - ted talks automation
+  - partner_id: medsource
+    keywords:
+      - medsource
+      - von marie
+      - vonmarie
+  - partner_id: legacy-capital
+    keywords:
+      - legacy lifestyle
+      - dan bauman
+      - revify
+      - lumex

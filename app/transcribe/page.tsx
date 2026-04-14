@@ -27,7 +27,7 @@ export default function TranscribePage() {
 
   async function transcribeVideo() {
     if (!url.trim()) {
-      toast.error("Please enter a YouTube URL");
+      toast.error("Please enter a YouTube or Facebook video URL");
       return;
     }
 
@@ -130,10 +130,10 @@ export default function TranscribePage() {
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Video className="h-8 w-8" />
-          YouTube Transcriber
+          Video Transcriber
         </h1>
         <p className="text-muted-foreground mt-1">
-          Transcribe YouTube videos with AI summaries
+          Transcribe YouTube and Facebook videos with AI summaries
         </p>
       </div>
 
@@ -145,7 +145,7 @@ export default function TranscribePage() {
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <Input
-              placeholder="https://youtube.com/watch?v=..."
+              placeholder="Paste YouTube or Facebook video URL..."
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && transcribeVideo()}
@@ -164,7 +164,7 @@ export default function TranscribePage() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Paste a YouTube URL to transcribe. Processing time depends on video length.
+            Paste a YouTube or Facebook video URL to transcribe. Processing time depends on video length.
           </p>
         </CardContent>
       </Card>

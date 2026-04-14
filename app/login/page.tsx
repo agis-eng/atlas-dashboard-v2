@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useActionState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get("from") ?? "/";
 
@@ -35,8 +34,8 @@ function LoginForm() {
         return;
       }
 
-      router.push(from);
-      router.refresh();
+      window.location.assign(from);
+      return;
     } catch {
       setError("Network error — please try again");
     } finally {

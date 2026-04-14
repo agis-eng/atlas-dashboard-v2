@@ -56,6 +56,20 @@ interface Email {
 }
 
 type ViewTab = "digest" | "all";
+type DigestBucket = "topOfMind" | "needsReply" | "newsletters" | "spam" | "fyi" | "brainCandidates" | "unread";
+type BulkPreviewAction = "archive" | "delete" | "show" | "categorize";
+
+interface CommandPreview {
+  mode: "command" | "manual";
+  action: BulkPreviewAction;
+  label: string;
+  summary: string;
+  description: string;
+  emails: Email[];
+  applyLabel: string;
+  category?: "topOfMind" | "fyi" | "newsletter" | "spam";
+  sender?: string;
+}
 
 export default function EmailPage() {
   const [emails, setEmails] = useState<Email[]>([]);
@@ -78,6 +92,11 @@ export default function EmailPage() {
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
+  const [commandInput, setCommandInput] = useState("");
+  const [commandPreview, setCommandPreview] = useState<CommandPreview | null>(null);
+  const [commandError, setCommandError] = useState("");
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     // Load categorization rules and brains
@@ -119,6 +138,20 @@ export default function EmailPage() {
       }
     }
     loadEmails();
+  }, []);
+
+  useEffect(() => {
+    const updateViewport = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setActiveTab((current) => (current === "digest" ? "all" : current));
+      }
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   async function loadCategorizationRules() {
@@ -165,10 +198,17 @@ export default function EmailPage() {
   }
 
   function updateEmailCache(nextEmails: Email[]) {
-    sessionStorage.setItem('emails-cache', JSON.stringify({
-      emails: nextEmails,
-      timestamp: Date.now()
-    }));
+    try {
+      sessionStorage.setItem('emails-cache', JSON.stringify({
+        emails: nextEmails,
+        timestamp: Date.now()
+      }));
+    } catch (err) {
+      console.warn('emails-cache write skipped:', err);
+      try {
+        sessionStorage.removeItem('emails-cache');
+      } catch {}
+    }
   }
 
   function getSelectedIdsForSection(sectionEmails: Email[]) {
@@ -188,10 +228,7 @@ export default function EmailPage() {
       setEmails(updatedEmails);
       
       // Update cache
-      sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: updatedEmails,
-        timestamp: Date.now()
-      }));
+      updateEmailCache(updatedEmails);
       
       // Mark as read on server
       fetch("/api/email-action", {
@@ -208,7 +245,7 @@ export default function EmailPage() {
     if (!selectedEmail) return;
     
     try {
-      await fetch(`/api/brain/${brainId}/sources`, {
+      const res = await fetch(`/api/brain/${brainId}/sources`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -216,6 +253,11 @@ export default function EmailPage() {
           sender: normalizeSender(selectedEmail.from) 
         }),
       });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to add to brain");
+      }
       
       setShowBrainSelector(false);
       sessionStorage.removeItem('emails-cache');
@@ -231,12 +273,12 @@ export default function EmailPage() {
       setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => document.body.removeChild(toast), 300);
+        setTimeout(() => document.body.contains(toast) && document.body.removeChild(toast), 300);
       }, 2000);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to add to brain:", err);
-      alert("Failed to add to brain");
+      showToast(err?.message || "Failed to add to brain", "error");
     }
   }
 
@@ -288,10 +330,7 @@ export default function EmailPage() {
       setEmails(emails);
       
       // Cache in sessionStorage
-      sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: data.emails || [],
-        timestamp: Date.now()
-      }));
+      updateEmailCache(data.emails || []);
     } catch (err: any) {
       console.error("Failed to load emails:", err);
       // Show toast instead of alert
@@ -327,74 +366,74 @@ export default function EmailPage() {
     setSelected(newSelected);
   }
 
-  async function archiveSelected() {
-    const ids = Array.from(selected);
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: ids, action: "archive" }),
-      });
-      const newEmails = emails.filter((e) => !selected.has(e.id));
-      setEmails(newEmails);
-      setSelected(new Set());
-      updateEmailCache(newEmails);
-      showToast(`Archived ${ids.length} email${ids.length === 1 ? '' : 's'}`);
-    } catch (err) {
-      console.error("Archive failed:", err);
-      showToast("Failed to archive emails", "error");
+  async function performEmailAction(
+    emailIds: string[],
+    action: "delete" | "archive" | "mark-read" | "mark-unread" | "move",
+    targetFolder?: string
+  ) {
+    const res = await fetch("/api/email-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailIds, action, targetFolder }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `Failed to ${action} emails`);
     }
+
+    return data;
+  }
+
+  function stageBulkPreview(action: "archive" | "delete", previewEmails: Email[], label: string, description: string) {
+    if (previewEmails.length === 0) {
+      showToast("No matching emails for that action", "error");
+      return;
+    }
+
+    setCommandError("");
+    setCommandPreview({
+      mode: "manual",
+      action,
+      label,
+      summary: `${action === "archive" ? "Archive" : "Delete"} ${previewEmails.length} email${previewEmails.length === 1 ? "" : "s"}`,
+      description,
+      emails: previewEmails,
+      applyLabel: action === "archive" ? "Confirm archive" : "Confirm delete",
+    });
+  }
+
+  async function archiveSelected() {
+    stageBulkPreview(
+      "archive",
+      emails.filter((email) => selected.has(email.id)),
+      "Bulk archive",
+      "Previewing the currently selected emails before archiving them."
+    );
   }
 
   async function deleteSelected() {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: ids, action: "delete" }),
-      });
-      const newEmails = emails.filter((e) => !selected.has(e.id));
-      setEmails(newEmails);
-      setSelected(new Set());
-      updateEmailCache(newEmails);
-      showToast(`Deleted ${ids.length} email${ids.length === 1 ? '' : 's'}`);
-    } catch (err) {
-      console.error("Delete failed:", err);
-      showToast("Failed to delete emails", "error");
-    }
+    stageBulkPreview(
+      "delete",
+      emails.filter((email) => selected.has(email.id)),
+      "Bulk delete",
+      "Previewing the currently selected emails before deleting them."
+    );
   }
 
   async function deleteSectionEmails(sectionEmails: Email[]) {
-    const ids = getSelectedIdsForSection(sectionEmails);
-    if (ids.length === 0) return;
-    try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: ids, action: "delete" }),
-      });
-      const idSet = new Set(ids);
-      const newEmails = emails.filter((e) => !idSet.has(e.id));
-      const newSelected = new Set(Array.from(selected).filter((id) => !idSet.has(id)));
-      setEmails(newEmails);
-      setSelected(newSelected);
-      updateEmailCache(newEmails);
-      showToast(`Deleted ${ids.length} email${ids.length === 1 ? '' : 's'}`);
-    } catch (err) {
-      console.error("Section delete failed:", err);
-      showToast("Failed to delete emails", "error");
-    }
+    const previewEmails = sectionEmails.filter((email) => selected.has(email.id));
+    stageBulkPreview(
+      "delete",
+      previewEmails,
+      "Section delete",
+      "Previewing the selected emails in this digest section before deleting them."
+    );
   }
 
   async function handleDeleteEmail(id: string) {
     try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: [id], action: "delete" }),
-      });
+      await performEmailAction([id], "delete");
       const newEmails = emails.filter(e => e.id !== id);
       setEmails(newEmails);
       updateEmailCache(newEmails);
@@ -407,11 +446,7 @@ export default function EmailPage() {
 
   async function handleArchiveEmail(id: string) {
     try {
-      await fetch("/api/email-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailIds: [id], action: "archive" }),
-      });
+      await performEmailAction([id], "archive");
       const newEmails = emails.filter(e => e.id !== id);
       setEmails(newEmails);
       updateEmailCache(newEmails);
@@ -489,12 +524,23 @@ export default function EmailPage() {
 
   async function handleCategorize(sender: string, category: string) {
     try {
-      await fetch("/api/email/categorize", {
+      const res = await fetch("/api/email/categorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sender, category }),
       });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Could not save categorization rule");
+      }
       
+      if (data?.rules) {
+        setCategorizationRules(data.rules);
+      } else {
+        await loadCategorizationRules();
+      }
+
       // Show toast notification
       const categoryNames: Record<string, string> = {
         topOfMind: 'Top of Mind',
@@ -519,33 +565,17 @@ export default function EmailPage() {
       setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => document.body.removeChild(toast), 300);
+        setTimeout(() => document.body.contains(toast) && document.body.removeChild(toast), 300);
       }, 4000);
       
       // Clear cache to force refresh with new categorization
       sessionStorage.removeItem('emails-cache');
-      await loadCategorizationRules();
       await loadEmails(true);
-    } catch (err) {
+      return true;
+    } catch (err: any) {
       console.error("Categorize failed:", err);
-      // Show toast instead of alert
-      const errorToast = document.createElement('div');
-      errorToast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg z-50';
-      errorToast.innerHTML = `
-        <div class="flex items-start gap-2">
-          <span class="text-lg">⚠️</span>
-          <div>
-            <div class="font-medium">Failed to categorize</div>
-            <div class="text-sm opacity-90 mt-1">Could not save categorization rule</div>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(errorToast);
-      setTimeout(() => {
-        errorToast.style.opacity = '0';
-        errorToast.style.transition = 'opacity 0.3s';
-        setTimeout(() => document.body.removeChild(errorToast), 300);
-      }, 4000);
+      showToast(err?.message || "Could not save categorization rule", "error");
+      return false;
     }
   }
 
@@ -582,10 +612,7 @@ export default function EmailPage() {
       setEmails(newEmails);
       setSelected(new Set());
       setSelectedFolder("");
-      sessionStorage.setItem('emails-cache', JSON.stringify({
-        emails: newEmails,
-        timestamp: Date.now()
-      }));
+      updateEmailCache(newEmails);
     } catch (err) {
       console.error("Move failed:", err);
       alert("Failed to move emails");
@@ -662,76 +689,341 @@ export default function EmailPage() {
     return sectionEmails.length > 0 && sectionEmails.every((email) => selected.has(email.id));
   }
 
-  // Helper to check if email sender matches any rule
   const matchesSender = (email: Email, senders: string[]) => {
     const normalizedEmailSender = normalizeSender(email.from);
-    return senders.some(sender => normalizeSender(sender) === normalizedEmailSender);
+    return senders.some((sender) => normalizeSender(sender) === normalizedEmailSender);
   };
 
-  // Categorize emails for digest view
-  const categorized = {
-    topOfMind: filtered.filter(e => 
-      matchesSender(e, categorizationRules.topOfMind || []) ||
-      e.subject.toLowerCase().includes("urgent") ||
-      e.subject.toLowerCase().includes("action required")
-    ),
-    fyi: filtered.filter(e => {
-      // Skip if already categorized elsewhere
-      if (matchesSender(e, categorizationRules.topOfMind || [])) return false;
-      if (matchesSender(e, categorizationRules.newsletter || [])) return false;
-      if (matchesSender(e, categorizationRules.spam || [])) return false;
-      
-      // Check if explicitly marked as FYI
-      if (matchesSender(e, categorizationRules.fyi || [])) return true;
-      
-      // Default FYI criteria
-      return !e.subject.toLowerCase().includes("urgent") &&
-             !e.subject.toLowerCase().includes("newsletter") &&
-             !e.from.includes("newsletter@") &&
-             !e.from.includes("noreply@");
+  const brainSenders = useMemo(() => {
+    const sources = new Set<string>();
+    brains.forEach((brain) => {
+      const emailSources = Array.isArray(brain?.email_sources) ? brain.email_sources : [];
+      emailSources.forEach((source: string) => sources.add(normalizeSender(source)));
+    });
+    return sources;
+  }, [brains]);
+
+  const senderFrequency = useMemo(() => {
+    const counts = new Map<string, number>();
+    filtered.forEach((email) => {
+      const sender = normalizeSender(email.from);
+      counts.set(sender, (counts.get(sender) || 0) + 1);
+    });
+    return counts;
+  }, [filtered]);
+
+  const emailSignals = useMemo(() => {
+    return filtered.map((email) => {
+      const sender = normalizeSender(email.from);
+      const subject = email.subject.toLowerCase();
+      const from = email.from.toLowerCase();
+      const text = `${email.subject} ${email.snippet} ${email.body.slice(0, 280)}`.toLowerCase();
+      const isNewsletter =
+        matchesSender(email, categorizationRules.newsletter || []) ||
+        subject.includes("newsletter") ||
+        subject.includes("digest") ||
+        from.includes("newsletter@") ||
+        from.includes("noreply@") ||
+        from.includes("no-reply@") ||
+        text.includes("unsubscribe");
+      const isSpam =
+        matchesSender(email, categorizationRules.spam || []) ||
+        subject.includes("spam") ||
+        from.includes("spam@") ||
+        text.includes("you have won") ||
+        text.includes("claim your prize");
+      const isTopOfMind =
+        !isSpam &&
+        (matchesSender(email, categorizationRules.topOfMind || []) ||
+          subject.includes("urgent") ||
+          subject.includes("action required") ||
+          subject.includes("asap") ||
+          text.includes("please respond") ||
+          text.includes("need your input"));
+      const isNeedsReply =
+        !isSpam &&
+        !isNewsletter &&
+        !email.read &&
+        (isTopOfMind ||
+          subject.endsWith("?") ||
+          text.includes("can you") ||
+          text.includes("could you") ||
+          text.includes("let me know") ||
+          text.includes("reply back") ||
+          text.includes("what do you think"));
+      const isBrainCandidate =
+        !isSpam &&
+        !isNewsletter &&
+        !brainSenders.has(sender) &&
+        (isTopOfMind || isNeedsReply || (senderFrequency.get(sender) || 0) > 1);
+      const isFYI =
+        !isTopOfMind &&
+        !isNeedsReply &&
+        !isNewsletter &&
+        !isSpam;
+
+      return {
+        email,
+        isTopOfMind,
+        isNeedsReply,
+        isNewsletter,
+        isSpam,
+        isFYI,
+        isBrainCandidate,
+        isUnread: !email.read,
+      };
+    });
+  }, [brainSenders, categorizationRules, filtered, senderFrequency]);
+
+  const categorized = useMemo(
+    () => ({
+      topOfMind: emailSignals.filter((item) => item.isTopOfMind).map((item) => item.email),
+      needsReply: emailSignals.filter((item) => item.isNeedsReply).map((item) => item.email),
+      fyi: emailSignals.filter((item) => item.isFYI).map((item) => item.email),
+      newsletters: emailSignals.filter((item) => item.isNewsletter).map((item) => item.email),
+      spam: emailSignals.filter((item) => item.isSpam).map((item) => item.email),
+      brainCandidates: emailSignals.filter((item) => item.isBrainCandidate).map((item) => item.email),
+      unread: emailSignals.filter((item) => item.isUnread).map((item) => item.email),
     }),
-    newsletters: filtered.filter(e =>
-      matchesSender(e, categorizationRules.newsletter || []) ||
-      e.subject.toLowerCase().includes("newsletter") ||
-      e.from.includes("newsletter@") ||
-      e.from.includes("noreply@")
-    ),
-    spam: filtered.filter(e =>
-      matchesSender(e, categorizationRules.spam || []) ||
-      e.subject.toLowerCase().includes("spam") ||
-      e.from.includes("spam@")
-    ),
-  };
+    [emailSignals]
+  );
 
-  // Group by time for digest
-  const now = new Date();
-  const morning = filtered.filter(e => {
-    const d = new Date(e.date);
-    return d.getHours() < 12;
-  });
-  const afternoon = filtered.filter(e => {
-    const d = new Date(e.date);
-    return d.getHours() >= 12 && d.getHours() < 17;
-  });
-  const evening = filtered.filter(e => {
-    const d = new Date(e.date);
-    return d.getHours() >= 17;
-  });
+  const digestStats = useMemo(
+    () => [
+      {
+        key: "topOfMind" as DigestBucket,
+        label: "Top of mind",
+        count: categorized.topOfMind.length,
+        tone: "border-orange-500/30 bg-orange-500/10 text-orange-200",
+        hint: "Likely worth opening first.",
+      },
+      {
+        key: "needsReply" as DigestBucket,
+        label: "Needs reply",
+        count: categorized.needsReply.length,
+        tone: "border-blue-500/30 bg-blue-500/10 text-blue-200",
+        hint: "Unread emails with reply signals.",
+      },
+      {
+        key: "unread" as DigestBucket,
+        label: "Unread",
+        count: categorized.unread.length,
+        tone: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+        hint: "Still untouched in this inbox view.",
+      },
+      {
+        key: "newsletters" as DigestBucket,
+        label: "Newsletters",
+        count: categorized.newsletters.length,
+        tone: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+        hint: "Good archive candidates.",
+      },
+      {
+        key: "spam" as DigestBucket,
+        label: "Likely spam",
+        count: categorized.spam.length,
+        tone: "border-red-500/30 bg-red-500/10 text-red-200",
+        hint: "Safe to batch review first.",
+      },
+      {
+        key: "brainCandidates" as DigestBucket,
+        label: "Brain candidates",
+        count: categorized.brainCandidates.length,
+        tone: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200",
+        hint: "Recurring senders not in a Brain yet.",
+      },
+    ],
+    [categorized]
+  );
+
+  function previewEmailsForBucket(bucket: DigestBucket) {
+    switch (bucket) {
+      case "topOfMind":
+        return categorized.topOfMind;
+      case "needsReply":
+        return categorized.needsReply;
+      case "newsletters":
+        return categorized.newsletters;
+      case "spam":
+        return categorized.spam;
+      case "brainCandidates":
+        return categorized.brainCandidates;
+      case "unread":
+        return categorized.unread;
+      case "fyi":
+      default:
+        return categorized.fyi;
+    }
+  }
+
+  function parseBucket(input: string): DigestBucket | null {
+    const normalized = input.trim().toLowerCase();
+    const bucketMap: Array<{ keys: string[]; bucket: DigestBucket }> = [
+      { keys: ["top of mind", "top-of-mind", "priority"], bucket: "topOfMind" },
+      { keys: ["needs reply", "need reply", "reply"], bucket: "needsReply" },
+      { keys: ["newsletters", "newsletter"], bucket: "newsletters" },
+      { keys: ["spam", "likely spam"], bucket: "spam" },
+      { keys: ["brain candidates", "brain"], bucket: "brainCandidates" },
+      { keys: ["unread"], bucket: "unread" },
+      { keys: ["fyi"], bucket: "fyi" },
+    ];
+
+    const match = bucketMap.find(({ keys }) => keys.some((key) => normalized === key));
+    return match?.bucket || null;
+  }
+
+  function buildCommandPreview(input: string): CommandPreview {
+    const command = input.trim();
+    const normalized = command.toLowerCase();
+
+    if (!command) {
+      throw new Error("Enter a command to preview it.");
+    }
+
+    const actionMatch = normalized.match(/^(archive|delete|show)\s+(.+)$/);
+    if (actionMatch) {
+      const [, verb, rawTarget] = actionMatch;
+      const bucket = parseBucket(rawTarget);
+      if (!bucket) {
+        throw new Error("Try a known target like newsletters, spam, needs reply, unread, or brain candidates.");
+      }
+
+      const matchedEmails = previewEmailsForBucket(bucket);
+      if (matchedEmails.length === 0) {
+        throw new Error(`No emails matched "${rawTarget}" right now.`);
+      }
+
+      const labelMap: Record<DigestBucket, string> = {
+        topOfMind: "top of mind",
+        needsReply: "needs reply",
+        newsletters: "newsletters",
+        spam: "likely spam",
+        brainCandidates: "brain candidates",
+        unread: "unread",
+        fyi: "FYI",
+      };
+
+      if (verb === "show") {
+        return {
+          mode: "command",
+          action: "show",
+          label: `Show ${labelMap[bucket]}`,
+          summary: `Focus ${matchedEmails.length} ${labelMap[bucket]} email${matchedEmails.length === 1 ? "" : "s"}`,
+          description: "This will switch to the full inbox list and preselect the matched emails for manual review.",
+          emails: matchedEmails,
+          applyLabel: "Open result set",
+        };
+      }
+
+      return {
+        mode: "command",
+        action: verb as "archive" | "delete",
+        label: `${verb[0].toUpperCase()}${verb.slice(1)} ${labelMap[bucket]}`,
+        summary: `${verb === "archive" ? "Archive" : "Delete"} ${matchedEmails.length} ${labelMap[bucket]} email${matchedEmails.length === 1 ? "" : "s"}`,
+        description: "Preview-first bulk action. Nothing happens until you confirm.",
+        emails: matchedEmails,
+        applyLabel: `Confirm ${verb}`,
+      };
+    }
+
+    const categorizeMatch = command.match(/^categorize(?:\s+sender)?(?:\s+(.+?))?\s+as\s+(top of mind|topofmind|fyi|newsletter|spam)$/i);
+    if (categorizeMatch) {
+      const [, rawSender, rawCategory] = categorizeMatch;
+      const category = rawCategory.toLowerCase() === "top of mind" || rawCategory.toLowerCase() === "topofmind"
+        ? "topOfMind"
+        : rawCategory.toLowerCase();
+      const sender = rawSender?.trim() || selectedEmail?.from;
+
+      if (!sender) {
+        throw new Error("Open an email first or specify the sender in the command.");
+      }
+
+      const senderMatches = filtered.filter((email) => normalizeSender(email.from) === normalizeSender(sender));
+
+      return {
+        mode: "command",
+        action: "categorize",
+        label: `Categorize ${sender}`,
+        summary: `Save ${senderMatches.length > 0 ? `${senderMatches.length} matching email${senderMatches.length === 1 ? "" : "s"} and ` : ""}future mail from this sender as ${rawCategory}`,
+        description: "This saves a sender rule and refreshes the digest with the new categorization.",
+        emails: senderMatches,
+        applyLabel: "Save sender rule",
+        category: category as "topOfMind" | "fyi" | "newsletter" | "spam",
+        sender,
+      };
+    }
+
+    throw new Error("Command not recognized. Try 'archive newsletters', 'delete spam', 'show needs reply', or 'categorize sender as newsletter'.");
+  }
+
+  function handleCommandPreview() {
+    try {
+      const preview = buildCommandPreview(commandInput);
+      setCommandPreview(preview);
+      setCommandError("");
+    } catch (err: any) {
+      setCommandPreview(null);
+      setCommandError(err?.message || "Could not preview that command.");
+    }
+  }
+
+  async function executeCommandPreview() {
+    if (!commandPreview) return;
+
+    setCommandBusy(true);
+    const ids = commandPreview.emails.map((email) => email.id);
+
+    try {
+      if (commandPreview.action === "show") {
+        setActiveTab("all");
+        setSelected(new Set(ids));
+        showToast(`Selected ${ids.length} email${ids.length === 1 ? "" : "s"} for review`);
+      } else if (commandPreview.action === "categorize" && commandPreview.sender && commandPreview.category) {
+        const saved = await handleCategorize(commandPreview.sender, commandPreview.category);
+        if (!saved) {
+          return;
+        }
+      } else if (commandPreview.action === "archive" || commandPreview.action === "delete") {
+        await performEmailAction(ids, commandPreview.action);
+        const idSet = new Set(ids);
+        const nextEmails = emails.filter((email) => !idSet.has(email.id));
+        const nextSelected = new Set(Array.from(selected).filter((id) => !idSet.has(id)));
+        setEmails(nextEmails);
+        setSelected(nextSelected);
+        if (selectedEmail && idSet.has(selectedEmail.id)) {
+          setSelectedEmail(null);
+        }
+        updateEmailCache(nextEmails);
+        showToast(
+          `${commandPreview.action === "archive" ? "Archived" : "Deleted"} ${ids.length} email${ids.length === 1 ? "" : "s"}`
+        );
+      }
+
+      setCommandInput("");
+      setCommandPreview(null);
+      setCommandError("");
+    } catch (err: any) {
+      console.error("Command preview execute failed:", err);
+      showToast(err?.message || "Failed to run command", "error");
+    } finally {
+      setCommandBusy(false);
+    }
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="px-2 py-3 sm:p-6 sm:max-w-7xl sm:mx-auto space-y-3 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Mail className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+            <Mail className="h-6 w-6 sm:h-8 sm:w-8" />
             Email
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {emails.length} emails loaded
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => openCompose("new")}>
             <Plus className="h-4 w-4 mr-2" />
             Compose
@@ -755,10 +1047,148 @@ export default function EmailPage() {
         />
       </div>
 
+      <div className="hidden md:grid gap-4 xl:grid-cols-[1.4fr,1fr]">
+        <Card className="border-border/60 bg-zinc-950 text-zinc-50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-emerald-300" />
+                Digest Overview
+              </CardTitle>
+              <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
+                {filtered.length} in view
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {digestStats.map((stat) => (
+                <button
+                  key={stat.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("all");
+                    setSelected(new Set(previewEmailsForBucket(stat.key).map((email) => email.id)));
+                  }}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors hover:bg-white/5",
+                    stat.tone
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-white">{stat.label}</span>
+                    <span className="text-2xl font-semibold text-white">{stat.count}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-300">{stat.hint}</p>
+                </button>
+              ))}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
+                <span className="font-medium text-zinc-100">Current read on the inbox:</span>
+                <span>{categorized.topOfMind.length} top-of-mind</span>
+                <span>•</span>
+                <span>{categorized.needsReply.length} likely replies</span>
+                <span>•</span>
+                <span>{categorized.newsletters.length} newsletter sweeps</span>
+                <span>•</span>
+                <span>{categorized.brainCandidates.length} Brain candidates</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              Inbox Command Center
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                value={commandInput}
+                onChange={(e) => setCommandInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleCommandPreview();
+                  }
+                }}
+                placeholder="archive newsletters"
+                className="font-mono text-sm"
+              />
+              <Button onClick={handleCommandPreview}>Preview</Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "archive newsletters",
+                "delete spam",
+                "show needs reply",
+                "categorize sender as newsletter",
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => {
+                    setCommandInput(suggestion);
+                    setCommandError("");
+                  }}
+                  className="rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+            {commandError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                {commandError}
+              </div>
+            )}
+            {commandPreview && (
+              <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{commandPreview.label}</p>
+                    <p className="text-sm text-muted-foreground">{commandPreview.summary}</p>
+                  </div>
+                  <Badge variant="secondary">{commandPreview.emails.length}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{commandPreview.description}</p>
+                {commandPreview.emails.length > 0 && (
+                  <div className="space-y-2">
+                    {commandPreview.emails.slice(0, 3).map((email) => (
+                      <div key={email.id} className="rounded-lg border bg-background px-3 py-2">
+                        <p className="text-sm font-medium truncate">{email.subject}</p>
+                        <p className="text-xs text-muted-foreground truncate">{email.from}</p>
+                      </div>
+                    ))}
+                    {commandPreview.emails.length > 3 && (
+                      <p className="text-xs text-muted-foreground">
+                        +{commandPreview.emails.length - 3} more email{commandPreview.emails.length - 3 === 1 ? "" : "s"}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button onClick={executeCommandPreview} disabled={commandBusy}>
+                    {commandBusy ? "Working..." : commandPreview.applyLabel}
+                  </Button>
+                  <Button variant="outline" onClick={() => setCommandPreview(null)} disabled={commandBusy}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Bulk Actions */}
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 p-3 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selected.size} selected</span>
+          <span className="text-xs text-muted-foreground">Bulk archive/delete now open a confirm preview first.</span>
           <Button size="sm" variant="ghost" onClick={markAsRead}>
             <Check className="h-4 w-4 mr-2" />
             Mark Read
@@ -801,7 +1231,7 @@ export default function EmailPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ViewTab)}>
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:inline-flex">
           <TabsTrigger value="digest">
             <BookOpen className="h-4 w-4 mr-2" />
             Digest
@@ -817,13 +1247,13 @@ export default function EmailPage() {
           {/* Top of Mind */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Star className="h-4 w-4 text-orange-500" />
                   Top of Mind
                   <Badge variant="secondary">{categorized.topOfMind.length}</Badge>
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {sectionSelectedCount(categorized.topOfMind) > 0 && (
                     <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.topOfMind)}>
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -859,16 +1289,71 @@ export default function EmailPage() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Reply className="h-4 w-4 text-blue-500" />
+                  Needs Reply
+                  <Badge variant="secondary">{categorized.needsReply.length}</Badge>
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  {sectionSelectedCount(categorized.needsReply) > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        stageBulkPreview(
+                          "archive",
+                          categorized.needsReply.filter((email) => selected.has(email.id)),
+                          "Reply queue archive",
+                          "Previewing the selected reply-queue emails before archiving them."
+                        )
+                      }
+                    >
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archive selected ({sectionSelectedCount(categorized.needsReply)})
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={sectionFullySelected(categorized.needsReply)}
+                      onChange={() => toggleSectionSelection(categorized.needsReply)}
+                    />
+                    Check all emails
+                  </label>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {categorized.needsReply.length === 0 && (
+                <p className="text-sm text-muted-foreground">No reply queue right now</p>
+              )}
+              {categorized.needsReply.map((email) => (
+                <EmailRow
+                  key={email.id}
+                  email={email}
+                  selected={selected.has(email.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={handleOpenEmail}
+                  onDelete={handleDeleteEmail}
+                  onArchive={handleArchiveEmail}
+                />
+              ))}
+            </CardContent>
+          </Card>
+
           {/* FYI */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Inbox className="h-4 w-4 text-blue-500" />
                   FYI
                   <Badge variant="secondary">{categorized.fyi.length}</Badge>
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {sectionSelectedCount(categorized.fyi) > 0 && (
                     <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.fyi)}>
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -907,13 +1392,13 @@ export default function EmailPage() {
           {/* Newsletters */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4 text-gray-500" />
                   Newsletters
                   <Badge variant="secondary">{categorized.newsletters.length}</Badge>
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {sectionSelectedCount(categorized.newsletters) > 0 && (
                     <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.newsletters)}>
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -952,13 +1437,13 @@ export default function EmailPage() {
           {/* Spam */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Trash2 className="h-4 w-4 text-red-500" />
                   Spam
                   <Badge variant="secondary">{categorized.spam.length}</Badge>
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {sectionSelectedCount(categorized.spam) > 0 && (
                     <Button size="sm" variant="destructive" onClick={() => deleteSectionEmails(categorized.spam)}>
                       <Trash2 className="h-4 w-4 mr-2" />
@@ -1008,8 +1493,8 @@ export default function EmailPage() {
                 {filtered.map((email) => (
                   <div
                     key={email.id}
-                    className="flex items-start gap-3 p-4 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedEmail(email)}
+                    className="flex items-start gap-3 p-3 sm:p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() => handleOpenEmail(email)}
                   >
                     <input
                       type="checkbox"
@@ -1030,7 +1515,7 @@ export default function EmailPage() {
                       <p className="text-sm text-muted-foreground truncate">{email.from}</p>
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{email.snippet}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right hidden sm:block">
                       <span className="text-sm text-muted-foreground whitespace-nowrap">
                         {new Date(email.date).toLocaleString()}
                       </span>
@@ -1046,16 +1531,16 @@ export default function EmailPage() {
       {/* Email Detail Modal */}
       {selectedEmail && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-0 sm:p-4"
           onClick={() => setSelectedEmail(null)}
         >
           <div
-            className="bg-background rounded-lg max-w-3xl w-full max-h-[90vh] overflow-auto"
+            className="bg-background w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-3xl overflow-auto rounded-none sm:rounded-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b sticky top-0 bg-background">
-              <div className="flex items-start justify-between mb-4">
-                <h2 className="text-xl font-semibold">{selectedEmail.subject}</h2>
+            <div className="p-4 sm:p-6 border-b sticky top-0 bg-background z-10">
+              <div className="flex items-start justify-between mb-4 gap-3">
+                <h2 className="text-lg sm:text-xl font-semibold break-words">{selectedEmail.subject}</h2>
                 <Button size="sm" variant="ghost" onClick={() => setSelectedEmail(null)}>
                   ✕
                 </Button>
@@ -1082,7 +1567,7 @@ export default function EmailPage() {
                 )}
               </div>
               {/* Quick Categorize */}
-              <div className="flex gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
+              <div className="flex flex-wrap gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
                 <span className="text-xs font-medium text-muted-foreground self-center mr-2">Quick Categorize:</span>
                 <Button 
                   size="sm" 
@@ -1125,8 +1610,11 @@ export default function EmailPage() {
                   variant="outline"
                   className="h-7 text-xs text-destructive"
                   onClick={async () => {
-                    await handleCategorize(selectedEmail.from, 'spam');
-                    await loadEmails(true);
+                    const saved = await handleCategorize(selectedEmail.from, 'spam');
+                    if (saved) {
+                      await handleDeleteEmail(selectedEmail.id);
+                      setSelectedEmail(null);
+                    }
                   }}
                 >
                   <Trash2 className="h-3 w-3 mr-1" />
@@ -1161,12 +1649,7 @@ export default function EmailPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   try {
-                    await fetch("/api/email-action", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: "archive" }),
-                    });
-                    setEmails(emails.filter((e) => e.id !== selectedEmail.id));
+                    await handleArchiveEmail(selectedEmail.id);
                     setSelectedEmail(null);
                   } catch (err) {
                     alert("Failed to archive");
@@ -1194,10 +1677,7 @@ export default function EmailPage() {
                     });
                     const newEmails = emails.filter((e) => e.id !== selectedEmail.id);
                     setEmails(newEmails);
-                    sessionStorage.setItem('emails-cache', JSON.stringify({
-                      emails: newEmails,
-                      timestamp: Date.now()
-                    }));
+                    updateEmailCache(newEmails);
                     setSelectedEmail(null);
                     setSelectedFolder("");
                   } catch (err) {
@@ -1218,16 +1698,8 @@ export default function EmailPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   try {
-                    await fetch("/api/email-action", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ emailIds: [selectedEmail.id], action: "delete" }),
-                    });
-                    const newEmails = emails.filter((e) => e.id !== selectedEmail.id);
-                    setEmails(newEmails);
-                    updateEmailCache(newEmails);
+                    await handleDeleteEmail(selectedEmail.id);
                     setSelectedEmail(null);
-                    showToast('Email deleted');
                   } catch (err) {
                     showToast('Failed to delete email', 'error');
                   }
@@ -1255,7 +1727,7 @@ export default function EmailPage() {
 
               {/* Brain Selector Dropdown */}
               {showBrainSelector && (
-                <div className="px-6 pb-4">
+                <div className="px-4 sm:px-6 pb-4">
                   <div className="bg-purple-600/10 dark:bg-purple-600/20 border border-purple-600/30 rounded-lg p-4">
                     <p className="text-sm font-medium mb-3 text-foreground">Add sender to Brain sources:</p>
                     {brains.length === 0 ? (
@@ -1289,7 +1761,7 @@ export default function EmailPage() {
                 </div>
               )}
             </div>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {selectedEmail.htmlBody ? (
                 <div 
                   className="email-content"
@@ -1330,8 +1802,8 @@ export default function EmailPage() {
 
       {/* Compose Modal */}
       {composing && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-background rounded-lg max-w-3xl w-full max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-0 sm:p-4">
+          <div className="bg-background w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-3xl overflow-auto rounded-none sm:rounded-lg">
             <EmailCompose
               mode={composing.mode}
               replyTo={composing.replyTo}
@@ -1346,7 +1818,7 @@ export default function EmailPage() {
       {!showAI && (
         <button
           onClick={() => setShowAI(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center justify-center z-40 transition-transform hover:scale-110"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center justify-center z-40 transition-transform hover:scale-110"
           title="AI Email Assistant"
         >
           <Sparkles className="h-6 w-6" />

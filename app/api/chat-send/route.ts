@@ -39,8 +39,8 @@ export async function POST(request: Request) {
       sessionMeta.createdAt = parsed.createdAt;
       sessionMeta.messageCount = parsed.messageCount + 1;
     } else {
-      // Add to session list
-      await redis.lpush(REDIS_KEYS.chatSessions(profile), sessionId);
+      // Add to session index
+      await redis.sadd(REDIS_KEYS.chatSessions(profile), sessionId);
     }
 
     sessionMeta.updatedAt = Date.now();
