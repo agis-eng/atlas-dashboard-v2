@@ -693,45 +693,56 @@ export default function EbayPage() {
               )}
             </div>
 
-            {/* Token */}
+            {/* Connect with OAuth */}
             <div className="rounded-lg border border-border bg-card p-6 space-y-4">
-              <h2 className="text-lg font-semibold">User Token</h2>
-              <div className="space-y-2">
-                <div className="relative">
-                  <Input
-                    type={showToken ? "text" : "password"}
-                    value={token}
-                    onChange={(e) => {
-                      setToken(e.target.value);
-                      setConnectionStatus("untested");
-                    }}
-                    placeholder="Enter your eBay User Token"
-                    className="pr-20 font-mono text-xs"
-                  />
-                  <button
-                    onClick={() => setShowToken(!showToken)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground px-2 py-1"
-                  >
-                    {showToken ? "Hide" : "Show"}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Token is stored in browser localStorage. For production, set <code className="bg-muted px-1 py-0.5 rounded text-[11px]">EBAY_USER_TOKEN</code> environment variable.
-                </p>
+              <h2 className="text-lg font-semibold">Connect to eBay</h2>
+              <p className="text-sm text-muted-foreground">
+                Sign in with your eBay account to automatically connect. Tokens refresh automatically.
+              </p>
+              <div className="flex gap-3 flex-wrap">
+                <a
+                  href="/api/ebay/auth?action=login"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Connect with eBay
+                </a>
+                <button
+                  onClick={testConnection}
+                  disabled={!token || connectionStatus === "testing"}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-border rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
+                >
+                  {connectionStatus === "testing" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Test Connection
+                </button>
               </div>
+            </div>
 
-              <button
-                onClick={testConnection}
-                disabled={!token || connectionStatus === "testing"}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
-              >
-                {connectionStatus === "testing" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                Test Connection
-              </button>
+            {/* Manual Token (Advanced) */}
+            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+              <h2 className="text-sm font-semibold text-muted-foreground">Manual Token (Advanced)</h2>
+              <div className="relative">
+                <Input
+                  type={showToken ? "text" : "password"}
+                  value={token}
+                  onChange={(e) => {
+                    setToken(e.target.value);
+                    setConnectionStatus("untested");
+                  }}
+                  placeholder="Paste token manually if needed"
+                  className="pr-20 font-mono text-xs"
+                />
+                <button
+                  onClick={() => setShowToken(!showToken)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground px-2 py-1"
+                >
+                  {showToken ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
             {/* Quick Info */}
