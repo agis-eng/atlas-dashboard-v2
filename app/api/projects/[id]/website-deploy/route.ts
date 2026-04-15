@@ -224,7 +224,7 @@ async function ensureVercelProjectLinked(
     method: "POST",
     body: JSON.stringify({
       name: projectName,
-      framework: "nextjs",
+      framework: null,
       gitRepository,
     }),
   }).catch(async (err) => {
@@ -240,7 +240,7 @@ async function ensureVercelProjectLinked(
     vercelProject = await vercelRequest(`/v9/projects/${encodeURIComponent(projectName)}`, {
       method: "PATCH",
       body: JSON.stringify({
-        framework: "nextjs",
+        framework: null,
         gitRepository,
       }),
     });
@@ -339,7 +339,7 @@ export async function POST(
                 atlasRepoUrl: githubRepo.htmlUrl,
               },
               projectSettings: {
-                framework: "nextjs",
+                framework: null,
               },
             }
       ),
