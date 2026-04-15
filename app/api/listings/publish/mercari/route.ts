@@ -97,8 +97,28 @@ export async function POST(request: NextRequest) {
         const desc = listing.description;
         const price = listing.price!;
         const condition = listing.condition || "Good";
+        const photos = listing.photos || [];
 
-        // Fill all fields in one interact call
+        // Step A: Upload photos if available
+        if (photos.length > 0) {
+          const photoUrls = photos.filter(Boolean).slice(0, 12);
+          const photoPrompt = `On this Mercari "List an item" form, I need you to upload photos first.
+Look for the photo upload area (usually says "Add up to 12 photos" or has a camera icon).
+Click the photo upload button/area. A file picker dialog should appear.
+For each of these image URLs, download and upload them as photos:
+${photoUrls.map((url, i) => `Photo ${i + 1}: ${url}`).join("\n")}
+
+If you can't upload from URLs directly, try using the browser's developer console to fetch and upload them programmatically. After uploading, tell me how many photos were added.`;
+
+          const photoResult = await firecrawlInteract(
+            existingScrapeId,
+            photoPrompt,
+            { timeout: 90 }
+          );
+          console.log("Photo upload result:", getOutput(photoResult).substring(0, 300));
+        }
+
+        // Step B: Fill all text fields
         const fillResult = await firecrawlInteract(
           existingScrapeId,
           `On this Mercari "List an item" form, do these steps in order:
