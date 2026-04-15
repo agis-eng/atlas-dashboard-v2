@@ -65,6 +65,8 @@ Analyze these product photos and generate listing details. Return ONLY valid JSO
   "suggestedPrice": 25,
   "suggestedCategory": "most specific category like 'Electronics > Video Games > Controllers'",
   "suggestedCondition": "one of: New, Like New, Good, Fair, Poor",
+  "suggestedType": "the item type/product type for eBay item specifics (e.g. 'Action Figure', 'Smartphone', 'T-Shirt')",
+  "suggestedBrand": "the brand name if identifiable, or 'Unbranded'",
   "confidence": "high, medium, or low - how confident you are in the identification"
 }
 

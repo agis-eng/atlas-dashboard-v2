@@ -179,6 +179,8 @@ export default function EbayPage() {
     categorySearch: "",
     imageUrls: [""],
     upc: "",
+    itemType: "",
+    brand: "",
   });
   const [categorySuggestions, setCategorySuggestions] = useState<{ category: { categoryId: string; categoryName: string } }[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
@@ -439,6 +441,8 @@ export default function EbayPage() {
             ? CONDITIONS.find((c) => c.label.toLowerCase() === a.suggestedCondition.toLowerCase())?.value || prev.condition
             : prev.condition,
           sku: prev.sku || autoSku,
+          itemType: a.suggestedType || prev.itemType,
+          brand: a.suggestedBrand || prev.brand,
         }));
         // Auto-search and select eBay category from title
         if (a.suggestedTitle) {
@@ -492,6 +496,10 @@ export default function EbayPage() {
       if (!createForm.sku) setCreateForm((prev) => ({ ...prev, sku }));
 
       // Step 1: Create inventory item
+      const aspects: Record<string, string[]> = {};
+      if (createForm.itemType) aspects["Type"] = [createForm.itemType];
+      if (createForm.brand) aspects["Brand"] = [createForm.brand];
+
       const invResult = await apiPost("create-inventory-item", {
         sku,
         product: {
@@ -499,6 +507,7 @@ export default function EbayPage() {
           description: createForm.description,
           imageUrls: createForm.imageUrls.filter(Boolean),
           ...(createForm.upc ? { upc: [createForm.upc] } : {}),
+          ...(Object.keys(aspects).length > 0 ? { aspects } : {}),
         },
         condition: createForm.condition,
         availability: {
@@ -1142,8 +1151,8 @@ export default function EbayPage() {
                   <Input
                     type="number"
                     min="1"
-                    value={createForm.quantity}
-                    onChange={(e) => setCreateForm({ ...createForm, quantity: e.target.value === "" ? (0 as any) : parseInt(e.target.value) || 0 })}
+                    value={createForm.quantity || ""}
+                    onChange={(e) => setCreateForm({ ...createForm, quantity: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
                     className="mt-1"
                   />
                 </div>
@@ -1183,6 +1192,28 @@ export default function EbayPage() {
                     <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Type & Brand (eBay Item Specifics) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type *</label>
+                  <Input
+                    value={createForm.itemType}
+                    onChange={(e) => setCreateForm({ ...createForm, itemType: e.target.value })}
+                    placeholder="e.g. Action Figure, T-Shirt"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Brand</label>
+                  <Input
+                    value={createForm.brand}
+                    onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
+                    placeholder="e.g. Nike, Unbranded"
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               {/* Category */}
