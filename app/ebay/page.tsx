@@ -544,6 +544,16 @@ export default function EbayPage() {
         return;
       }
 
+      // Step 3: Publish the offer
+      const offerId = offerResult.offerId;
+      if (offerId) {
+        const pubResult = await apiPost("publish-offer", { offerId });
+        if (pubResult.error || pubResult.errors) {
+          setCreateResult({ error: pubResult.errors?.[0]?.message || pubResult.error || "Offer created but failed to publish" });
+          return;
+        }
+      }
+
       setCreateResult({ success: true });
       resetCreateForm();
     } catch {

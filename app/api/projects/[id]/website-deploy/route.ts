@@ -347,32 +347,6 @@ export async function POST(
 
     const previewUrl = deployment?.url ? `https://${deployment.url}` : project.previewUrl || "";
     const vercelUrl = getVercelProjectUrl(vercelProject, deployment, projectName) || project.vercelUrl || "";
-    project.githubBranch = branch;
-    project.previewUrl = previewUrl;
-    project.vercelUrl = vercelUrl;
-    project.lastUpdate = new Date().toISOString().split("T")[0];
-    if (!project.brain) project.brain = {};
-    if (!project.brain.notes) project.brain.notes = [];
-    project.brain.notes.unshift(
-      deployMode === "git-linked"
-        ? `Vercel deploy started from linked GitHub repo: ${previewUrl || vercelUrl || projectName}`
-        : `Vercel manual deploy started from GitHub snapshot (${branch}): ${previewUrl || vercelUrl || projectName}`
-    );
-
-    await writeFile(PROJECTS_PATH, yaml.dump(projectsData, { lineWidth: -1, noRefs: true, quotingType: '"', forceQuotes: false }), "utf8");
-
-    if (existingBuild) {
-      existingBuild.status = "deploy-started";
-      existingBuild.previewUrl = previewUrl;
-      existingBuild.vercelProjectId = vercelProject?.id || existingBuild.vercelProjectId;
-      existingBuild.vercelProjectName = vercelProject?.name || existingBuild.vercelProjectName;
-      existingBuild.vercelRepoId = repoId || existingBuild.vercelRepoId;
-      existingBuild.branch = branch;
-      existingBuild.deployMode = deployMode;
-      existingBuild.deploymentId = deployment?.id || existingBuild.deploymentId;
-      existingBuild.updatedAt = new Date().toISOString();
-      await writeFile(PROJECT_SITE_BUILDS_PATH, yaml.dump(buildsData, { lineWidth: -1, noRefs: true, quotingType: '"', forceQuotes: false }), "utf8");
-    }
 
     return Response.json({
       success: true,
