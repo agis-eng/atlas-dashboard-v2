@@ -1,9 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft, MarketplaceConnection } from "@/lib/redis";
-import { firecrawlScrape, firecrawlInteract, firecrawlInteractStop, FirecrawlProfile } from "@/lib/firecrawl";
-
-// Use saveChanges: false for publish — saveChanges: true locks the profile
-const MERCARI_READ_PROFILE: FirecrawlProfile = { name: "mercari-session", saveChanges: false };
+import { firecrawlBrowserCreate, firecrawlInteract, firecrawlInteractStop, MERCARI_PROFILE } from "@/lib/firecrawl";
 
 function getOutput(result: any): string {
   return result?.output || result?.data?.output || "";
@@ -48,35 +45,47 @@ export async function POST(request: NextRequest) {
 
     switch (step) {
       case "start": {
-        const result = await firecrawlScrape("https://www.mercari.com/sell/", {
-          profile: MERCARI_READ_PROFILE,
-          proxy: "enhanced",
-          waitFor: 5000,
-          formats: ["markdown"],
+        // Create a visible interactive browser session
+        const browser = await firecrawlBrowserCreate({
+          profile: { name: "mercari-session", saveChanges: false },
+          ttl: 600,
+          activityTtl: 600,
         });
 
-        const scrapeId = result.data?.metadata?.scrapeId;
-        console.log("Mercari start - scrapeId:", scrapeId, "status:", result.data?.metadata?.statusCode);
-
-        if (!scrapeId) {
-          console.log("Mercari no scrapeId. Full keys:", JSON.stringify(Object.keys(result)));
+        if (!browser.id) {
           return Response.json(
-            { error: "Failed to open Mercari sell page", details: result.error || "No scrapeId" },
+            { error: "Failed to create browser session", details: browser.error },
             { status: 500 }
           );
         }
 
-        const pageContent = result.data?.markdown || "";
-        if (pageContent.includes("Log in to Mercari")) {
-          return Response.json(
-            { error: "Mercari session expired. Please reconnect your account." },
-            { status: 401 }
-          );
+        // Navigate to Mercari sell page
+        const navResult = await firecrawlInteract(
+          browser.id,
+          `Navigate to https://www.mercari.com/sell/ and wait for the page to load. Describe what you see on the page.`,
+          { timeout: 30 }
+        );
+
+        const navOutput = getOutput(navResult);
+        console.log("Mercari nav:", navOutput.substring(0, 200));
+
+        // Check if logged in
+        if (navOutput.toLowerCase().includes("log in") || navOutput.toLowerCase().includes("sign in")) {
+          return Response.json({
+            error: "Mercari session expired. Please reconnect your account.",
+            liveViewUrl: browser.interactiveLiveViewUrl || browser.liveViewUrl,
+          }, { status: 401 });
         }
 
         await updateListingField(redis, listings, listingId, { mercariStatus: "publishing" });
 
-        return Response.json({ success: true, scrapeId, step: "start", next: "fill" });
+        return Response.json({
+          success: true,
+          scrapeId: browser.id,
+          liveViewUrl: browser.interactiveLiveViewUrl || browser.liveViewUrl,
+          step: "start",
+          next: "fill",
+        });
       }
 
       case "fill": {
@@ -99,7 +108,7 @@ export async function POST(request: NextRequest) {
 4. Click on "Ship on your own" under Shipping method (if not already selected)
 5. Click the price input field (textbox with placeholder "min $1/max $2000") and type: ${price}
 Do NOT click the List button yet. After filling everything, tell me what the Title field shows and what the price shows.`,
-          { timeout: 50 }
+          { timeout: 60 }
         );
 
         const fillOutput = getOutput(fillResult);
@@ -117,8 +126,9 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
           success: true,
           scrapeId: existingScrapeId,
           step: "fill",
-          next: "submit",
+          next: "ready",
           output: fillOutput.substring(0, 300),
+          message: "Fields filled! Review the listing in the browser window, add photos, then click List when ready.",
         });
       }
 
@@ -127,17 +137,16 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
           return Response.json({ error: "scrapeId required" }, { status: 400 });
         }
 
-        // Click Save draft instead of List — user can review and publish manually
+        // Save as draft so user can review
         const submitResult = await firecrawlInteract(
           existingScrapeId,
-          `Click the "Save draft" button to save this listing as a draft. Then wait 3 seconds and describe what happened. Did you see a success message? An error? What does the page show now?`,
+          `Click the "Save draft" button to save this listing as a draft. Then wait 3 seconds and describe what happened.`,
           { timeout: 50 }
         );
 
         const submitOutput = getOutput(submitResult);
-        console.log("Save draft result - success:", submitResult.success, "output:", submitOutput.substring(0, 500));
+        console.log("Save draft result:", submitOutput.substring(0, 500));
 
-        // Stop the interact session to free resources
         try { await firecrawlInteractStop(existingScrapeId); } catch {}
 
         const hasError = submitOutput.toLowerCase().includes("error") ||
@@ -195,9 +204,4 @@ async function updateListingField(
     l.id === listingId ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l
   );
   await redis.set(REDIS_KEYS.listings, JSON.stringify(updated));
-}
-
-function extractUrl(output: string): string | null {
-  const match = output.match(/https?:\/\/[^\s"'<>]+mercari[^\s"'<>]*/i);
-  return match?.[0] || null;
 }

@@ -495,39 +495,45 @@ export default function ListingsPage() {
     }
 
     await updateListing(listing.id, { status: "listing" });
-    const steps = ["start", "fill", "submit"] as const;
-    const stepLabels: Record<string, string> = {
-      start: "Opening Mercari...",
-      fill: "Filling listing details...",
-      submit: "Saving as draft...",
-    };
 
     let scrapeId = "";
 
     try {
-      for (const step of steps) {
-        setPublishProgress((prev) => ({ ...prev, [listing.id]: stepLabels[step] }));
+      // Step 1: Open Mercari in a visible browser
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Opening Mercari browser..." }));
+      const startRes = await fetch("/api/listings/publish/mercari", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, scrapeId: "", step: "start" }),
+      });
+      const startData = await startRes.json();
 
-        const res = await fetch("/api/listings/publish/mercari", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id, scrapeId, step }),
-        });
-        const data = await res.json();
+      if (!startRes.ok) throw new Error(startData.error || "Failed to open Mercari");
+      scrapeId = startData.scrapeId || "";
 
-        if (!res.ok) {
-          throw new Error(data.error || `Step "${step}" failed`);
-        }
-
-        if (data.scrapeId) scrapeId = data.scrapeId;
-
-        if (step === "submit") {
-          await updateListing(listing.id, {
-            status: "listed",
-            mercariListingUrl: data.listingUrl,
-          });
-        }
+      // Open the live browser view so user can see it
+      if (startData.liveViewUrl) {
+        window.open(startData.liveViewUrl, "_blank");
       }
+
+      // Step 2: Fill in the listing details
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Filling listing details..." }));
+      const fillRes = await fetch("/api/listings/publish/mercari", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, scrapeId, step: "fill" }),
+      });
+      const fillData = await fillRes.json();
+
+      if (!fillRes.ok) throw new Error(fillData.error || "Failed to fill fields");
+
+      // Done — leave browser open for user to add photos and publish
+      await updateListing(listing.id, {
+        status: "ready",
+        error: undefined,
+      });
+
+      alert("Listing fields filled in the browser window! Add your photos and click List when ready.");
     } catch (err: any) {
       console.error("Mercari publish error:", err);
       await updateListing(listing.id, {
