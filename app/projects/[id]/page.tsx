@@ -1785,15 +1785,18 @@ function WebsiteSetup({ projectId, projectName, repoUrl, liveUrl, onDeployed }: 
       });
       const data = await res.json();
 
-      if (res.ok && data.url) {
+      const deployUrl = data.deploy?.vercelUrl || data.deploy?.previewUrl || data.url;
+      if (res.ok && deployUrl) {
         // Save the live URL to the project
         await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ liveUrl: data.url }),
+          body: JSON.stringify({ liveUrl: deployUrl }),
         });
         setDeployStatus(null);
-        onDeployed(data.url);
+        onDeployed(deployUrl);
+      } else if (res.ok) {
+        setDeployStatus("Deploy started — check Vercel for status");
       } else {
         setDeployStatus(`Failed: ${data.error || "Unknown error"}`);
       }

@@ -258,41 +258,41 @@ async function ensureVercelProjectLinked(
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     if (!VERCEL_TOKEN) {
       return Response.json({
-        error: "VERCEL_TOKEN is not configured. Add it in Vercel environment variables.",
+        error: "ATLAS_VERCEL_TOKEN is not configured. Add it in Vercel environment variables.",
         needsConfig: true,
       }, { status: 400 });
     }
 
     const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const bodyRepoUrl = body.repoUrl || "";
+
     let [projectsData, buildsData] = await Promise.all([
       loadYaml<{ projects: any[] }>(PROJECTS_PATH, { projects: [] }),
       loadYaml<{ builds: any[] }>(PROJECT_SITE_BUILDS_PATH, { builds: [] }),
     ]);
 
     let project = (projectsData.projects || []).find((item) => item.id === id);
-    if (!project) return Response.json({ error: "Project not found" }, { status: 404 });
-
-    let repoCreated = false;
-    if (!project.repoUrl) {
-      await buildWebsiteRepoForProject(id);
-      repoCreated = true;
-      [projectsData, buildsData] = await Promise.all([
-        loadYaml<{ projects: any[] }>(PROJECTS_PATH, { projects: [] }),
-        loadYaml<{ builds: any[] }>(PROJECT_SITE_BUILDS_PATH, { builds: [] }),
-      ]);
-      project = (projectsData.projects || []).find((item) => item.id === id);
-      if (!project?.repoUrl) {
-        return Response.json({ error: "Create a website draft or save a GitHub repo first" }, { status: 400 });
-      }
+    if (!project) {
+      // Project might be in Redis, not YAML — create a minimal object
+      project = { id, repoUrl: bodyRepoUrl, name: id };
     }
 
-    const parsed = extractRepo(project.repoUrl);
+    // Use repo URL from request body if provided
+    const repoUrl = bodyRepoUrl || project.repoUrl;
+    if (!repoUrl) {
+      return Response.json({ error: "Provide a GitHub repo URL" }, { status: 400 });
+    }
+    project.repoUrl = repoUrl;
+    const repoCreated = false;
+
+    const parsed = extractRepo(repoUrl);
     if (!parsed) return Response.json({ error: "Invalid GitHub repo URL" }, { status: 400 });
 
     const existingBuild = (buildsData.builds || []).find((item) => item.projectId === id) || null;
