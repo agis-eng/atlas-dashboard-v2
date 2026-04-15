@@ -531,6 +531,8 @@ export default function EbayPage() {
         availableQuantity: createForm.quantity || 1,
         categoryId: createForm.categoryId,
         listingPolicies: policies,
+        merchantLocationKey: "default",
+        countryCode: "US",
         pricingSummary: {
           price: {
             value: createForm.price,
