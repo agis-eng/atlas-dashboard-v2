@@ -586,6 +586,8 @@ export default function EbayPage() {
       categorySearch: "",
       imageUrls: [""],
       upc: "",
+      itemType: "",
+      brand: "",
     });
     setCategorySuggestions([]);
   }
@@ -608,6 +610,8 @@ export default function EbayPage() {
       categorySearch: "",
       imageUrls: draft.imageUrls.length ? draft.imageUrls : [""],
       upc: "",
+      itemType: "",
+      brand: "",
     });
     deleteDraft(draft.id);
     setActiveTab("create");
