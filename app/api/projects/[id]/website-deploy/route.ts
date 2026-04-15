@@ -6,7 +6,7 @@ import { buildWebsiteRepoForProject } from "@/lib/project-website-build";
 const PROJECTS_PATH = join(process.cwd(), "data", "projects.yaml");
 const PROJECT_SITE_BUILDS_PATH = join(process.cwd(), "data", "projectSiteBuilds.yaml");
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN || "";
+const VERCEL_TOKEN = process.env.ATLAS_VERCEL_TOKEN || process.env.VERCEL_TOKEN || "";
 const VERCEL_TEAM_ID = process.env.VERCEL_TEAM_ID || process.env.VERCEL_TEAM || "";
 
 async function loadYaml<T>(path: string, fallback: T): Promise<T> {
