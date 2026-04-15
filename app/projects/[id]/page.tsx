@@ -1979,10 +1979,12 @@ function LivePreview({
           >
             <iframe
               id={`preview-${projectId}`}
-              src={`/api/proxy?url=${encodeURIComponent(url)}`}
+              src={iframeBlocked ? `/api/proxy?url=${encodeURIComponent(url)}` : url}
               className="w-full border-0"
               style={{ height: '800px' }}
               title={`${projectName} Preview`}
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              onError={() => !iframeBlocked && setIframeBlocked(true)}
             />
           </div>
         </div>

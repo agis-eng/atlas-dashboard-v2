@@ -157,11 +157,11 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
           return Response.json({ error: "scrapeId required" }, { status: 400 });
         }
 
-        // Save as draft so user can review
+        // Click List to publish the listing
         const submitResult = await firecrawlInteract(
           existingScrapeId,
-          `Click the "Save draft" button to save this listing as a draft. Then wait 3 seconds and describe what happened.`,
-          { timeout: 50 }
+          `Click the "List" button to publish this listing on Mercari. If there is no "List" button, try clicking "Save draft" instead. Then wait 5 seconds and describe what happened. Did you see a success message? An error? What does the page show now?`,
+          { timeout: 60 }
         );
 
         const submitOutput = getOutput(submitResult);

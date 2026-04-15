@@ -511,13 +511,8 @@ export default function ListingsPage() {
       if (!startRes.ok) throw new Error(startData.error || "Failed to open Mercari");
       scrapeId = startData.scrapeId || "";
 
-      // Open the live browser view so user can see it
-      if (startData.liveViewUrl) {
-        window.open(startData.liveViewUrl, "_blank");
-      }
-
-      // Step 2: Fill in the listing details
-      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Filling listing details..." }));
+      // Step 2: Fill in the listing details (including photos)
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Uploading photos & filling details..." }));
       const fillRes = await fetch("/api/listings/publish/mercari", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -527,13 +522,21 @@ export default function ListingsPage() {
 
       if (!fillRes.ok) throw new Error(fillData.error || "Failed to fill fields");
 
-      // Done — leave browser open for user to add photos and publish
-      await updateListing(listing.id, {
-        status: "ready",
-        error: undefined,
+      // Step 3: Submit the listing
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
+      const submitRes = await fetch("/api/listings/publish/mercari", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, scrapeId, step: "submit" }),
       });
+      const submitData = await submitRes.json();
 
-      alert("Listing fields filled in the browser window! Add your photos and click List when ready.");
+      if (!submitRes.ok) throw new Error(submitData.error || "Failed to publish");
+
+      await updateListing(listing.id, {
+        status: "listed",
+        mercariListingUrl: submitData.listingUrl,
+      });
     } catch (err: any) {
       console.error("Mercari publish error:", err);
       await updateListing(listing.id, {
