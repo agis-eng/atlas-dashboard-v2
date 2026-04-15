@@ -1977,40 +1977,13 @@ function LivePreview({
               transformOrigin: 'top center',
             }}
           >
-            {iframeBlocked ? (
-              <div className="w-full flex flex-col items-center justify-center gap-4 py-20 text-center">
-                <Globe className="h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">This site blocks iframe embedding.</p>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Open Site in New Tab
-                </a>
-              </div>
-            ) : (
-              <iframe
-                id={`preview-${projectId}`}
-                src={url}
-                className="w-full border-0"
-                style={{ height: '800px' }}
-                title={`${projectName} Preview`}
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                onError={() => setIframeBlocked(true)}
-                onLoad={(e) => {
-                  try {
-                    const frame = e.target as HTMLIFrameElement;
-                    // If we can't access contentDocument, it may be blocked
-                    if (frame.contentDocument?.title === '') setIframeBlocked(true);
-                  } catch {
-                    // Cross-origin — that's fine, means it loaded
-                  }
-                }}
-              />
-            )}
+            <iframe
+              id={`preview-${projectId}`}
+              src={`/api/proxy?url=${encodeURIComponent(url)}`}
+              className="w-full border-0"
+              style={{ height: '800px' }}
+              title={`${projectName} Preview`}
+            />
           </div>
         </div>
         

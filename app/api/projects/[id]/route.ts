@@ -60,7 +60,15 @@ async function findProjectById(id: string, request: Request): Promise<YamlProjec
   try {
     const data = await loadProjectsData();
     const yamlProject = (data.projects || []).find((p) => p.id === id);
-    if (yamlProject) return yamlProject;
+    if (yamlProject) {
+      // Merge any Redis overrides (from Vercel read-only filesystem saves)
+      try {
+        const redis = getRedis();
+        const overrides = (await redis.get(`projects:overrides:${id}`)) as Record<string, any> | null;
+        if (overrides) Object.assign(yamlProject, overrides);
+      } catch {}
+      return yamlProject;
+    }
   } catch {
     // YAML might not exist
   }
@@ -165,6 +173,10 @@ const EDITABLE_FIELDS = [
   "summary",
   "affiliate",
   "brain",
+  "liveUrl",
+  "previewUrl",
+  "repoUrl",
+  "githubBranch",
 ] as const;
 
 export async function PUT(
@@ -190,7 +202,7 @@ export async function PUT(
     const projectIndex = (data.projects || []).findIndex((p) => p.id === id);
 
     if (projectIndex !== -1) {
-      // Update in YAML
+      // Update in YAML (or Redis if filesystem is read-only)
       const project = data.projects[projectIndex];
       for (const key of EDITABLE_FIELDS) {
         if (key in updates) {
@@ -199,13 +211,21 @@ export async function PUT(
       }
       project.lastUpdate = new Date().toISOString().split("T")[0];
 
-      const yamlStr = yaml.dump(data, {
-        lineWidth: -1,
-        noRefs: true,
-        quotingType: '"',
-        forceQuotes: false,
-      });
-      await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+      try {
+        const yamlStr = yaml.dump(data, {
+          lineWidth: -1,
+          noRefs: true,
+          quotingType: '"',
+          forceQuotes: false,
+        });
+        await writeFile(PROJECTS_PATH, yamlStr, "utf8");
+      } catch {
+        // Read-only filesystem (Vercel) — save overrides to Redis
+        const redis = getRedis();
+        const overridesKey = `projects:overrides:${id}`;
+        const existing = ((await redis.get(overridesKey)) as Record<string, any>) || {};
+        await redis.set(overridesKey, { ...existing, ...updates, lastUpdate: project.lastUpdate });
+      }
 
       // Auto-capture screenshot if URL was added/changed
       const url = project.liveUrl || project.previewUrl;
@@ -254,4 +274,12 @@ export async function PUT(
       { status: 500 }
     );
   }
+}
+
+// PATCH aliases to PUT
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  return PUT(request, context);
 }
