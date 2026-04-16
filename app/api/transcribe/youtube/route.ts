@@ -4,9 +4,24 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
+import { getRedis } from "@/lib/redis";
 
 const execPromise = promisify(exec);
-const TRANSCRIPT_SERVER = process.env.TRANSCRIPT_SERVER_URL || "";
+const TRANSCRIPT_SERVER_ENV = process.env.TRANSCRIPT_SERVER_URL || "";
+
+/**
+ * The Mac tunnel script publishes its current public URL to Redis at
+ * `transcript:server:url` and clears it when the tunnel dies. Prefer that
+ * over the env var so URL changes don't require a redeploy.
+ */
+async function getTranscriptServerUrl(): Promise<string> {
+  try {
+    const redis = getRedis();
+    const val = await redis.get("transcript:server:url");
+    if (typeof val === "string" && val.startsWith("http")) return val.replace(/\/+$/, "");
+  } catch {}
+  return TRANSCRIPT_SERVER_ENV.replace(/\/+$/, "");
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,10 +40,11 @@ export async function POST(request: NextRequest) {
     }
 
     // On Vercel, route through the Mac transcript server
-    if (TRANSCRIPT_SERVER) {
+    const transcriptServer = await getTranscriptServerUrl();
+    if (transcriptServer) {
       try {
         const proxyRes = await fetch(
-          `${TRANSCRIPT_SERVER}/transcribe-video?url=${encodeURIComponent(url)}`,
+          `${transcriptServer}/transcribe-video?url=${encodeURIComponent(url)}`,
           { signal: AbortSignal.timeout(600000) }
         );
         const data = await proxyRes.json();
@@ -42,7 +58,14 @@ export async function POST(request: NextRequest) {
           duration: null,
         });
       } catch (err) {
-        return NextResponse.json({ error: `Mac server error: ${err instanceof Error ? err.message : "Unknown"}` }, { status: 500 });
+        return NextResponse.json(
+          {
+            error: `Mac server unreachable at ${transcriptServer}. ${
+              err instanceof Error ? err.message : "Unknown"
+            }. Check the transcribe-tunnel launchd agent on your Mac.`,
+          },
+          { status: 500 }
+        );
       }
     }
 
