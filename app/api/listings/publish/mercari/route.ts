@@ -130,6 +130,8 @@ export async function POST(request: NextRequest) {
         const lengthIn = listing.lengthIn || listing.aiAnalysis?.suggestedLengthIn || 10;
         const widthIn = listing.widthIn || listing.aiAnalysis?.suggestedWidthIn || 6;
         const heightIn = listing.heightIn || listing.aiAnalysis?.suggestedHeightIn || 4;
+        // Brand: use AI suggestion or "Unbranded" — required field on Mercari
+        const brand = (listing.aiAnalysis as any)?.suggestedBrand || "Unbranded";
 
         const { browser, page } = await reconnectSession(existingSessionId);
 
@@ -238,15 +240,39 @@ export async function POST(request: NextRequest) {
             console.warn("Could not select condition — user may need to pick manually:", String(err).substring(0, 200));
           }
 
-          // Shipping: Mercari handles shipping (seller pays). Click "Mercari shipping" / "Ship with Mercari".
-          console.log("Selecting Mercari-shipping option...");
+          // Brand (required field on Mercari). Use AI suggestion or "Unbranded".
+          console.log("Filling brand:", brand);
+          try {
+            const brandInput = page.getByLabel(/^brand$/i).first();
+            if (await brandInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+              await brandInput.click({ timeout: 5000 });
+              await page.waitForTimeout(400);
+              await brandInput.fill(brand).catch(() => {});
+              await page.waitForTimeout(1500);
+              // Try to click a dropdown option matching the brand
+              const opt = page.getByRole("option", { name: new RegExp(`^${brand}$`, "i") }).first();
+              if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await opt.click({ timeout: 5000 });
+              } else if (brand.toLowerCase() === "unbranded") {
+                // Try an "Unbranded" option with flexible match
+                const unbrandedOpt = page.getByRole("option", { name: /unbranded/i }).first();
+                if (await unbrandedOpt.isVisible({ timeout: 2000 }).catch(() => false)) {
+                  await unbrandedOpt.click({ timeout: 5000 });
+                }
+              }
+            }
+          } catch (err) {
+            console.warn("Brand fill failed:", String(err).substring(0, 200));
+          }
+
+          // Shipping: user wants Mercari-provided prepaid label (seller pays, Mercari gives discount).
+          // Mercari's actual option text: "Prepaid labelWe'll email you a label and you'll ship the item"
+          console.log("Selecting shipping: Prepaid label");
           let shippingSelected = false;
           for (const pattern of [
-            /mercari\s*shipping/i,
-            /ship\s*with\s*mercari/i,
-            /use\s*mercari\s*shipping/i,
-            /mercari\s*handles/i,
-            /i('|&apos;)ll\s*provide\s*shipping\s*label/i,
+            /prepaid label/i,
+            /we('|&apos;)ll email you a label/i,
+            /ship with mercari/i,
           ]) {
             try {
               const opt = page.getByText(pattern).first();
@@ -259,7 +285,13 @@ export async function POST(request: NextRequest) {
             } catch {}
           }
           if (!shippingSelected) {
-            console.warn("Mercari shipping option not found — may need to scroll/pick manually");
+            console.warn("Shipping option not found — falling back to 'Ship on your own'");
+            try {
+              const fallback = page.getByText(/ship on your own/i).first();
+              if (await fallback.isVisible({ timeout: 2000 })) {
+                await fallback.click({ timeout: 5000 });
+              }
+            } catch {}
           }
 
           // Fill Weight
@@ -390,6 +422,15 @@ export async function POST(request: NextRequest) {
           // Wait for navigation / success indicator
           await page.waitForTimeout(6000);
           const finalUrl = page.url();
+          // Capture any inline validation errors (usually role="alert" on Mercari)
+          let validationErrors = "";
+          try {
+            const alerts = await page.$$eval('[role="alert"], .error, [data-testid*="error"]', (els) =>
+              els.map((e) => (e.textContent || "").trim()).filter(Boolean).slice(0, 5).join(" | ")
+            );
+            if (alerts) validationErrors = alerts.substring(0, 300);
+          } catch {}
+          if (validationErrors) console.log("SUBMIT_VALIDATION_ERRORS:", validationErrors);
           const bodyText = (await page.locator("body").innerText().catch(() => "")).substring(0, 1000);
           console.log("SUBMIT_FINAL_URL:", finalUrl);
           console.log("SUBMIT_BODY_SNIPPET:", bodyText.substring(0, 300));
@@ -402,12 +443,12 @@ export async function POST(request: NextRequest) {
             /listed|saved|success|published/i.test(bodyText);
 
           if (!looksSuccess) {
-            // Build a diagnostic payload: buttons we saw + body snippet
-            const buttonsSummary = JSON.stringify(buttonTexts).substring(0, 600);
+            // Build a diagnostic payload: buttons we saw + body snippet + validation errors
+            const buttonsSummary = JSON.stringify(buttonTexts).substring(0, 400);
             const clickedBtn = clicked ? (usedDraft ? "save-draft" : "list-variant") : "none";
-            const diag = `Final URL: ${finalUrl} | Clicked: ${clickedBtn} | Body: ${bodyText
-              .substring(0, 200)
-              .replace(/\s+/g, " ")} | Buttons: ${buttonsSummary}`;
+            const diag = `Final URL: ${finalUrl} | Clicked: ${clickedBtn}${
+              validationErrors ? ` | Validation: ${validationErrors}` : ""
+            } | Body: ${bodyText.substring(0, 200).replace(/\s+/g, " ")} | Buttons: ${buttonsSummary}`;
             await updateListingField(redis, listings, listingId, {
               mercariStatus: "error",
               mercariError: diag,
