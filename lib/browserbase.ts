@@ -37,20 +37,28 @@ export async function createSession(opts: {
   persist?: boolean;
   keepAlive?: boolean;
   timeout?: number;
+  /** Use residential proxies + advanced stealth. Needed for OAuth flows (Google/Facebook login). */
+  stealth?: boolean;
 }): Promise<BBSessionInfo> {
   const bb = getBrowserbase();
+  const browserSettings: any = {};
+  if (opts.contextId) {
+    browserSettings.context = {
+      id: opts.contextId,
+      persist: opts.persist ?? false,
+    };
+  }
+  // Basic fingerprint (free tier). Makes us look like a typical desktop browser.
+  // NOTE: Proxies + advancedStealth require paid plans, so OAuth (Google/Facebook)
+  // login may be blocked. Use email/password instead.
+  browserSettings.fingerprint = {
+    devices: ["desktop"],
+    locales: ["en-US"],
+  };
+  browserSettings.viewport = { width: 1366, height: 900 };
   const session = await bb.sessions.create({
     projectId: requireProjectId(),
-    ...(opts.contextId
-      ? {
-          browserSettings: {
-            context: {
-              id: opts.contextId,
-              persist: opts.persist ?? false,
-            },
-          },
-        }
-      : {}),
+    browserSettings,
     keepAlive: opts.keepAlive ?? false,
     timeout: opts.timeout ?? 600,
   } as any);

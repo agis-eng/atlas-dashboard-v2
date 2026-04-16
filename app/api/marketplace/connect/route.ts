@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       const contextId = existing?.contextId || (await createContext());
 
       // Create a browser session using that context with persist: true
-      // so the user's login gets saved for later publish sessions
+      // so the user's login gets saved for later publish sessions.
       const session = await createSession({
         contextId,
         persist: true,
