@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tag,
   Upload,
@@ -99,6 +100,7 @@ export default function ListingsPage() {
   const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatus>({ mercari: null, facebook: null });
   const [connecting, setConnecting] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -281,9 +283,34 @@ export default function ListingsPage() {
     try {
       await fetch(`/api/listings?id=${id}`, { method: "DELETE" });
       setListings((prev) => prev.filter((l) => l.id !== id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     } catch (err) {
       console.error("Delete error:", err);
     }
+  }
+
+  async function deleteSelected() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} listing${ids.length === 1 ? "" : "s"}?`)) return;
+    await Promise.all(
+      ids.map((id) => fetch(`/api/listings?id=${id}`, { method: "DELETE" }))
+    );
+    setListings((prev) => prev.filter((l) => !selectedIds.has(l.id)));
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function publishToEbay(listing: ListingDraft) {
@@ -523,7 +550,19 @@ export default function ListingsPage() {
       const fillData = await fillRes.json();
 
       if (!fillRes.ok) {
-        // Retry once — firecrawl interact can fail transiently
+        const errMsg = (fillData.details || fillData.error || "").toLowerCase();
+        // If session was lost ("job not found"), recreate the browser and try again
+        if (errMsg.includes("job not found") || errMsg.includes("session")) {
+          setPublishProgress((prev) => ({ ...prev, [listing.id]: "Session lost, reopening browser..." }));
+          const restartRes = await fetch("/api/listings/publish/mercari", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ listingId: listing.id, scrapeId: "", step: "start" }),
+          });
+          const restartData = await restartRes.json();
+          if (!restartRes.ok) throw new Error(restartData.details || restartData.error || "Failed to reopen Mercari");
+          scrapeId = restartData.scrapeId || "";
+        }
         setPublishProgress((prev) => ({ ...prev, [listing.id]: "Retrying form fill..." }));
         const retryRes = await fetch("/api/listings/publish/mercari", {
           method: "POST",
@@ -813,23 +852,52 @@ export default function ListingsPage() {
                 </CardContent>
               </Card>
             ) : (
-              drafts.map((listing) => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  expanded={expanded.has(listing.id)}
-                  analyzing={analyzing === listing.id}
-                  onToggleExpand={() => toggleExpand(listing.id)}
-                  onUpdate={(updates) => updateListing(listing.id, updates)}
-                  onDelete={() => deleteListing(listing.id)}
-                  onPublishEbay={() => publishToEbay(listing)}
-                  onPublishMercari={() => publishToMercari(listing)}
-                  onPublishFacebook={() => publishToFacebook(listing)}
-                  onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
-                  marketplaceStatus={marketplaceStatus}
-                  publishProgress={publishProgress[listing.id]}
-                />
-              ))
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => {
+                      const allSelected = drafts.every((d) => selectedIds.has(d.id));
+                      if (allSelected) setSelectedIds(new Set());
+                      else setSelectedIds(new Set(drafts.map((d) => d.id)));
+                    }}
+                  >
+                    {drafts.every((d) => selectedIds.has(d.id)) ? "Deselect all" : "Select all"}
+                  </Button>
+                  {selectedIds.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs border-red-300 text-red-600 hover:bg-red-50"
+                      onClick={deleteSelected}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete selected ({selectedIds.size})
+                    </Button>
+                  )}
+                </div>
+                {drafts.map((listing) => (
+                  <ListingCard
+                    key={listing.id}
+                    listing={listing}
+                    expanded={expanded.has(listing.id)}
+                    analyzing={analyzing === listing.id}
+                    selected={selectedIds.has(listing.id)}
+                    onToggleSelect={() => toggleSelected(listing.id)}
+                    onToggleExpand={() => toggleExpand(listing.id)}
+                    onUpdate={(updates) => updateListing(listing.id, updates)}
+                    onDelete={() => deleteListing(listing.id)}
+                    onPublishEbay={() => publishToEbay(listing)}
+                    onPublishMercari={() => publishToMercari(listing)}
+                    onPublishFacebook={() => publishToFacebook(listing)}
+                    onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
+                    marketplaceStatus={marketplaceStatus}
+                    publishProgress={publishProgress[listing.id]}
+                  />
+                ))}
+              </>
             )}
           </TabsContent>
 
@@ -871,6 +939,8 @@ function ListingCard({
   listing,
   expanded,
   analyzing,
+  selected,
+  onToggleSelect,
   onToggleExpand,
   onUpdate,
   onDelete,
@@ -884,6 +954,8 @@ function ListingCard({
   listing: ListingDraft;
   expanded: boolean;
   analyzing: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onToggleExpand: () => void;
   onUpdate: (updates: Partial<ListingDraft>) => void;
   onDelete: () => void;
@@ -962,6 +1034,13 @@ function ListingCard({
         {/* Header */}
         <div className="p-3 sm:p-4">
           <div className="flex items-start justify-between gap-2">
+            {onToggleSelect && (
+              <Checkbox
+                checked={!!selected}
+                onCheckedChange={onToggleSelect}
+                className="mt-1 shrink-0"
+              />
+            )}
             <div className="flex-1 min-w-0">
               <button
                 onClick={onToggleExpand}

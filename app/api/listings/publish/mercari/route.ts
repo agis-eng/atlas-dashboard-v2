@@ -118,7 +118,11 @@ If you can't upload from URLs directly, try using the browser's developer consol
             photoPrompt,
             { timeout: 90 }
           );
+          console.log("Photo upload full response:", JSON.stringify(photoResult).substring(0, 500));
           console.log("Photo upload result:", getOutput(photoResult).substring(0, 300));
+          if (!photoResult.success) {
+            console.error("Photo upload failed — scrapeId may be invalid. Error:", photoResult.error);
+          }
         }
 
         // Step B: Fill all text fields
@@ -135,6 +139,7 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
         );
 
         const fillOutput = getOutput(fillResult);
+        console.log("Fill full response:", JSON.stringify(fillResult).substring(0, 500));
         console.log("Fill result - success:", fillResult.success, "output:", fillOutput.substring(0, 300));
 
         if (!fillResult.success) {
@@ -144,7 +149,10 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
             mercariStatus: "error",
             mercariError: "Failed to fill listing fields: " + errorDetail,
           });
-          return Response.json({ error: "Failed to fill fields", details: errorDetail }, { status: 500 });
+          return Response.json({
+            error: "Failed to fill fields: " + errorDetail,
+            details: errorDetail,
+          }, { status: 500 });
         }
 
         return Response.json({
