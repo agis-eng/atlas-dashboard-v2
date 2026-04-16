@@ -525,64 +525,42 @@ export default function ListingsPage() {
 
     await updateListing(listing.id, { status: "listing" });
 
-    let scrapeId = "";
+    let sessionId = "";
 
     try {
-      // Step 1: Open Mercari in a visible browser
-      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Opening Mercari browser..." }));
+      // Step 1: Open Mercari in a browser session
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Opening Mercari..." }));
       const startRes = await fetch("/api/listings/publish/mercari", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id, scrapeId: "", step: "start" }),
+        body: JSON.stringify({ listingId: listing.id, step: "start" }),
       });
       const startData = await startRes.json();
 
       if (!startRes.ok) throw new Error(startData.details || startData.error || "Failed to open Mercari");
-      scrapeId = startData.scrapeId || "";
+      sessionId = startData.sessionId || "";
 
       // Step 2: Fill in the listing details (including photos)
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Uploading photos & filling details..." }));
       const fillRes = await fetch("/api/listings/publish/mercari", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id, scrapeId, step: "fill" }),
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill" }),
       });
       const fillData = await fillRes.json();
 
-      if (!fillRes.ok) {
-        const errMsg = (fillData.details || fillData.error || "").toLowerCase();
-        // If session was lost ("job not found"), recreate the browser and try again
-        if (errMsg.includes("job not found") || errMsg.includes("session")) {
-          setPublishProgress((prev) => ({ ...prev, [listing.id]: "Session lost, reopening browser..." }));
-          const restartRes = await fetch("/api/listings/publish/mercari", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ listingId: listing.id, scrapeId: "", step: "start" }),
-          });
-          const restartData = await restartRes.json();
-          if (!restartRes.ok) throw new Error(restartData.details || restartData.error || "Failed to reopen Mercari");
-          scrapeId = restartData.scrapeId || "";
-        }
-        setPublishProgress((prev) => ({ ...prev, [listing.id]: "Retrying form fill..." }));
-        const retryRes = await fetch("/api/listings/publish/mercari", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id, scrapeId, step: "fill" }),
-        });
-        const retryData = await retryRes.json();
-        if (!retryRes.ok) throw new Error(retryData.details || retryData.error || "Failed to fill fields");
-      }
+      if (!fillRes.ok) throw new Error(fillData.details || fillData.error || "Failed to fill fields");
 
       // Step 3: Submit the listing
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
       const submitRes = await fetch("/api/listings/publish/mercari", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id, scrapeId, step: "submit" }),
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "submit" }),
       });
       const submitData = await submitRes.json();
 
-      if (!submitRes.ok) throw new Error(submitData.error || "Failed to publish");
+      if (!submitRes.ok) throw new Error(submitData.details || submitData.error || "Failed to publish");
 
       await updateListing(listing.id, {
         status: "listed",

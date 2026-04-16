@@ -1,26 +1,20 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, MarketplaceConnection } from "@/lib/redis";
 import {
-  firecrawlBrowserCreate,
-  firecrawlBrowserDelete,
-  firecrawlScrape,
-  firecrawlInteract,
-  MERCARI_PROFILE,
-  FACEBOOK_PROFILE,
-} from "@/lib/firecrawl";
-import { MERCARI_PROMPTS, FACEBOOK_PROMPTS } from "@/lib/marketplace-prompts";
+  createContext,
+  createSession,
+  reconnectSession,
+  releaseSession,
+} from "@/lib/browserbase";
 
-const PLATFORM_CONFIG = {
-  mercari: {
-    loginUrl: "https://www.mercari.com/login/",
-    profile: MERCARI_PROFILE,
-    prompts: MERCARI_PROMPTS,
-  },
-  facebook: {
-    loginUrl: "https://www.facebook.com/login/",
-    profile: FACEBOOK_PROFILE,
-    prompts: FACEBOOK_PROMPTS,
-  },
+const LOGIN_URLS = {
+  mercari: "https://www.mercari.com/login/",
+  facebook: "https://www.facebook.com/login/",
+} as const;
+
+const VERIFY_URLS = {
+  mercari: "https://www.mercari.com/mypage/",
+  facebook: "https://www.facebook.com/marketplace/you/selling/",
 } as const;
 
 export async function POST(request: NextRequest) {
@@ -37,76 +31,118 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Invalid platform" }, { status: 400 });
     }
 
-    const config = PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG];
+    const redis = getRedis();
 
     if (action === "start") {
-      // Create an interactive browser session with persistent profile
-      const result = await firecrawlBrowserCreate({
-        profile: config.profile,
-        ttl: 300, // 5 minutes to log in
-        activityTtl: 300,
+      // Get or create a persistent Browserbase context for this platform
+      const existingRaw = await redis.get(REDIS_KEYS.marketplaceConnection(platform));
+      const existing: MarketplaceConnection | null = existingRaw
+        ? typeof existingRaw === "string"
+          ? JSON.parse(existingRaw)
+          : (existingRaw as MarketplaceConnection)
+        : null;
+
+      const contextId = existing?.contextId || (await createContext());
+
+      // Create a browser session using that context with persist: true
+      // so the user's login gets saved for later publish sessions
+      const session = await createSession({
+        contextId,
+        persist: true,
+        keepAlive: true,
+        timeout: 600,
       });
 
-      if (!result.success || !result.interactiveLiveViewUrl) {
-        return Response.json(
-          { error: "Failed to start browser session", details: result.error },
-          { status: 500 }
-        );
-      }
+      // Navigate to the login page in the session
+      const { browser, page } = await reconnectSession(session.id);
+      await page.goto(LOGIN_URLS[platform as keyof typeof LOGIN_URLS], {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await browser.close();
+
+      // Save the contextId immediately so subsequent sessions reuse it
+      const pendingConnection: MarketplaceConnection = {
+        platform: platform as "mercari" | "facebook",
+        profileName: `${platform}-session`,
+        connected: existing?.connected || false,
+        lastValidated: existing?.lastValidated || new Date().toISOString(),
+        contextId,
+      };
+      await redis.set(
+        REDIS_KEYS.marketplaceConnection(platform),
+        JSON.stringify(pendingConnection)
+      );
 
       return Response.json({
         status: "login_required",
-        sessionId: result.id,
-        liveViewUrl: result.interactiveLiveViewUrl,
-        expiresAt: result.expiresAt,
+        sessionId: session.id,
+        liveViewUrl: session.liveViewUrl,
         message: `Open the link below to log into ${platform}. Your session is saved so you only need to do this once.`,
       });
     }
 
     if (action === "verify") {
-      // After user logs in via live view, verify by scraping a protected page
-      // The profile should now have auth cookies saved
-      const testUrl = platform === "mercari"
-        ? "https://www.mercari.com/mypage/"
-        : "https://www.facebook.com/marketplace/you/selling/";
+      const existingRaw = await redis.get(REDIS_KEYS.marketplaceConnection(platform));
+      const existing: MarketplaceConnection | null = existingRaw
+        ? typeof existingRaw === "string"
+          ? JSON.parse(existingRaw)
+          : (existingRaw as MarketplaceConnection)
+        : null;
 
-      const result = await firecrawlScrape(testUrl, {
-        profile: config.profile,
-        proxy: "stealth",
-        waitFor: 5000,
-        formats: ["markdown"],
+      if (!existing?.contextId) {
+        return Response.json(
+          { error: "No connection in progress. Start a new connection first." },
+          { status: 400 }
+        );
+      }
+
+      // Release the old session used for login (so its cookies get saved to the context)
+      if (sessionId) {
+        await releaseSession(sessionId);
+        // Wait for context to be committed
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      // Create a fresh session using the saved context to verify login persisted
+      const verifySession = await createSession({
+        contextId: existing.contextId,
+        persist: false,
+        keepAlive: false,
+        timeout: 60,
       });
 
-      const content = result.data?.markdown || "";
-      const url = result.data?.metadata?.url || "";
+      let isLoggedIn = false;
+      let finalUrl = "";
+      try {
+        const { browser, page } = await reconnectSession(verifySession.id);
+        await page.goto(VERIFY_URLS[platform as keyof typeof VERIFY_URLS], {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+        // Give the page a moment to redirect if not logged in
+        await page.waitForTimeout(2000);
+        finalUrl = page.url();
+        isLoggedIn = !finalUrl.includes("/login");
+        await browser.close();
+      } finally {
+        await releaseSession(verifySession.id);
+      }
 
-      // Check if we got redirected to login (not authenticated) or stayed on the page
-      const isLoggedIn = platform === "mercari"
-        ? !url.includes("/login") && (content.includes("My Page") || content.includes("mypage") || content.includes("Selling") || content.includes("listing"))
-        : !url.includes("/login") && (content.includes("Marketplace") || content.includes("selling") || content.includes("Your listings"));
-
-      const redis = getRedis();
       const connection: MarketplaceConnection = {
         platform: platform as "mercari" | "facebook",
-        profileName: config.profile.name,
+        profileName: existing.profileName,
         connected: isLoggedIn,
         lastValidated: new Date().toISOString(),
-        error: isLoggedIn ? undefined : "Login not detected. Please try connecting again.",
+        contextId: existing.contextId,
+        error: isLoggedIn
+          ? undefined
+          : `Login not detected (ended on ${finalUrl}). Please try connecting again.`,
       };
-      await redis.set(REDIS_KEYS.marketplaceConnection(platform), JSON.stringify(connection));
-
-      // Clean up the browser session if one was provided
-      if (sessionId) {
-        try { await firecrawlBrowserDelete(sessionId); } catch {}
-      }
-
-      // Stop the scrape interact session
-      if (result.data?.metadata?.scrapeId) {
-        try {
-          const { firecrawlInteractStop } = await import("@/lib/firecrawl");
-          await firecrawlInteractStop(result.data.metadata.scrapeId);
-        } catch {}
-      }
+      await redis.set(
+        REDIS_KEYS.marketplaceConnection(platform),
+        JSON.stringify(connection)
+      );
 
       return Response.json({ connection });
     }

@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: ".",
   },
+  serverExternalPackages: ["playwright-core", "@browserbasehq/sdk"],
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

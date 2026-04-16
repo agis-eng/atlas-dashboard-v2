@@ -189,4 +189,6 @@ export interface MarketplaceConnection {
   lastValidated: string;
   username?: string;
   error?: string;
+  // Browserbase context ID — persists login cookies across sessions
+  contextId?: string;
 }

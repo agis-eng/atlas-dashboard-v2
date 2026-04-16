@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft, MarketplaceConnection } from "@/lib/redis";
-import { firecrawlBrowserCreate, firecrawlInteract, firecrawlInteractStop, MERCARI_PROFILE } from "@/lib/firecrawl";
+import {
+  createSession,
+  reconnectSession,
+  releaseSession,
+} from "@/lib/browserbase";
 
-function getOutput(result: any): string {
-  return result?.output || result?.data?.output || "";
-}
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +16,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { listingId, scrapeId: existingScrapeId, step } = await request.json();
+    const { listingId, sessionId: existingSessionId, step } = await request.json();
 
     if (!listingId || !step) {
       return Response.json({ error: "listingId and step are required" }, { status: 400 });
@@ -23,7 +25,9 @@ export async function POST(request: NextRequest) {
     const redis = getRedis();
     const listingsRaw = await redis.get(REDIS_KEYS.listings);
     const listings: ListingDraft[] = listingsRaw
-      ? (typeof listingsRaw === "string" ? JSON.parse(listingsRaw) : listingsRaw)
+      ? typeof listingsRaw === "string"
+        ? JSON.parse(listingsRaw)
+        : (listingsRaw as ListingDraft[])
       : [];
     const listing = listings.find((l) => l.id === listingId);
 
@@ -37,184 +41,286 @@ export async function POST(request: NextRequest) {
 
     const connRaw = await redis.get(REDIS_KEYS.marketplaceConnection("mercari"));
     const connection: MarketplaceConnection | null = connRaw
-      ? (typeof connRaw === "string" ? JSON.parse(connRaw) : connRaw)
+      ? typeof connRaw === "string"
+        ? JSON.parse(connRaw)
+        : (connRaw as MarketplaceConnection)
       : null;
+
     if (!connection?.connected) {
-      return Response.json({ error: "Mercari account not connected. Connect it first." }, { status: 400 });
+      return Response.json(
+        { error: "Mercari account not connected. Connect it first." },
+        { status: 400 }
+      );
+    }
+    if (!connection.contextId) {
+      return Response.json(
+        { error: "Mercari connection missing context. Please reconnect." },
+        { status: 400 }
+      );
     }
 
     switch (step) {
       case "start": {
-        // Create a visible interactive browser session
-        // Use saveChanges:false so multiple publish sessions can run concurrently.
-        // Login cookies were already saved during the connect flow.
-        const browser = await firecrawlBrowserCreate({
-          profile: { name: MERCARI_PROFILE.name, saveChanges: false },
-          ttl: 600,
-          activityTtl: 600,
+        // Create a keep-alive session using the saved Mercari context
+        const session = await createSession({
+          contextId: connection.contextId,
+          persist: false,
+          keepAlive: true,
+          timeout: 600,
         });
 
-        console.log("Browser create result:", JSON.stringify(browser).substring(0, 500));
+        try {
+          const { browser, page } = await reconnectSession(session.id);
+          await page.goto("https://www.mercari.com/sell/", {
+            waitUntil: "domcontentloaded",
+            timeout: 45000,
+          });
+          await page.waitForTimeout(3000);
+          const url = page.url();
+          console.log("Start: landed on", url);
+          await browser.close();
 
-        if (!browser.id) {
-          console.error("Browser creation failed:", browser.error || JSON.stringify(browser));
-          return Response.json(
-            { error: "Failed to create browser session: " + (browser.error || "unknown"), details: browser.error },
-            { status: 500 }
-          );
-        }
+          if (url.includes("/login")) {
+            await releaseSession(session.id);
+            return Response.json(
+              {
+                error: "Mercari session expired. Please reconnect your account.",
+                liveViewUrl: session.liveViewUrl,
+              },
+              { status: 401 }
+            );
+          }
 
-        // Navigate to Mercari sell page
-        const navResult = await firecrawlInteract(
-          browser.id,
-          `Navigate to https://www.mercari.com/sell/ and wait for the page to load. Describe what you see on the page.`,
-          { timeout: 30 }
-        );
+          await updateListingField(redis, listings, listingId, {
+            mercariStatus: "publishing",
+          });
 
-        const navOutput = getOutput(navResult);
-        console.log("Mercari nav:", navOutput.substring(0, 200));
-
-        // Check if logged in
-        if (navOutput.toLowerCase().includes("log in") || navOutput.toLowerCase().includes("sign in")) {
           return Response.json({
-            error: "Mercari session expired. Please reconnect your account.",
-            liveViewUrl: browser.interactiveLiveViewUrl || browser.liveViewUrl,
-          }, { status: 401 });
+            success: true,
+            sessionId: session.id,
+            liveViewUrl: session.liveViewUrl,
+            step: "start",
+            next: "fill",
+          });
+        } catch (err: any) {
+          await releaseSession(session.id);
+          throw err;
         }
-
-        await updateListingField(redis, listings, listingId, { mercariStatus: "publishing" });
-
-        return Response.json({
-          success: true,
-          scrapeId: browser.id,
-          liveViewUrl: browser.interactiveLiveViewUrl || browser.liveViewUrl,
-          step: "start",
-          next: "fill",
-        });
       }
 
       case "fill": {
-        if (!existingScrapeId) {
-          return Response.json({ error: "scrapeId required" }, { status: 400 });
+        if (!existingSessionId) {
+          return Response.json({ error: "sessionId required" }, { status: 400 });
         }
 
         const title = listing.title;
-        const desc = listing.description;
+        const desc = listing.description || "";
         const price = listing.price!;
         const condition = listing.condition || "Good";
-        const photos = listing.photos || [];
+        const photos = (listing.photos || []).filter(Boolean).slice(0, 12);
 
-        // Step A: Upload photos if available
-        if (photos.length > 0) {
-          const photoUrls = photos.filter(Boolean).slice(0, 12);
-          const photoPrompt = `On this Mercari "List an item" form, I need you to upload photos first.
-Look for the photo upload area (usually says "Add up to 12 photos" or has a camera icon).
-Click the photo upload button/area. A file picker dialog should appear.
-For each of these image URLs, download and upload them as photos:
-${photoUrls.map((url, i) => `Photo ${i + 1}: ${url}`).join("\n")}
+        const { browser, page } = await reconnectSession(existingSessionId);
 
-If you can't upload from URLs directly, try using the browser's developer console to fetch and upload them programmatically. After uploading, tell me how many photos were added.`;
-
-          const photoResult = await firecrawlInteract(
-            existingScrapeId,
-            photoPrompt,
-            { timeout: 90 }
-          );
-          console.log("Photo upload full response:", JSON.stringify(photoResult).substring(0, 500));
-          console.log("Photo upload result:", getOutput(photoResult).substring(0, 300));
-          if (!photoResult.success) {
-            console.error("Photo upload failed — scrapeId may be invalid. Error:", photoResult.error);
+        try {
+          // Make sure we're on the sell page
+          if (!page.url().includes("/sell")) {
+            await page.goto("https://www.mercari.com/sell/", {
+              waitUntil: "domcontentloaded",
+              timeout: 45000,
+            });
+            await page.waitForTimeout(2000);
           }
-        }
 
-        // Step B: Fill all text fields
-        const fillResult = await firecrawlInteract(
-          existingScrapeId,
-          `On this Mercari "List an item" form, do these steps in order:
-1. Click the Title input field (textbox labeled "Title") and type exactly: ${title}
-2. Click the Description textarea (textbox labeled "Description") and type exactly: ${desc}
-3. Click on the "${condition}" condition option to select it
-4. Click on "Ship on your own" under Shipping method (if not already selected)
-5. Click the price input field (textbox with placeholder "min $1/max $2000") and type: ${price}
-Do NOT click the List button yet. After filling everything, tell me what the Title field shows and what the price shows.`,
-          { timeout: 120 }
-        );
+          // Upload photos via the hidden file input
+          if (photos.length > 0) {
+            console.log(`Uploading ${photos.length} photos...`);
+            const files = await Promise.all(
+              photos.map(async (url, i) => {
+                const res = await fetch(url);
+                const buf = Buffer.from(await res.arrayBuffer());
+                return {
+                  name: `photo-${i + 1}.jpg`,
+                  mimeType: "image/jpeg",
+                  buffer: buf,
+                };
+              })
+            );
 
-        const fillOutput = getOutput(fillResult);
-        console.log("Fill full response:", JSON.stringify(fillResult).substring(0, 500));
-        console.log("Fill result - success:", fillResult.success, "output:", fillOutput.substring(0, 300));
+            const fileInput = page.locator('input[type="file"]').first();
+            await fileInput.setInputFiles(files, { timeout: 60000 });
+            // Wait for uploads to settle
+            await page.waitForTimeout(5000);
+            console.log("Photos uploaded");
+          }
 
-        if (!fillResult.success) {
-          const errorDetail = fillResult.error || fillOutput || "Unknown error";
-          console.error("Fill failed — full result:", JSON.stringify(fillResult).substring(0, 1000));
+          // Fill Title
+          console.log("Filling title...");
+          const titleInput = page.getByLabel(/title/i).first();
+          await titleInput.fill(title, { timeout: 30000 });
+
+          // Fill Description
+          if (desc) {
+            console.log("Filling description...");
+            const descInput = page.getByLabel(/description/i).first();
+            await descInput.fill(desc, { timeout: 30000 });
+          }
+
+          // Select Condition (radio/button)
+          console.log("Selecting condition:", condition);
+          try {
+            const conditionOption = page.getByRole("radio", { name: new RegExp(condition, "i") }).first();
+            if (await conditionOption.isVisible({ timeout: 5000 })) {
+              await conditionOption.check({ timeout: 10000 });
+            } else {
+              // Fall back to clicking a button with the condition label
+              await page.getByRole("button", { name: new RegExp(condition, "i") }).first().click({ timeout: 10000 });
+            }
+          } catch (err) {
+            console.warn("Could not select condition — user may need to pick manually:", String(err).substring(0, 200));
+          }
+
+          // Select "Ship on your own" shipping
+          console.log("Selecting shipping: Ship on your own");
+          try {
+            const shipOption = page.getByText(/ship on your own/i).first();
+            if (await shipOption.isVisible({ timeout: 5000 })) {
+              await shipOption.click({ timeout: 10000 });
+            }
+          } catch (err) {
+            console.warn("Could not select shipping — user may need to pick manually:", String(err).substring(0, 200));
+          }
+
+          // Fill Price
+          console.log("Filling price:", price);
+          try {
+            const priceInput = page.getByLabel(/price/i).first();
+            await priceInput.fill(String(price), { timeout: 30000 });
+          } catch (err) {
+            // Fallback: find input with dollar sign or min/max placeholder
+            const altPrice = page.locator('input[placeholder*="min"]').first();
+            await altPrice.fill(String(price), { timeout: 30000 });
+          }
+
+          await browser.close();
+
+          return Response.json({
+            success: true,
+            sessionId: existingSessionId,
+            step: "fill",
+            next: "submit",
+            message: "Fields filled. Review in the browser window, then click Submit.",
+          });
+        } catch (err: any) {
+          console.error("Fill failed:", err);
+          await browser.close();
+          const errMsg = err?.message || String(err);
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: "Failed to fill listing fields: " + errorDetail,
+            mercariError: "Fill failed: " + errMsg.substring(0, 300),
           });
-          return Response.json({
-            error: "Failed to fill fields: " + errorDetail,
-            details: errorDetail,
-          }, { status: 500 });
+          return Response.json(
+            { error: "Fill failed", details: errMsg.substring(0, 500) },
+            { status: 500 }
+          );
         }
-
-        return Response.json({
-          success: true,
-          scrapeId: existingScrapeId,
-          step: "fill",
-          next: "ready",
-          output: fillOutput.substring(0, 300),
-          message: "Fields filled! Review the listing in the browser window, add photos, then click List when ready.",
-        });
       }
 
       case "submit": {
-        if (!existingScrapeId) {
-          return Response.json({ error: "scrapeId required" }, { status: 400 });
+        if (!existingSessionId) {
+          return Response.json({ error: "sessionId required" }, { status: 400 });
         }
 
-        // Click List to publish the listing
-        const submitResult = await firecrawlInteract(
-          existingScrapeId,
-          `Click the "List" button to publish this listing on Mercari. If there is no "List" button, try clicking "Save draft" instead. Then wait 5 seconds and describe what happened. Did you see a success message? An error? What does the page show now?`,
-          { timeout: 60 }
-        );
+        const { browser, page } = await reconnectSession(existingSessionId);
 
-        const submitOutput = getOutput(submitResult);
-        console.log("Save draft result:", submitOutput.substring(0, 500));
+        try {
+          // Try "List" button first; fall back to "Save draft"
+          let clicked = false;
+          let usedDraft = false;
+          for (const name of [/^list$/i, /list it/i]) {
+            try {
+              const btn = page.getByRole("button", { name }).first();
+              if (await btn.isVisible({ timeout: 3000 })) {
+                await btn.click({ timeout: 10000 });
+                clicked = true;
+                break;
+              }
+            } catch {}
+          }
+          if (!clicked) {
+            for (const name of [/save draft/i, /^save$/i]) {
+              try {
+                const btn = page.getByRole("button", { name }).first();
+                if (await btn.isVisible({ timeout: 3000 })) {
+                  await btn.click({ timeout: 10000 });
+                  clicked = true;
+                  usedDraft = true;
+                  break;
+                }
+              } catch {}
+            }
+          }
 
-        try { await firecrawlInteractStop(existingScrapeId); } catch {}
+          if (!clicked) {
+            throw new Error("Could not find a List or Save draft button");
+          }
 
-        const hasError = submitOutput.toLowerCase().includes("error") ||
-          submitOutput.toLowerCase().includes("failed");
-        const hasDraftSuccess = submitOutput.toLowerCase().includes("draft") ||
-          submitOutput.toLowerCase().includes("saved") ||
-          submitOutput.toLowerCase().includes("success");
+          // Wait for navigation / success indicator
+          await page.waitForTimeout(6000);
+          const finalUrl = page.url();
+          const bodyText = (await page.locator("body").innerText().catch(() => "")).substring(0, 1000);
+          console.log("Submit ended on:", finalUrl);
 
-        if (hasError && !hasDraftSuccess) {
+          await browser.close();
+          await releaseSession(existingSessionId);
+
+          const looksSuccess =
+            !finalUrl.includes("/sell") ||
+            /listed|saved|success|published/i.test(bodyText);
+
+          if (!looksSuccess) {
+            await updateListingField(redis, listings, listingId, {
+              mercariStatus: "error",
+              mercariError: `Submit may have failed. Final URL: ${finalUrl}`,
+              status: "error",
+              error: `Mercari: Submit may have failed. Final URL: ${finalUrl}`,
+            });
+            return Response.json({
+              success: false,
+              error: "Submit may have failed",
+              details: `Ended on ${finalUrl}`,
+            });
+          }
+
+          await updateListingField(redis, listings, listingId, {
+            mercariStatus: "listed",
+            status: "listed",
+            mercariListingUrl: finalUrl,
+          });
+
+          return Response.json({
+            success: true,
+            listingUrl: finalUrl,
+            step: "submit",
+            message: usedDraft
+              ? "Draft saved to Mercari."
+              : "Listed on Mercari.",
+          });
+        } catch (err: any) {
+          console.error("Submit failed:", err);
+          await browser.close();
+          await releaseSession(existingSessionId);
+          const errMsg = err?.message || String(err);
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: submitOutput.substring(0, 200) || "Save draft may have failed",
+            mercariError: "Submit failed: " + errMsg.substring(0, 300),
             status: "error",
-            error: "Mercari: " + (submitOutput.substring(0, 200) || "Save draft may have failed"),
+            error: "Mercari: " + errMsg.substring(0, 300),
           });
-          return Response.json({
-            success: false,
-            error: "Draft may not have been saved",
-            details: submitOutput.substring(0, 500),
-          });
+          return Response.json(
+            { error: "Submit failed", details: errMsg.substring(0, 500) },
+            { status: 500 }
+          );
         }
-
-        await updateListingField(redis, listings, listingId, {
-          mercariStatus: "listed",
-          status: "listed",
-        });
-
-        return Response.json({
-          success: true,
-          step: "submit",
-          output: submitOutput.substring(0, 500),
-          message: "Draft saved to Mercari. Go to your Mercari drafts to review and publish.",
-        });
       }
 
       default:
