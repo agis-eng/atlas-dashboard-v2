@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   Store,
   Facebook,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ interface ListingDraft {
     suggestedCondition: string;
     confidence: string;
   };
+  mercariError?: string;
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -1149,6 +1151,24 @@ function ListingCard({
                   )}
                   {analyzing ? "Analyzing..." : "Re-analyze"}
                 </Button>
+
+                {listing.status === "error" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs border-red-300 text-red-600 hover:bg-red-50"
+                    onClick={() =>
+                      onUpdate({
+                        status: "ready",
+                        error: undefined,
+                        mercariError: undefined,
+                      })
+                    }
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Reset Draft
+                  </Button>
+                )}
 
                 {selectedPlatforms.has("ebay") && listing.status !== "listed" && (
                   <Button

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface BrainData {
   id: string;
@@ -87,6 +88,8 @@ export default function BrainDetailPage({
   >([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [selectedNoteIndices, setSelectedNoteIndices] = useState<number[]>([]);
+  const [selectedDocIndices, setSelectedDocIndices] = useState<number[]>([]);
 
   useEffect(() => {
     loadBrain();
@@ -99,6 +102,8 @@ export default function BrainDetailPage({
       if (res.ok) {
         const data = await res.json();
         setBrain(data);
+        setSelectedNoteIndices(data.notes?.map((_: any, i: number) => i) || []);
+        setSelectedDocIndices(data.documents?.map((_: any, i: number) => i) || []);
       }
     } catch {
       console.error("Failed to load brain");
@@ -231,7 +236,7 @@ export default function BrainDetailPage({
       const res = await fetch(`/api/brain/${id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, history: chatMessages }),
+        body: JSON.stringify({ message: userMessage, history: chatMessages, selectedDocIndices, selectedNoteIndices }),
       });
 
       if (!res.ok) throw new Error("Chat request failed");
@@ -647,6 +652,14 @@ export default function BrainDetailPage({
                     key={i}
                     className="flex items-center gap-2 p-2 rounded border text-xs"
                   >
+                    <Checkbox
+                      checked={selectedDocIndices.includes(i)}
+                      onCheckedChange={(checked) => {
+                        setSelectedDocIndices(prev =>
+                          checked ? [...prev, i] : prev.filter(idx => idx !== i)
+                        );
+                      }}
+                    />
                     <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{doc.name}</p>
@@ -780,11 +793,22 @@ export default function BrainDetailPage({
             )}
             {brain.notes && brain.notes.length > 0 ? (
               brain.notes.map((note: any, i: number) => (
-                <div key={i} className="p-2 rounded border text-xs">
-                  <p className="whitespace-pre-wrap">{note.content}</p>
-                  <p className="text-muted-foreground mt-1">
-                    {new Date(note.date).toLocaleDateString()}
-                  </p>
+                <div key={i} className="flex items-start gap-2 p-2 rounded border text-xs">
+                  <Checkbox
+                    checked={selectedNoteIndices.includes(i)}
+                    onCheckedChange={(checked) => {
+                      setSelectedNoteIndices(prev =>
+                        checked ? [...prev, i] : prev.filter(idx => idx !== i)
+                      );
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="whitespace-pre-wrap">{note.content}</p>
+                    <p className="text-muted-foreground mt-1">
+                      {new Date(note.date).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
               ))
             ) : !showNoteForm ? (
