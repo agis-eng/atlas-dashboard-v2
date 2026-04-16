@@ -510,7 +510,7 @@ export default function ListingsPage() {
       });
       const startData = await startRes.json();
 
-      if (!startRes.ok) throw new Error(startData.error || "Failed to open Mercari");
+      if (!startRes.ok) throw new Error(startData.details || startData.error || "Failed to open Mercari");
       scrapeId = startData.scrapeId || "";
 
       // Step 2: Fill in the listing details (including photos)

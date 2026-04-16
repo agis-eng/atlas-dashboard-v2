@@ -52,9 +52,12 @@ export async function POST(request: NextRequest) {
           activityTtl: 600,
         });
 
+        console.log("Browser create result:", JSON.stringify(browser).substring(0, 500));
+
         if (!browser.id) {
+          console.error("Browser creation failed:", browser.error || JSON.stringify(browser));
           return Response.json(
-            { error: "Failed to create browser session", details: browser.error },
+            { error: "Failed to create browser session: " + (browser.error || "unknown"), details: browser.error },
             { status: 500 }
           );
         }
