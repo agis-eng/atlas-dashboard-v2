@@ -38,6 +38,7 @@ interface ListingDraft {
   quantity: number;
   condition: string;
   category: string;
+  brand?: string;
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
@@ -49,6 +50,7 @@ interface ListingDraft {
     suggestedPrice: number;
     suggestedCategory: string;
     suggestedCondition: string;
+    suggestedBrand?: string;
     suggestedWeightOz?: number;
     suggestedLengthIn?: number;
     suggestedWidthIn?: number;
@@ -239,6 +241,7 @@ export default function ListingsPage() {
           price: data.analysis.suggestedPrice || null,
           condition: data.analysis.suggestedCondition || "",
           category: data.analysis.suggestedCategory || "",
+          brand: data.analysis.suggestedBrand || "",
           aiAnalysis: data.analysis,
           status: "ready",
         };
@@ -1184,6 +1187,7 @@ function ListingCard({
   const [editQuantity, setEditQuantity] = useState((listing.quantity || 1).toString());
   const [editCondition, setEditCondition] = useState(listing.condition);
   const [editCategory, setEditCategory] = useState(listing.category);
+  const [editBrand, setEditBrand] = useState(listing.brand || "");
   const [editWeight, setEditWeight] = useState((listing.weightOz ?? "").toString());
   const [editLength, setEditLength] = useState((listing.lengthIn ?? "").toString());
   const [editWidth, setEditWidth] = useState((listing.widthIn ?? "").toString());
@@ -1200,11 +1204,12 @@ function ListingCard({
     setEditQuantity((listing.quantity || 1).toString());
     setEditCondition(listing.condition);
     setEditCategory(listing.category);
+    setEditBrand(listing.brand || "");
     setEditWeight((listing.weightOz ?? "").toString());
     setEditLength((listing.lengthIn ?? "").toString());
     setEditWidth((listing.widthIn ?? "").toString());
     setEditHeight((listing.heightIn ?? "").toString());
-  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn]);
+  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.brand, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn]);
 
   function saveEdits() {
     onUpdate({
@@ -1214,6 +1219,7 @@ function ListingCard({
       quantity: editQuantity ? parseInt(editQuantity) : 1,
       condition: editCondition,
       category: editCategory,
+      brand: editBrand,
       platforms: Array.from(selectedPlatforms) as any,
       weightOz: editWeight ? parseFloat(editWeight) : undefined,
       lengthIn: editLength ? parseFloat(editLength) : undefined,
@@ -1392,7 +1398,7 @@ function ListingCard({
                 </div>
               </div>
 
-              {/* Category */}
+              {/* Category + Brand */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground block mb-1">
                   Category
@@ -1401,6 +1407,17 @@ function ListingCard({
                   value={editCategory}
                   onChange={(e) => setEditCategory(e.target.value)}
                   placeholder="e.g. Electronics > Video Games > Controllers"
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">
+                  Brand (required on Mercari — use &quot;Unbranded&quot; if none)
+                </label>
+                <Input
+                  value={editBrand}
+                  onChange={(e) => setEditBrand(e.target.value)}
+                  placeholder="e.g. Nike, Apple, Unbranded"
                   className="text-sm"
                 />
               </div>

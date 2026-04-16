@@ -130,8 +130,10 @@ export async function POST(request: NextRequest) {
         const lengthIn = listing.lengthIn || listing.aiAnalysis?.suggestedLengthIn || 10;
         const widthIn = listing.widthIn || listing.aiAnalysis?.suggestedWidthIn || 6;
         const heightIn = listing.heightIn || listing.aiAnalysis?.suggestedHeightIn || 4;
-        // Brand: use AI suggestion or "Unbranded" — required field on Mercari
-        const brand = (listing.aiAnalysis as any)?.suggestedBrand || "Unbranded";
+        // Brand: user override → AI suggestion → "Unbranded" (required field on Mercari)
+        const brand = listing.brand || (listing.aiAnalysis as any)?.suggestedBrand || "Unbranded";
+        // Track which fields got filled vs skipped so we can surface it in errors
+        const fieldStatus: Record<string, string> = {};
 
         const { browser, page } = await reconnectSession(existingSessionId);
 
@@ -226,44 +228,115 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Select Condition (radio/button)
+          // Select Condition (radio/button). Use exact match so "New" doesn't match "Like New".
           console.log("Selecting condition:", condition);
+          fieldStatus.condition = "not-attempted";
           try {
-            const conditionOption = page.getByRole("radio", { name: new RegExp(condition, "i") }).first();
-            if (await conditionOption.isVisible({ timeout: 5000 })) {
-              await conditionOption.check({ timeout: 10000 });
-            } else {
-              // Fall back to clicking a button with the condition label
-              await page.getByRole("button", { name: new RegExp(condition, "i") }).first().click({ timeout: 10000 });
+            let picked = false;
+            // 1) Try an exact-name radio
+            try {
+              const conditionRadio = page.getByRole("radio", { name: condition, exact: true }).first();
+              if (await conditionRadio.isVisible({ timeout: 3000 }).catch(() => false)) {
+                await conditionRadio.check({ timeout: 10000 });
+                picked = true;
+              }
+            } catch {}
+            // 2) Exact-name button (Mercari sometimes renders as buttons)
+            if (!picked) {
+              try {
+                const conditionBtn = page.getByRole("button", { name: condition, exact: true }).first();
+                if (await conditionBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+                  await conditionBtn.click({ timeout: 10000 });
+                  picked = true;
+                }
+              } catch {}
             }
+            // 3) Text-anchored click (any element with exact condition text)
+            if (!picked) {
+              try {
+                const conditionText = page.getByText(new RegExp(`^${condition}$`, "i")).first();
+                if (await conditionText.isVisible({ timeout: 2000 }).catch(() => false)) {
+                  await conditionText.click({ timeout: 10000 });
+                  picked = true;
+                }
+              } catch {}
+            }
+            fieldStatus.condition = picked ? `picked: ${condition}` : "not-found";
           } catch (err) {
-            console.warn("Could not select condition — user may need to pick manually:", String(err).substring(0, 200));
+            fieldStatus.condition = "error: " + String(err).substring(0, 80);
+            console.warn("Could not select condition:", String(err).substring(0, 200));
           }
 
-          // Brand (required field on Mercari). Use AI suggestion or "Unbranded".
+          // Brand (required field on Mercari). Mercari renders Brand as a combobox / "Please select"
+          // button, not a labeled input — so we try several strategies to open it.
           console.log("Filling brand:", brand);
+          fieldStatus.brand = "not-attempted";
           try {
-            const brandInput = page.getByLabel(/^brand$/i).first();
-            if (await brandInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-              await brandInput.click({ timeout: 5000 });
-              await page.waitForTimeout(400);
-              await brandInput.fill(brand).catch(() => {});
-              await page.waitForTimeout(1500);
-              // Try to click a dropdown option matching the brand
-              const opt = page.getByRole("option", { name: new RegExp(`^${brand}$`, "i") }).first();
-              if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await opt.click({ timeout: 5000 });
-              } else if (brand.toLowerCase() === "unbranded") {
-                // Try an "Unbranded" option with flexible match
-                const unbrandedOpt = page.getByRole("option", { name: /unbranded/i }).first();
-                if (await unbrandedOpt.isVisible({ timeout: 2000 }).catch(() => false)) {
-                  await unbrandedOpt.click({ timeout: 5000 });
+            // Find an element to click that opens the Brand picker
+            const brandOpeners = [
+              page.getByRole("combobox", { name: /^brand$/i }).first(),
+              page.locator('[aria-label="Brand" i]').first(),
+              page.locator('[data-testid*="brand" i]').first(),
+              // Fallback: the "Please select" button in the row labeled "Brand"
+              page.getByText(/^Brand$/).locator("xpath=./following::button[1]"),
+              page.getByText(/^Brand$/).locator("xpath=./following::*[@role='combobox'][1]"),
+            ];
+            let opened = false;
+            for (const opener of brandOpeners) {
+              try {
+                if (await opener.isVisible({ timeout: 1500 }).catch(() => false)) {
+                  await opener.click({ timeout: 5000 });
+                  opened = true;
+                  break;
                 }
+              } catch {}
+            }
+            if (!opened) {
+              fieldStatus.brand = "opener-not-found";
+            } else {
+              await page.waitForTimeout(600);
+              // Type the brand into whatever search input appeared
+              const searchBox = page.locator('input[type="search"], input[type="text"], input[role="combobox"]').last();
+              try {
+                if (await searchBox.isVisible({ timeout: 1500 }).catch(() => false)) {
+                  await searchBox.fill(brand, { timeout: 5000 });
+                  await page.waitForTimeout(1200);
+                }
+              } catch {}
+              // Pick a matching dropdown option; prefer exact, then contains
+              let picked = false;
+              const optionStrategies = [
+                page.getByRole("option", { name: brand, exact: true }).first(),
+                page.getByRole("option", { name: new RegExp(`^${brand}$`, "i") }).first(),
+                page.getByRole("option", { name: new RegExp(brand, "i") }).first(),
+                page.getByText(new RegExp(`^${brand}$`, "i")).first(),
+              ];
+              for (const opt of optionStrategies) {
+                try {
+                  if (await opt.isVisible({ timeout: 1200 }).catch(() => false)) {
+                    await opt.click({ timeout: 5000 });
+                    picked = true;
+                    break;
+                  }
+                } catch {}
               }
+              // Last-resort fallback for the "Unbranded" case
+              if (!picked && brand.toLowerCase() === "unbranded") {
+                try {
+                  const unbrandedOpt = page.getByRole("option", { name: /unbranded/i }).first();
+                  if (await unbrandedOpt.isVisible({ timeout: 1200 }).catch(() => false)) {
+                    await unbrandedOpt.click({ timeout: 5000 });
+                    picked = true;
+                  }
+                } catch {}
+              }
+              fieldStatus.brand = picked ? `picked: ${brand}` : `opened-but-not-picked (${brand})`;
             }
           } catch (err) {
+            fieldStatus.brand = "error: " + String(err).substring(0, 80);
             console.warn("Brand fill failed:", String(err).substring(0, 200));
           }
+          console.log("BRAND_STATUS:", fieldStatus.brand);
 
           // Shipping: user wants Mercari-provided prepaid label (seller pays, Mercari gives discount).
           // Mercari's actual option text: "Prepaid labelWe'll email you a label and you'll ship the item"
@@ -333,11 +406,18 @@ export async function POST(request: NextRequest) {
 
           await browser.close();
 
+          // Persist field-level fill status so the submit step can include it in diagnostics
+          console.log("FILL_FIELD_STATUS:", JSON.stringify(fieldStatus));
+          await updateListingField(redis, listings, listingId, {
+            mercariFieldStatus: JSON.stringify(fieldStatus).substring(0, 500),
+          });
+
           return Response.json({
             success: true,
             sessionId: existingSessionId,
             step: "fill",
             next: "submit",
+            fieldStatus,
             message: "Fields filled. Review in the browser window, then click Submit.",
           });
         } catch (err: any) {
@@ -443,12 +523,15 @@ export async function POST(request: NextRequest) {
             /listed|saved|success|published/i.test(bodyText);
 
           if (!looksSuccess) {
-            // Build a diagnostic payload: buttons we saw + body snippet + validation errors
+            // Build a diagnostic payload: buttons we saw + body snippet + validation errors + which fields filled
             const buttonsSummary = JSON.stringify(buttonTexts).substring(0, 400);
             const clickedBtn = clicked ? (usedDraft ? "save-draft" : "list-variant") : "none";
+            const fillStatus = listing.mercariFieldStatus || "";
             const diag = `Final URL: ${finalUrl} | Clicked: ${clickedBtn}${
-              validationErrors ? ` | Validation: ${validationErrors}` : ""
-            } | Body: ${bodyText.substring(0, 200).replace(/\s+/g, " ")} | Buttons: ${buttonsSummary}`;
+              fillStatus ? ` | Fill: ${fillStatus}` : ""
+            }${validationErrors ? ` | Validation: ${validationErrors}` : ""} | Body: ${bodyText
+              .substring(0, 200)
+              .replace(/\s+/g, " ")} | Buttons: ${buttonsSummary}`;
             await updateListingField(redis, listings, listingId, {
               mercariStatus: "error",
               mercariError: diag,

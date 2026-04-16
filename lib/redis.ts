@@ -160,6 +160,7 @@ export interface ListingDraft {
   quantity: number;
   condition: string;
   category: string;
+  brand?: string;
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
@@ -171,6 +172,7 @@ export interface ListingDraft {
     suggestedPrice: number;
     suggestedCategory: string;
     suggestedCondition: string;
+    suggestedBrand?: string;
     suggestedWeightOz?: number;
     suggestedLengthIn?: number;
     suggestedWidthIn?: number;
@@ -185,6 +187,7 @@ export interface ListingDraft {
   mercariStatus?: "pending" | "publishing" | "listed" | "error";
   facebookStatus?: "pending" | "publishing" | "listed" | "error";
   mercariError?: string;
+  mercariFieldStatus?: string;
   facebookError?: string;
   error?: string;
   createdAt: string;
