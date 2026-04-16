@@ -170,9 +170,12 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ error: "Invalid action. Use 'start' or 'verify'" }, { status: 400 });
   } catch (error: any) {
-    console.error("Marketplace connect error:", error);
+    const msg = error?.message || String(error);
+    const stack = error?.stack || "";
+    console.error("MKT_CONNECT_ERROR message:", msg);
+    console.error("MKT_CONNECT_ERROR stack:", stack.substring(0, 2000));
     return Response.json(
-      { error: "Failed to connect marketplace", details: error.message },
+      { error: "Failed to connect marketplace: " + msg.substring(0, 300), details: msg },
       { status: 500 }
     );
   }

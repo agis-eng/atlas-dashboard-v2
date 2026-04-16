@@ -486,11 +486,13 @@ export default function ListingsPage() {
         setPendingConnect({ platform, sessionId: data.sessionId, liveViewUrl: data.liveViewUrl });
         window.open(data.liveViewUrl, "_blank");
       } else {
-        alert(data.error || "Connection failed");
+        const msg = data.details || data.error || "Connection failed";
+        console.error("Connect failed:", data);
+        alert(msg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Connect error:", err);
-      alert("Failed to connect marketplace");
+      alert("Failed to connect marketplace: " + (err?.message || String(err)));
     }
     setConnecting(null);
   }
