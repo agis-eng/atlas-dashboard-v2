@@ -7,6 +7,27 @@ import {
   releaseSession,
 } from "@/lib/browserbase";
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const { getSessionUserFromRequest } = await import("@/lib/auth");
+    const user = await getSessionUserFromRequest(request);
+    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { searchParams } = new URL(request.url);
+    const platform = searchParams.get("platform");
+    if (!platform || !["mercari", "facebook"].includes(platform)) {
+      return Response.json({ error: "Invalid platform" }, { status: 400 });
+    }
+
+    const redis = getRedis();
+    await redis.del(REDIS_KEYS.marketplaceConnection(platform));
+    return Response.json({ success: true });
+  } catch (error: any) {
+    console.error("Disconnect error:", error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+
 const LOGIN_URLS = {
   mercari: "https://www.mercari.com/login/",
   facebook: "https://www.facebook.com/login/",

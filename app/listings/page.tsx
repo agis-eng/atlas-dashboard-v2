@@ -459,6 +459,18 @@ export default function ListingsPage() {
 
   const [pendingConnect, setPendingConnect] = useState<{ platform: string; sessionId: string; liveViewUrl: string } | null>(null);
 
+  async function disconnectMarketplace(platform: "mercari" | "facebook") {
+    if (!confirm(`Disconnect ${platform}? You'll need to log in again to publish.`)) return;
+    setConnecting(platform);
+    try {
+      await fetch(`/api/marketplace/connect?platform=${platform}`, { method: "DELETE" });
+      await loadMarketplaceStatus();
+    } catch (err) {
+      console.error("Disconnect error:", err);
+    }
+    setConnecting(null);
+  }
+
   async function connectMarketplace(platform: "mercari" | "facebook") {
     setConnecting(platform);
     try {
@@ -747,6 +759,18 @@ export default function ListingsPage() {
                 ? `Mercari${marketplaceStatus.mercari.username ? ` (${marketplaceStatus.mercari.username})` : ""}`
                 : "Connect Mercari"}
             </Button>
+            {marketplaceStatus.mercari?.connected && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
+                onClick={() => disconnectMarketplace("mercari")}
+                disabled={connecting === "mercari"}
+                title="Disconnect Mercari"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
             <Button
               size="sm"
               variant={marketplaceStatus.facebook?.connected ? "outline" : "default"}
@@ -770,6 +794,18 @@ export default function ListingsPage() {
                 ? `Facebook${marketplaceStatus.facebook.username ? ` (${marketplaceStatus.facebook.username})` : ""}`
                 : "Connect Facebook"}
             </Button>
+            {marketplaceStatus.facebook?.connected && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
+                onClick={() => disconnectMarketplace("facebook")}
+                disabled={connecting === "facebook"}
+                title="Disconnect Facebook"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
             {pendingConnect && (
               <>
                 <Button
