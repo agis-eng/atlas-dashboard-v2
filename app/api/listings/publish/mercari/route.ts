@@ -295,42 +295,59 @@ export async function POST(request: NextRequest) {
               fieldStatus.brand = "opener-not-found";
             } else {
               await page.waitForTimeout(600);
-              // Type the brand into whatever search input appeared
-              const searchBox = page.locator('input[type="search"], input[type="text"], input[role="combobox"]').last();
-              try {
-                if (await searchBox.isVisible({ timeout: 1500 }).catch(() => false)) {
-                  await searchBox.fill(brand, { timeout: 5000 });
-                  await page.waitForTimeout(1200);
-                }
-              } catch {}
-              // Pick a matching dropdown option; prefer exact, then contains
+              const searchBox = page
+                .locator('input[type="search"], input[type="text"], input[role="combobox"]')
+                .last();
+
+              // Mercari keeps a curated brand list; compound/obscure names rarely exact-match.
+              // Try a cascade: full name → first word → "Other" → "Unbranded".
+              const firstWord = brand.split(/[\s,\/-]/).filter(Boolean)[0] || brand;
+              const searchCandidates = [brand];
+              if (firstWord.toLowerCase() !== brand.toLowerCase()) searchCandidates.push(firstWord);
+              searchCandidates.push("Other");
+              searchCandidates.push("Unbranded");
+
               let picked = false;
-              const optionStrategies = [
-                page.getByRole("option", { name: brand, exact: true }).first(),
-                page.getByRole("option", { name: new RegExp(`^${brand}$`, "i") }).first(),
-                page.getByRole("option", { name: new RegExp(brand, "i") }).first(),
-                page.getByText(new RegExp(`^${brand}$`, "i")).first(),
-              ];
-              for (const opt of optionStrategies) {
+              let pickedAs = "";
+              for (const candidate of searchCandidates) {
+                if (picked) break;
                 try {
-                  if (await opt.isVisible({ timeout: 1200 }).catch(() => false)) {
-                    await opt.click({ timeout: 5000 });
-                    picked = true;
-                    break;
+                  if (await searchBox.isVisible({ timeout: 1500 }).catch(() => false)) {
+                    await searchBox.fill("", { timeout: 3000 }).catch(() => {});
+                    await page.waitForTimeout(150);
+                    await searchBox.fill(candidate, { timeout: 3000 }).catch(() => {});
+                    await page.waitForTimeout(900);
                   }
                 } catch {}
+                for (const opt of [
+                  page.getByRole("option", { name: candidate, exact: true }).first(),
+                  page.getByRole("option", { name: new RegExp(`^${candidate}$`, "i") }).first(),
+                  page.getByRole("option", { name: new RegExp(candidate, "i") }).first(),
+                  page.getByText(new RegExp(`^${candidate}$`, "i")).first(),
+                ]) {
+                  try {
+                    if (await opt.isVisible({ timeout: 1000 }).catch(() => false)) {
+                      await opt.click({ timeout: 5000 });
+                      picked = true;
+                      pickedAs = candidate;
+                      break;
+                    }
+                  } catch {}
+                }
               }
-              // Last-resort fallback for the "Unbranded" case
-              if (!picked && brand.toLowerCase() === "unbranded") {
+
+              // If nothing matched, close the dropdown so it doesn't block later clicks
+              if (!picked) {
                 try {
-                  const unbrandedOpt = page.getByRole("option", { name: /unbranded/i }).first();
-                  if (await unbrandedOpt.isVisible({ timeout: 1200 }).catch(() => false)) {
-                    await unbrandedOpt.click({ timeout: 5000 });
-                    picked = true;
-                  }
+                  await page.keyboard.press("Escape");
                 } catch {}
               }
-              fieldStatus.brand = picked ? `picked: ${brand}` : `opened-but-not-picked (${brand})`;
+
+              fieldStatus.brand = picked
+                ? pickedAs === brand
+                  ? `picked: ${brand}`
+                  : `picked fallback: ${pickedAs} (wanted ${brand})`
+                : `opened-but-not-picked (${brand})`;
             }
           } catch (err) {
             fieldStatus.brand = "error: " + String(err).substring(0, 80);
