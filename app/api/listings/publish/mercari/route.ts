@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       case "start": {
         // Create a visible interactive browser session
         const browser = await firecrawlBrowserCreate({
-          profile: { name: "mercari-session", saveChanges: false },
+          profile: MERCARI_PROFILE,
           ttl: 600,
           activityTtl: 600,
         });
@@ -128,7 +128,7 @@ If you can't upload from URLs directly, try using the browser's developer consol
 4. Click on "Ship on your own" under Shipping method (if not already selected)
 5. Click the price input field (textbox with placeholder "min $1/max $2000") and type: ${price}
 Do NOT click the List button yet. After filling everything, tell me what the Title field shows and what the price shows.`,
-          { timeout: 60 }
+          { timeout: 120 }
         );
 
         const fillOutput = getOutput(fillResult);

@@ -39,6 +39,12 @@ export async function POST(request: NextRequest) {
       const idx = listings.findIndex((l) => l.id === body.id);
       if (idx >= 0) {
         listings[idx] = { ...listings[idx], ...body, updatedAt: new Date().toISOString() };
+        // Remove null fields (used to clear errors)
+        for (const key of Object.keys(listings[idx])) {
+          if ((listings[idx] as any)[key] === null) {
+            delete (listings[idx] as any)[key];
+          }
+        }
       } else {
         return Response.json({ error: "Listing not found" }, { status: 404 });
       }

@@ -1160,8 +1160,8 @@ function ListingCard({
                     onClick={() =>
                       onUpdate({
                         status: "ready",
-                        error: undefined,
-                        mercariError: undefined,
+                        error: null as any,
+                        mercariError: null as any,
                       })
                     }
                   >
