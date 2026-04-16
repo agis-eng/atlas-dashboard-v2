@@ -130,8 +130,9 @@ export async function POST(request: NextRequest) {
         const lengthIn = listing.lengthIn || listing.aiAnalysis?.suggestedLengthIn || 10;
         const widthIn = listing.widthIn || listing.aiAnalysis?.suggestedWidthIn || 6;
         const heightIn = listing.heightIn || listing.aiAnalysis?.suggestedHeightIn || 4;
-        // Brand: user override → AI suggestion → "Unbranded" (required field on Mercari)
-        const brand = listing.brand || (listing.aiAnalysis as any)?.suggestedBrand || "Unbranded";
+        // Brand: user override wins; otherwise default to "Unbranded" (Mercari-recognized).
+        // AI-suggested brands often aren't on Mercari's curated list, so we don't fall back to them.
+        const brand = listing.brand?.trim() || "Unbranded";
         // Track which fields got filled vs skipped so we can surface it in errors
         const fieldStatus: Record<string, string> = {};
 
@@ -294,39 +295,59 @@ export async function POST(request: NextRequest) {
             if (!opened) {
               fieldStatus.brand = "opener-not-found";
             } else {
-              await page.waitForTimeout(600);
-              const searchBox = page
-                .locator('input[type="search"], input[type="text"], input[role="combobox"]')
-                .last();
+              await page.waitForTimeout(800);
 
-              // Mercari keeps a curated brand list; compound/obscure names rarely exact-match.
-              // Try a cascade: full name → first word → "Other" → "Unbranded".
-              const firstWord = brand.split(/[\s,\/-]/).filter(Boolean)[0] || brand;
-              const searchCandidates = [brand];
-              if (firstWord.toLowerCase() !== brand.toLowerCase()) searchCandidates.push(firstWord);
-              searchCandidates.push("Other");
+              // Scope selectors to the opened dialog/listbox so we don't grab the Title/Description
+              // inputs. If no dialog shows, fall back to the whole page.
+              const scope =
+                (await page.getByRole("dialog").first().isVisible({ timeout: 500 }).catch(() => false))
+                  ? page.getByRole("dialog").first()
+                  : (await page.getByRole("listbox").first().isVisible({ timeout: 500 }).catch(() => false))
+                    ? page.getByRole("listbox").first()
+                    : page;
+
+              // First visible input inside the scoped dialog/listbox — that's the brand search box.
+              const searchBox = scope.locator(
+                'input[type="search"], input[type="text"], input[role="combobox"], input[placeholder*="brand" i], input[placeholder*="search" i]'
+              ).first();
+
+              // User-entered brand wins; otherwise default to "Unbranded" which Mercari always has.
+              const searchCandidates: string[] = [];
+              if (brand.toLowerCase() !== "unbranded") searchCandidates.push(brand);
               searchCandidates.push("Unbranded");
 
               let picked = false;
               let pickedAs = "";
+              let visibleOptionsSample = "";
               for (const candidate of searchCandidates) {
                 if (picked) break;
                 try {
                   if (await searchBox.isVisible({ timeout: 1500 }).catch(() => false)) {
                     await searchBox.fill("", { timeout: 3000 }).catch(() => {});
-                    await page.waitForTimeout(150);
+                    await page.waitForTimeout(200);
                     await searchBox.fill(candidate, { timeout: 3000 }).catch(() => {});
-                    await page.waitForTimeout(900);
+                    await page.waitForTimeout(1200);
                   }
                 } catch {}
+                // Capture currently-visible options, once, for diagnostics
+                if (!visibleOptionsSample) {
+                  try {
+                    const options = await scope.getByRole("option").all();
+                    const texts: string[] = [];
+                    for (const o of options.slice(0, 8)) {
+                      texts.push((await o.textContent().catch(() => ""))?.trim().substring(0, 40) || "");
+                    }
+                    visibleOptionsSample = texts.filter(Boolean).join(" | ").substring(0, 200);
+                  } catch {}
+                }
                 for (const opt of [
-                  page.getByRole("option", { name: candidate, exact: true }).first(),
-                  page.getByRole("option", { name: new RegExp(`^${candidate}$`, "i") }).first(),
-                  page.getByRole("option", { name: new RegExp(candidate, "i") }).first(),
-                  page.getByText(new RegExp(`^${candidate}$`, "i")).first(),
+                  scope.getByRole("option", { name: candidate, exact: true }).first(),
+                  scope.getByRole("option", { name: new RegExp(`^${candidate}$`, "i") }).first(),
+                  scope.getByRole("option", { name: new RegExp(candidate, "i") }).first(),
+                  scope.getByText(new RegExp(`^${candidate}$`, "i")).first(),
                 ]) {
                   try {
-                    if (await opt.isVisible({ timeout: 1000 }).catch(() => false)) {
+                    if (await opt.isVisible({ timeout: 1200 }).catch(() => false)) {
                       await opt.click({ timeout: 5000 });
                       picked = true;
                       pickedAs = candidate;
@@ -336,7 +357,6 @@ export async function POST(request: NextRequest) {
                 }
               }
 
-              // If nothing matched, close the dropdown so it doesn't block later clicks
               if (!picked) {
                 try {
                   await page.keyboard.press("Escape");
@@ -347,7 +367,7 @@ export async function POST(request: NextRequest) {
                 ? pickedAs === brand
                   ? `picked: ${brand}`
                   : `picked fallback: ${pickedAs} (wanted ${brand})`
-                : `opened-but-not-picked (${brand})`;
+                : `opened-but-not-picked (${brand}); visibleOpts=[${visibleOptionsSample}]`;
             }
           } catch (err) {
             fieldStatus.brand = "error: " + String(err).substring(0, 80);
