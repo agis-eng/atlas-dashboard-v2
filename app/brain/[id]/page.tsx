@@ -102,6 +102,8 @@ export default function BrainDetailPage({
       if (res.ok) {
         const data = await res.json();
         setBrain(data);
+        setSelectedNoteIndices(data.notes?.map((_: any, i: number) => i) || []);
+        setSelectedDocIndices(data.documents?.map((_: any, i: number) => i) || []);
       }
     } catch {
       console.error("Failed to load brain");

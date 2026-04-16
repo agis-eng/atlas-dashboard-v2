@@ -46,8 +46,10 @@ export async function POST(request: NextRequest) {
     switch (step) {
       case "start": {
         // Create a visible interactive browser session
+        // Use saveChanges:false so multiple publish sessions can run concurrently.
+        // Login cookies were already saved during the connect flow.
         const browser = await firecrawlBrowserCreate({
-          profile: MERCARI_PROFILE,
+          profile: { name: MERCARI_PROFILE.name, saveChanges: false },
           ttl: 600,
           activityTtl: 600,
         });

@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     switch (step) {
       case "start": {
         const result = await firecrawlScrape("https://www.facebook.com/marketplace/create/item/", {
-          profile: FACEBOOK_PROFILE,
+          profile: { name: FACEBOOK_PROFILE.name, saveChanges: false },
           proxy: "stealth",
           waitFor: 5000,
           formats: ["markdown"],
