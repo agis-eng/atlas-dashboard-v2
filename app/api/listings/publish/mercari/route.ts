@@ -73,11 +73,15 @@ export async function POST(request: NextRequest) {
           const { browser, page } = await reconnectSession(session.id);
           await page.goto("https://www.mercari.com/sell/", {
             waitUntil: "domcontentloaded",
-            timeout: 45000,
+            timeout: 60000,
           });
-          await page.waitForTimeout(3000);
+          // Wait for React app to hydrate and either show the form or redirect
+          try {
+            await page.waitForLoadState("networkidle", { timeout: 30000 });
+          } catch {}
+          await page.waitForTimeout(2000);
           const url = page.url();
-          console.log("Start: landed on", url);
+          console.log("Start: landed on", url, "title:", await page.title().catch(() => ""));
           await browser.close();
 
           if (url.includes("/login")) {
@@ -130,13 +134,23 @@ export async function POST(request: NextRequest) {
         const { browser, page } = await reconnectSession(existingSessionId);
 
         try {
-          // Make sure we're on the sell page
+          // Make sure we're on the sell page and it's fully hydrated
           if (!page.url().includes("/sell")) {
             await page.goto("https://www.mercari.com/sell/", {
               waitUntil: "domcontentloaded",
-              timeout: 45000,
+              timeout: 60000,
             });
-            await page.waitForTimeout(2000);
+          }
+          // Wait for Mercari's React SPA to render the form
+          try {
+            await page.waitForLoadState("networkidle", { timeout: 30000 });
+          } catch {
+            console.warn("networkidle timed out — continuing anyway");
+          }
+          // Page title/URL sanity check
+          console.log("FILL_URL:", page.url(), "TITLE:", await page.title().catch(() => ""));
+          if (page.url().includes("/login") || page.url().includes("/signin")) {
+            throw new Error("Redirected to login — Mercari session expired. Reconnect and re-import cookies.");
           }
 
           // Upload photos via the hidden file input
@@ -154,10 +168,26 @@ export async function POST(request: NextRequest) {
               })
             );
 
-            const fileInput = page.locator('input[type="file"]').first();
-            await fileInput.setInputFiles(files, { timeout: 60000 });
-            // Wait for uploads to settle
-            await page.waitForTimeout(5000);
+            // Wait for SOME file input to exist in the DOM (not just visible)
+            await page
+              .waitForSelector('input[type="file"]', { state: "attached", timeout: 45000 })
+              .catch(() => null);
+            const fileInputs = await page.$$('input[type="file"]');
+            console.log(`Found ${fileInputs.length} file input(s)`);
+            if (fileInputs.length === 0) {
+              // Dump a snippet of the page for diagnosis
+              const bodyStart = (await page.content()).substring(0, 500);
+              throw new Error(
+                "No file input found on Mercari sell page. Page content start: " +
+                  bodyStart.replace(/\s+/g, " ")
+              );
+            }
+            await fileInputs[0].setInputFiles(files, { timeout: 90000 });
+            // Wait for uploads to settle (network idle = uploads complete)
+            try {
+              await page.waitForLoadState("networkidle", { timeout: 30000 });
+            } catch {}
+            await page.waitForTimeout(2000);
             console.log("Photos uploaded");
           }
 
