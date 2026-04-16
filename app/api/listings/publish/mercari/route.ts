@@ -372,16 +372,22 @@ export async function POST(request: NextRequest) {
             /listed|saved|success|published/i.test(bodyText);
 
           if (!looksSuccess) {
+            // Build a diagnostic payload: buttons we saw + body snippet
+            const buttonsSummary = JSON.stringify(buttonTexts).substring(0, 600);
+            const clickedBtn = clicked ? (usedDraft ? "save-draft" : "list-variant") : "none";
+            const diag = `Final URL: ${finalUrl} | Clicked: ${clickedBtn} | Body: ${bodyText
+              .substring(0, 200)
+              .replace(/\s+/g, " ")} | Buttons: ${buttonsSummary}`;
             await updateListingField(redis, listings, listingId, {
               mercariStatus: "error",
-              mercariError: `Submit may have failed. Final URL: ${finalUrl}`,
+              mercariError: diag,
               status: "error",
-              error: `Mercari: Submit may have failed. Final URL: ${finalUrl}`,
+              error: `Mercari: Submit may have failed. ${diag.substring(0, 400)}`,
             });
             return Response.json({
               success: false,
               error: "Submit may have failed",
-              details: `Ended on ${finalUrl}`,
+              details: diag,
             });
           }
 
