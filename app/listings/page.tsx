@@ -831,9 +831,29 @@ export default function ListingsPage() {
                 >
                   Re-open login window
                 </a>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(pendingConnect.liveViewUrl);
+                      alert("Login URL copied. Open it on your Mac to log in.");
+                    } catch {
+                      prompt("Copy this URL and open it on your Mac:", pendingConnect.liveViewUrl);
+                    }
+                  }}
+                >
+                  Copy URL for Mac
+                </Button>
               </>
             )}
           </div>
+          {pendingConnect && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Login is easier on desktop. Tap "Copy URL for Mac" and open on your laptop — after logging in once, all future phone publishes will use that saved login automatically.
+            </p>
+          )}
         </CardContent>
       </Card>
 
