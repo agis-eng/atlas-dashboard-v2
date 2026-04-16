@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -458,6 +459,45 @@ export default function ListingsPage() {
   }
 
   const [pendingConnect, setPendingConnect] = useState<{ platform: string; sessionId: string; liveViewUrl: string } | null>(null);
+  const [cookieImport, setCookieImport] = useState<{ platform: "mercari" | "facebook"; text: string } | null>(null);
+  const [importingCookies, setImportingCookies] = useState(false);
+
+  async function importCookies() {
+    if (!cookieImport) return;
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cookieImport.text);
+    } catch {
+      alert("Cookies must be valid JSON. Export them with the Cookie-Editor Chrome extension (use 'Export as JSON').");
+      return;
+    }
+    if (!Array.isArray(parsed)) {
+      alert("Cookies JSON must be an array.");
+      return;
+    }
+    setImportingCookies(true);
+    try {
+      const res = await fetch("/api/marketplace/import-cookies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: cookieImport.platform, cookies: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.details || data.error || "Cookie import failed");
+      } else if (data.connection?.connected) {
+        alert(`${cookieImport.platform} connected via cookie import (${data.imported} cookies).`);
+        setMarketplaceStatus((prev) => ({ ...prev, [cookieImport.platform]: data.connection }));
+        setCookieImport(null);
+      } else {
+        alert(data.connection?.error || `Imported ${data.imported} cookies but login verification failed. Try exporting fresh cookies while logged in.`);
+        setMarketplaceStatus((prev) => ({ ...prev, [cookieImport.platform]: data.connection }));
+      }
+    } catch (err: any) {
+      alert("Failed to import cookies: " + (err?.message || String(err)));
+    }
+    setImportingCookies(false);
+  }
 
   async function disconnectMarketplace(platform: "mercari" | "facebook") {
     if (!confirm(`Disconnect ${platform}? You'll need to log in again to publish.`)) return;
@@ -854,8 +894,64 @@ export default function ListingsPage() {
               Login is easier on desktop. Tap "Copy URL for Mac" and open on your laptop — after logging in once, all future phone publishes will use that saved login automatically.
             </p>
           )}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Login blocked by reCAPTCHA?</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setCookieImport({ platform: "mercari", text: "" })}
+            >
+              Import Mercari cookies
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      {cookieImport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <Card className="max-w-xl w-full max-h-[90vh] overflow-y-auto">
+            <CardContent className="py-4 space-y-3">
+              <div className="flex items-start justify-between">
+                <h3 className="font-semibold text-sm">Import {cookieImport.platform} cookies</h3>
+                <button onClick={() => setCookieImport(null)} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p>Mercari&apos;s reCAPTCHA blocks the cloud browser&apos;s login. Workaround: log in on your own browser, then export cookies.</p>
+                <ol className="list-decimal ml-4 space-y-1">
+                  <li>
+                    Install the{" "}
+                    <a className="text-blue-600 underline" href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer">
+                      Cookie-Editor
+                    </a>{" "}
+                    Chrome extension.
+                  </li>
+                  <li>Log into {cookieImport.platform} in that Chrome tab.</li>
+                  <li>Click the Cookie-Editor icon → Export → Export as JSON (copies to clipboard).</li>
+                  <li>Paste the JSON below and click Import.</li>
+                </ol>
+              </div>
+              <Textarea
+                placeholder='[{"name":"...","value":"...","domain":".mercari.com",...}]'
+                value={cookieImport.text}
+                onChange={(e) => setCookieImport({ ...cookieImport, text: e.target.value })}
+                className="font-mono text-xs min-h-[200px]"
+              />
+              <div className="flex items-center gap-2 justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setCookieImport(null)} disabled={importingCookies}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={importCookies} disabled={importingCookies || !cookieImport.text.trim()}>
+                  {importingCookies ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                  Import cookies
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Listings */}
       {loading ? (
