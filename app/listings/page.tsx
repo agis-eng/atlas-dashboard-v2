@@ -625,6 +625,11 @@ export default function ListingsPage() {
       if (!startRes.ok) throw new Error(startData.details || startData.error || "Failed to open Mercari");
       sessionId = startData.sessionId || "";
 
+      // Open the live browser view so user can watch the fill happen
+      if (startData.liveViewUrl) {
+        window.open(startData.liveViewUrl, `mercari-publish-${listing.id}`, "width=1200,height=800");
+      }
+
       // Step 2: Fill in the listing details (including photos)
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Uploading photos & filling details..." }));
       const fillRes = await fetch("/api/listings/publish/mercari", {
@@ -646,6 +651,10 @@ export default function ListingsPage() {
       const submitData = await submitRes.json();
 
       if (!submitRes.ok) throw new Error(submitData.details || submitData.error || "Failed to publish");
+      // Server returns 200 with success:false when final URL still looks like the sell page
+      if (submitData.success === false) {
+        throw new Error(submitData.details || submitData.error || "Publish did not complete — check the browser window");
+      }
 
       await updateListing(listing.id, {
         status: "listed",
@@ -657,6 +666,7 @@ export default function ListingsPage() {
         status: "error",
         error: `Mercari: ${err.message}`,
       });
+      alert(`Mercari publish failed:\n${err.message}`);
     } finally {
       setPublishProgress((prev) => {
         const next = { ...prev };

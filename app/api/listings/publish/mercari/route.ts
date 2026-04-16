@@ -233,13 +233,35 @@ export async function POST(request: NextRequest) {
         const { browser, page } = await reconnectSession(existingSessionId);
 
         try {
-          // Try "List" button first; fall back to "Save draft"
+          // List all visible buttons for debugging before clicking
+          const buttonTexts = await page.$$eval("button", (btns) =>
+            btns.map((b) => ({ text: (b.textContent || "").trim().substring(0, 60), disabled: b.disabled })).filter((b) => b.text)
+          );
+          console.log("SUBMIT_BUTTONS_AVAILABLE:", JSON.stringify(buttonTexts).substring(0, 1000));
+
           let clicked = false;
           let usedDraft = false;
-          for (const name of [/^list$/i, /list it/i]) {
+          const listPatterns = [
+            /^list$/i,
+            /^list it$/i,
+            /^list your item$/i,
+            /^list item$/i,
+            /^publish$/i,
+            /^post$/i,
+            /^sell$/i,
+            /list item/i,
+            /list your/i,
+          ];
+          for (const name of listPatterns) {
             try {
               const btn = page.getByRole("button", { name }).first();
-              if (await btn.isVisible({ timeout: 3000 })) {
+              if (await btn.isVisible({ timeout: 1500 })) {
+                const isDisabled = await btn.isDisabled().catch(() => false);
+                if (isDisabled) {
+                  console.log("Found matching button but it's disabled — required field likely missing");
+                  continue;
+                }
+                console.log("Clicking button matching:", name.toString());
                 await btn.click({ timeout: 10000 });
                 clicked = true;
                 break;
@@ -250,7 +272,7 @@ export async function POST(request: NextRequest) {
             for (const name of [/save draft/i, /^save$/i]) {
               try {
                 const btn = page.getByRole("button", { name }).first();
-                if (await btn.isVisible({ timeout: 3000 })) {
+                if (await btn.isVisible({ timeout: 1500 })) {
                   await btn.click({ timeout: 10000 });
                   clicked = true;
                   usedDraft = true;
@@ -261,14 +283,18 @@ export async function POST(request: NextRequest) {
           }
 
           if (!clicked) {
-            throw new Error("Could not find a List or Save draft button");
+            throw new Error(
+              "Could not find a List or Save draft button. Available: " +
+                JSON.stringify(buttonTexts).substring(0, 400)
+            );
           }
 
           // Wait for navigation / success indicator
           await page.waitForTimeout(6000);
           const finalUrl = page.url();
           const bodyText = (await page.locator("body").innerText().catch(() => "")).substring(0, 1000);
-          console.log("Submit ended on:", finalUrl);
+          console.log("SUBMIT_FINAL_URL:", finalUrl);
+          console.log("SUBMIT_BODY_SNIPPET:", bodyText.substring(0, 300));
 
           await browser.close();
           await releaseSession(existingSessionId);
