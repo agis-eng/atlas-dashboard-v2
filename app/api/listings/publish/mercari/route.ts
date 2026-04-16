@@ -135,11 +135,13 @@ Do NOT click the List button yet. After filling everything, tell me what the Tit
         console.log("Fill result - success:", fillResult.success, "output:", fillOutput.substring(0, 300));
 
         if (!fillResult.success) {
+          const errorDetail = fillResult.error || fillOutput || "Unknown error";
+          console.error("Fill failed — full result:", JSON.stringify(fillResult).substring(0, 1000));
           await updateListingField(redis, listings, listingId, {
             mercariStatus: "error",
-            mercariError: "Failed to fill listing fields: " + (fillResult.error || ""),
+            mercariError: "Failed to fill listing fields: " + errorDetail,
           });
-          return Response.json({ error: "Failed to fill fields", details: fillResult.error }, { status: 500 });
+          return Response.json({ error: "Failed to fill fields", details: errorDetail }, { status: 500 });
         }
 
         return Response.json({

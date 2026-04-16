@@ -605,16 +605,31 @@ export default function BrainDetailPage({
                 <FileText className="h-4 w-4" />
                 Documents ({brain.documents?.length || 0})
               </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7"
-                onClick={() =>
-                  document.getElementById("doc-upload")?.click()
-                }
-              >
-                <Upload className="h-3 w-3" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {brain.documents && brain.documents.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const allSelected = selectedDocIndices.length === (brain.documents?.length || 0);
+                      setSelectedDocIndices(allSelected ? [] : brain.documents!.map((_: any, i: number) => i));
+                    }}
+                  >
+                    {selectedDocIndices.length === (brain.documents?.length || 0) ? "Deselect all" : "Select all"}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7"
+                  onClick={() =>
+                    document.getElementById("doc-upload")?.click()
+                  }
+                >
+                  <Upload className="h-3 w-3" />
+                </Button>
+              </div>
               <input
                 id="doc-upload"
                 type="file"
@@ -756,14 +771,29 @@ export default function BrainDetailPage({
                 <StickyNote className="h-4 w-4" />
                 Notes ({brain.notes?.length || 0})
               </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7"
-                onClick={() => setShowNoteForm(!showNoteForm)}
-              >
-                <Plus className="h-3 w-3" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {brain.notes && brain.notes.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const allSelected = selectedNoteIndices.length === (brain.notes?.length || 0);
+                      setSelectedNoteIndices(allSelected ? [] : brain.notes!.map((_: any, i: number) => i));
+                    }}
+                  >
+                    {selectedNoteIndices.length === (brain.notes?.length || 0) ? "Deselect all" : "Select all"}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7"
+                  onClick={() => setShowNoteForm(!showNoteForm)}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">

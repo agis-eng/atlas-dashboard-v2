@@ -522,7 +522,17 @@ export default function ListingsPage() {
       });
       const fillData = await fillRes.json();
 
-      if (!fillRes.ok) throw new Error(fillData.error || "Failed to fill fields");
+      if (!fillRes.ok) {
+        // Retry once — firecrawl interact can fail transiently
+        setPublishProgress((prev) => ({ ...prev, [listing.id]: "Retrying form fill..." }));
+        const retryRes = await fetch("/api/listings/publish/mercari", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id, scrapeId, step: "fill" }),
+        });
+        const retryData = await retryRes.json();
+        if (!retryRes.ok) throw new Error(retryData.details || retryData.error || "Failed to fill fields");
+      }
 
       // Step 3: Submit the listing
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
