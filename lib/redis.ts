@@ -171,8 +171,17 @@ export interface ListingDraft {
     suggestedPrice: number;
     suggestedCategory: string;
     suggestedCondition: string;
+    suggestedWeightOz?: number;
+    suggestedLengthIn?: number;
+    suggestedWidthIn?: number;
+    suggestedHeightIn?: number;
     confidence: string;
   };
+  // Package size + weight for shipping calculation
+  weightOz?: number;
+  lengthIn?: number;
+  widthIn?: number;
+  heightIn?: number;
   mercariStatus?: "pending" | "publishing" | "listed" | "error";
   facebookStatus?: "pending" | "publishing" | "listed" | "error";
   mercariError?: string;

@@ -49,8 +49,16 @@ interface ListingDraft {
     suggestedPrice: number;
     suggestedCategory: string;
     suggestedCondition: string;
+    suggestedWeightOz?: number;
+    suggestedLengthIn?: number;
+    suggestedWidthIn?: number;
+    suggestedHeightIn?: number;
     confidence: string;
   };
+  weightOz?: number;
+  lengthIn?: number;
+  widthIn?: number;
+  heightIn?: number;
   mercariError?: string;
   error?: string;
   createdAt: string;
@@ -224,7 +232,7 @@ export default function ListingsPage() {
       const data = await res.json();
 
       if (res.ok && data.analysis) {
-        const update = {
+        const update: any = {
           id: listingId,
           title: data.analysis.suggestedTitle || "",
           description: data.analysis.suggestedDescription || "",
@@ -234,6 +242,10 @@ export default function ListingsPage() {
           aiAnalysis: data.analysis,
           status: "ready",
         };
+        if (data.analysis.suggestedWeightOz) update.weightOz = data.analysis.suggestedWeightOz;
+        if (data.analysis.suggestedLengthIn) update.lengthIn = data.analysis.suggestedLengthIn;
+        if (data.analysis.suggestedWidthIn) update.widthIn = data.analysis.suggestedWidthIn;
+        if (data.analysis.suggestedHeightIn) update.heightIn = data.analysis.suggestedHeightIn;
 
         const updateRes = await fetch("/api/listings", {
           method: "POST",
@@ -1172,6 +1184,10 @@ function ListingCard({
   const [editQuantity, setEditQuantity] = useState((listing.quantity || 1).toString());
   const [editCondition, setEditCondition] = useState(listing.condition);
   const [editCategory, setEditCategory] = useState(listing.category);
+  const [editWeight, setEditWeight] = useState((listing.weightOz ?? "").toString());
+  const [editLength, setEditLength] = useState((listing.lengthIn ?? "").toString());
+  const [editWidth, setEditWidth] = useState((listing.widthIn ?? "").toString());
+  const [editHeight, setEditHeight] = useState((listing.heightIn ?? "").toString());
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
     new Set(listing.platforms)
   );
@@ -1184,7 +1200,11 @@ function ListingCard({
     setEditQuantity((listing.quantity || 1).toString());
     setEditCondition(listing.condition);
     setEditCategory(listing.category);
-  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category]);
+    setEditWeight((listing.weightOz ?? "").toString());
+    setEditLength((listing.lengthIn ?? "").toString());
+    setEditWidth((listing.widthIn ?? "").toString());
+    setEditHeight((listing.heightIn ?? "").toString());
+  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn]);
 
   function saveEdits() {
     onUpdate({
@@ -1195,6 +1215,10 @@ function ListingCard({
       condition: editCondition,
       category: editCategory,
       platforms: Array.from(selectedPlatforms) as any,
+      weightOz: editWeight ? parseFloat(editWeight) : undefined,
+      lengthIn: editLength ? parseFloat(editLength) : undefined,
+      widthIn: editWidth ? parseFloat(editWidth) : undefined,
+      heightIn: editHeight ? parseFloat(editHeight) : undefined,
     });
   }
 
@@ -1381,6 +1405,43 @@ function ListingCard({
                 />
               </div>
 
+              {/* Package size + weight (for Mercari shipping) */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">
+                  Package (AI estimate — used for Mercari shipping)
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  <Input
+                    value={editWeight}
+                    onChange={(e) => setEditWeight(e.target.value)}
+                    placeholder="oz"
+                    className="text-xs"
+                    inputMode="decimal"
+                  />
+                  <Input
+                    value={editLength}
+                    onChange={(e) => setEditLength(e.target.value)}
+                    placeholder="L (in)"
+                    className="text-xs"
+                    inputMode="decimal"
+                  />
+                  <Input
+                    value={editWidth}
+                    onChange={(e) => setEditWidth(e.target.value)}
+                    placeholder="W (in)"
+                    className="text-xs"
+                    inputMode="decimal"
+                  />
+                  <Input
+                    value={editHeight}
+                    onChange={(e) => setEditHeight(e.target.value)}
+                    placeholder="H (in)"
+                    className="text-xs"
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+
               {/* Platform selection */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground block mb-2">
@@ -1456,6 +1517,25 @@ function ListingCard({
                   >
                     <RotateCcw className="h-3 w-3 mr-1" />
                     Reset Draft
+                  </Button>
+                )}
+
+                {listing.status === "listed" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() =>
+                      onUpdate({
+                        status: "ready",
+                        mercariListingUrl: null as any,
+                        facebookListingUrl: null as any,
+                        ebayListingId: null as any,
+                      })
+                    }
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Move to Drafts
                   </Button>
                 )}
 

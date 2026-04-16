@@ -67,10 +67,16 @@ Analyze these product photos and generate listing details. Return ONLY valid JSO
   "suggestedCondition": "one of: New, Like New, Good, Fair, Poor",
   "suggestedType": "the item type/product type for eBay item specifics (e.g. 'Action Figure', 'Smartphone', 'T-Shirt')",
   "suggestedBrand": "the brand name if identifiable, or 'Unbranded'",
+  "suggestedWeightOz": 16,
+  "suggestedLengthIn": 10,
+  "suggestedWidthIn": 6,
+  "suggestedHeightIn": 2,
   "confidence": "high, medium, or low - how confident you are in the identification"
 }
 
 For pricing: estimate a fair market price based on what this item typically sells for on eBay/Mercari. Consider condition. If unsure, estimate conservatively.
+
+For weight and dimensions: estimate the PACKAGED shipping size + weight (item + minimal box/padding). Use inches and ounces. Be realistic — small items (phone cases, clothing) are 4-8 oz; medium (shoes, electronics) 16-48 oz; large (appliances) 5-20 lbs (convert to oz). Dimensions should be the bounding-box of a reasonable shipping box for this item.
 
 Return ONLY the JSON object, no markdown or explanation.`,
             },

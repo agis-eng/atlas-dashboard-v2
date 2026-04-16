@@ -118,6 +118,14 @@ export async function POST(request: NextRequest) {
         const price = listing.price!;
         const condition = listing.condition || "Good";
         const photos = (listing.photos || []).filter(Boolean).slice(0, 12);
+        // Category: take the most specific leaf (everything after the last " > ")
+        const categoryFull = listing.category || listing.aiAnalysis?.suggestedCategory || "";
+        const categoryLeaf = categoryFull.split(">").map((s) => s.trim()).filter(Boolean).pop() || "";
+        // Package size — used for Mercari-handled shipping
+        const weightOz = listing.weightOz || listing.aiAnalysis?.suggestedWeightOz || 16;
+        const lengthIn = listing.lengthIn || listing.aiAnalysis?.suggestedLengthIn || 10;
+        const widthIn = listing.widthIn || listing.aiAnalysis?.suggestedWidthIn || 6;
+        const heightIn = listing.heightIn || listing.aiAnalysis?.suggestedHeightIn || 4;
 
         const { browser, page } = await reconnectSession(existingSessionId);
 
@@ -165,6 +173,27 @@ export async function POST(request: NextRequest) {
             await descInput.fill(desc, { timeout: 30000 });
           }
 
+          // Select Category — try typing leaf into Category field + picking dropdown option
+          if (categoryLeaf) {
+            console.log("Selecting category:", categoryLeaf);
+            try {
+              const categoryField = page.getByLabel(/category/i).first();
+              if (await categoryField.isVisible({ timeout: 5000 })) {
+                await categoryField.click({ timeout: 10000 });
+                await page.waitForTimeout(500);
+                await categoryField.fill(categoryLeaf).catch(() => {});
+                // Click the first dropdown match
+                await page.waitForTimeout(1500);
+                const option = page.getByRole("option", { name: new RegExp(categoryLeaf, "i") }).first();
+                if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
+                  await option.click({ timeout: 5000 });
+                }
+              }
+            } catch (err) {
+              console.warn("Category select failed:", String(err).substring(0, 200));
+            }
+          }
+
           // Select Condition (radio/button)
           console.log("Selecting condition:", condition);
           try {
@@ -179,15 +208,54 @@ export async function POST(request: NextRequest) {
             console.warn("Could not select condition — user may need to pick manually:", String(err).substring(0, 200));
           }
 
-          // Select "Ship on your own" shipping
-          console.log("Selecting shipping: Ship on your own");
-          try {
-            const shipOption = page.getByText(/ship on your own/i).first();
-            if (await shipOption.isVisible({ timeout: 5000 })) {
-              await shipOption.click({ timeout: 10000 });
-            }
-          } catch (err) {
-            console.warn("Could not select shipping — user may need to pick manually:", String(err).substring(0, 200));
+          // Shipping: Mercari handles shipping (seller pays). Click "Mercari shipping" / "Ship with Mercari".
+          console.log("Selecting Mercari-shipping option...");
+          let shippingSelected = false;
+          for (const pattern of [
+            /mercari\s*shipping/i,
+            /ship\s*with\s*mercari/i,
+            /use\s*mercari\s*shipping/i,
+            /mercari\s*handles/i,
+            /i('|&apos;)ll\s*provide\s*shipping\s*label/i,
+          ]) {
+            try {
+              const opt = page.getByText(pattern).first();
+              if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await opt.click({ timeout: 5000 });
+                shippingSelected = true;
+                console.log("Shipping selected via pattern:", pattern.toString());
+                break;
+              }
+            } catch {}
+          }
+          if (!shippingSelected) {
+            console.warn("Mercari shipping option not found — may need to scroll/pick manually");
+          }
+
+          // Fill Weight
+          console.log(`Filling package weight: ${weightOz}oz`);
+          for (const label of [/weight/i, /package\s*weight/i]) {
+            try {
+              const wInput = page.getByLabel(label).first();
+              if (await wInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await wInput.fill(String(weightOz), { timeout: 10000 });
+                break;
+              }
+            } catch {}
+          }
+
+          // Fill Dimensions (Length, Width, Height)
+          for (const [labelPattern, val] of [
+            [/length/i, lengthIn],
+            [/width/i, widthIn],
+            [/height/i, heightIn],
+          ] as const) {
+            try {
+              const input = page.getByLabel(labelPattern).first();
+              if (await input.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await input.fill(String(val), { timeout: 10000 });
+              }
+            } catch {}
           }
 
           // Fill Price
