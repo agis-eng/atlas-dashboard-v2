@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const user = await getSessionUserFromRequest(request);
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { platform, cookies } = await request.json();
+    const { platform, cookies, localStorage: lsEntries, origin } = await request.json();
     if (!platform || !["mercari", "facebook"].includes(platform)) {
       return Response.json({ error: "Invalid platform" }, { status: 400 });
     }
@@ -87,6 +87,11 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const localStoragePairs: Record<string, string> =
+      lsEntries && typeof lsEntries === "object" && !Array.isArray(lsEntries)
+        ? lsEntries
+        : {};
+    const lsOrigin = typeof origin === "string" ? origin : `https://www.${platform}.com`;
 
     const redis = getRedis();
     const existingRaw = await redis.get(REDIS_KEYS.marketplaceConnection(platform));
@@ -108,9 +113,26 @@ export async function POST(request: NextRequest) {
 
     let isLoggedIn = false;
     let finalUrl = "";
+    let debugInfo = "";
     try {
       const { browser, context, page } = await reconnectSession(session.id);
       await context.addCookies(normalized as any);
+
+      // If localStorage was provided, first navigate to the origin so localStorage is scoped,
+      // inject values, then navigate to the verify URL.
+      if (Object.keys(localStoragePairs).length > 0) {
+        await page.goto(lsOrigin, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+        await page.evaluate((entries) => {
+          for (const [k, v] of Object.entries(entries as Record<string, string>)) {
+            try {
+              window.localStorage.setItem(k, v);
+            } catch {}
+          }
+        }, localStoragePairs);
+      }
 
       await page.goto(VERIFY_URLS[platform as keyof typeof VERIFY_URLS], {
         waitUntil: "domcontentloaded",
@@ -119,6 +141,13 @@ export async function POST(request: NextRequest) {
       await page.waitForTimeout(3000);
       finalUrl = page.url();
       isLoggedIn = !finalUrl.includes("/login") && !finalUrl.includes("/signin");
+      // Capture a bit of debug info
+      try {
+        const title = await page.title();
+        const cookieNames = (await context.cookies()).map((c) => c.name).slice(0, 40).join(",");
+        debugInfo = `title="${title}" | cookies=${cookieNames}`;
+      } catch {}
+      console.log("Import verify:", finalUrl, debugInfo);
       await browser.close();
     } finally {
       // Wait briefly so Browserbase commits the context, then release
@@ -134,7 +163,7 @@ export async function POST(request: NextRequest) {
       contextId,
       error: isLoggedIn
         ? undefined
-        : `Cookies imported (${normalized.length}), but login verification failed. Ended on ${finalUrl}. Cookies may be expired — try exporting fresh ones.`,
+        : `Cookies imported (${normalized.length}) + ${Object.keys(localStoragePairs).length} localStorage entries, but login verification failed. Ended on ${finalUrl}. ${debugInfo}`,
     };
     await redis.set(
       REDIS_KEYS.marketplaceConnection(platform),

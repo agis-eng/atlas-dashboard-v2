@@ -468,36 +468,67 @@ export default function ListingsPage() {
     try {
       parsed = JSON.parse(cookieImport.text);
     } catch {
-      alert("Cookies must be valid JSON. Export them with the Cookie-Editor Chrome extension (use 'Export as JSON').");
+      alert("Payload must be valid JSON. Use the snippet below in your browser console.");
       return;
     }
-    if (!Array.isArray(parsed)) {
-      alert("Cookies JSON must be an array.");
+    // Accept either an array of cookies (old format) or an object { cookies, localStorage, origin }
+    let cookies: any[] = [];
+    let localStorage: Record<string, string> = {};
+    let origin = "";
+    if (Array.isArray(parsed)) {
+      cookies = parsed;
+    } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.cookies)) {
+      cookies = parsed.cookies;
+      localStorage = parsed.localStorage || {};
+      origin = parsed.origin || "";
+    } else {
+      alert("JSON must be either an array of cookies or { cookies, localStorage, origin }.");
       return;
+    }
+    // Merge in optional localStorage from the separate textarea
+    if (cookieImportLS.trim()) {
+      try {
+        const ls = JSON.parse(cookieImportLS);
+        if (ls && typeof ls === "object") {
+          if (ls.localStorage) {
+            localStorage = { ...localStorage, ...ls.localStorage };
+            if (!origin && ls.origin) origin = ls.origin;
+          } else {
+            // Assume user pasted raw {key: value} object
+            localStorage = { ...localStorage, ...ls };
+          }
+        }
+      } catch {
+        alert("localStorage field is not valid JSON.");
+        return;
+      }
     }
     setImportingCookies(true);
     try {
       const res = await fetch("/api/marketplace/import-cookies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: cookieImport.platform, cookies: parsed }),
+        body: JSON.stringify({ platform: cookieImport.platform, cookies, localStorage, origin }),
       });
       const data = await res.json();
       if (!res.ok) {
         alert(data.details || data.error || "Cookie import failed");
       } else if (data.connection?.connected) {
-        alert(`${cookieImport.platform} connected via cookie import (${data.imported} cookies).`);
+        alert(`${cookieImport.platform} connected via cookie + localStorage import.`);
         setMarketplaceStatus((prev) => ({ ...prev, [cookieImport.platform]: data.connection }));
         setCookieImport(null);
       } else {
-        alert(data.connection?.error || `Imported ${data.imported} cookies but login verification failed. Try exporting fresh cookies while logged in.`);
+        alert(data.connection?.error || `Import completed but login verification failed. Try exporting fresh data while logged in.`);
         setMarketplaceStatus((prev) => ({ ...prev, [cookieImport.platform]: data.connection }));
       }
     } catch (err: any) {
-      alert("Failed to import cookies: " + (err?.message || String(err)));
+      alert("Failed to import: " + (err?.message || String(err)));
     }
     setImportingCookies(false);
   }
+
+  const LOCALSTORAGE_SNIPPET = `copy(JSON.stringify({localStorage: Object.fromEntries(Object.entries(localStorage)), origin: location.origin}))`;
+  const [cookieImportLS, setCookieImportLS] = useState("");
 
   async function disconnectMarketplace(platform: "mercari" | "facebook") {
     if (!confirm(`Disconnect ${platform}? You'll need to log in again to publish.`)) return;
@@ -919,33 +950,60 @@ export default function ListingsPage() {
                 </button>
               </div>
               <div className="text-xs text-muted-foreground space-y-2">
-                <p>Mercari&apos;s reCAPTCHA blocks the cloud browser&apos;s login. Workaround: log in on your own browser, then export cookies.</p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li>
-                    Install the{" "}
-                    <a className="text-blue-600 underline" href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer">
-                      Cookie-Editor
-                    </a>{" "}
-                    Chrome extension.
-                  </li>
-                  <li>Log into {cookieImport.platform} in that Chrome tab.</li>
-                  <li>Click the Cookie-Editor icon → Export → Export as JSON (copies to clipboard).</li>
-                  <li>Paste the JSON below and click Import.</li>
-                </ol>
+                <p>Mercari uses cookies AND localStorage for auth. Import both.</p>
+                <p className="font-medium text-foreground">1) Cookies (from Cookie-Editor extension)</p>
+                <p>
+                  Install{" "}
+                  <a className="text-blue-600 underline" href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer">
+                    Cookie-Editor
+                  </a>
+                  , log into {cookieImport.platform} in Chrome, click the extension icon → Export → Export as JSON, paste below.
+                </p>
               </div>
               <Textarea
-                placeholder='[{"name":"...","value":"...","domain":".mercari.com",...}]'
+                placeholder='Cookie-Editor JSON: [{"name":"...","value":"...",...}]'
                 value={cookieImport.text}
                 onChange={(e) => setCookieImport({ ...cookieImport, text: e.target.value })}
-                className="font-mono text-xs min-h-[200px]"
+                className="font-mono text-xs min-h-[140px]"
+              />
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p className="font-medium text-foreground">2) localStorage (from DevTools console)</p>
+                <p>
+                  On the {cookieImport.platform} tab, open DevTools (⌘⌥I) → Console, paste this snippet, press Enter (auto-copies to clipboard):
+                </p>
+                <div className="flex items-start gap-1">
+                  <code className="block flex-1 bg-muted p-2 rounded text-[10px] break-all select-all">
+                    {LOCALSTORAGE_SNIPPET}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs shrink-0"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(LOCALSTORAGE_SNIPPET);
+                        alert("Snippet copied.");
+                      } catch {}
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <p>Then paste what&apos;s on your clipboard below.</p>
+              </div>
+              <Textarea
+                placeholder='{"localStorage":{...},"origin":"https://www.mercari.com"}'
+                value={cookieImportLS}
+                onChange={(e) => setCookieImportLS(e.target.value)}
+                className="font-mono text-xs min-h-[100px]"
               />
               <div className="flex items-center gap-2 justify-end">
-                <Button size="sm" variant="ghost" onClick={() => setCookieImport(null)} disabled={importingCookies}>
+                <Button size="sm" variant="ghost" onClick={() => { setCookieImport(null); setCookieImportLS(""); }} disabled={importingCookies}>
                   Cancel
                 </Button>
                 <Button size="sm" onClick={importCookies} disabled={importingCookies || !cookieImport.text.trim()}>
                   {importingCookies ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
-                  Import cookies
+                  Import
                 </Button>
               </div>
             </CardContent>
