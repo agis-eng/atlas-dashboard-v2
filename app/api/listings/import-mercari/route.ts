@@ -61,60 +61,101 @@ export async function POST(request: NextRequest) {
       listedText: string;
     }> = data.items || [];
 
-    // Load existing listings and dedupe by mercariListingUrl
+    // Load existing listings — we both add new ones AND back-fill
+    // price/photo/createdAt on existing imports where the scraper now
+    // has better data.
     const raw = await redis.get(REDIS_KEYS.listings);
     const listings: ListingDraft[] = raw
       ? typeof raw === "string"
         ? JSON.parse(raw)
         : (raw as ListingDraft[])
       : [];
-    const existingUrls = new Set(
-      listings
-        .map((l) => l.mercariListingUrl)
-        .filter(Boolean) as string[]
-    );
+    const byUrl = new Map<string, ListingDraft>();
+    for (const l of listings) {
+      if (l.mercariListingUrl) byUrl.set(l.mercariListingUrl, l);
+    }
 
     const now = new Date();
     const nowIso = now.toISOString();
-    const added: ListingDraft[] = [];
+    let addedCount = 0;
+    let updatedCount = 0;
+    const mutated = new Set<string>();
+
     for (const item of scraped) {
-      if (!item.url || existingUrls.has(item.url)) continue;
-      // Back-date createdAt using the scraped "X days ago" hint so the
-      // inventory page shows the real age.
+      if (!item.url) continue;
       const createdAt =
         item.daysListed != null
           ? new Date(
               now.getTime() - item.daysListed * 24 * 60 * 60 * 1000
             ).toISOString()
-          : nowIso;
-      added.push({
-        id: `imp_mrc_${crypto.randomBytes(6).toString("hex")}`,
-        photos: item.photoUrl ? [item.photoUrl] : [],
-        title: item.title || "(untitled)",
-        description: "",
-        price: item.price ?? null,
-        quantity: 1,
-        condition: "",
-        category: "",
-        platforms: ["mercari"],
-        status: "listed",
-        mercariStatus: "listed",
-        mercariListingUrl: item.url,
-        createdAt,
-        updatedAt: nowIso,
-      });
+          : null;
+
+      const existing = byUrl.get(item.url);
+      if (existing) {
+        // Back-fill missing fields without overwriting user-edited data
+        let changed = false;
+        if ((existing.price == null || existing.price === 0) && item.price != null) {
+          existing.price = item.price;
+          changed = true;
+        }
+        if ((!existing.photos || existing.photos.length === 0) && item.photoUrl) {
+          existing.photos = [item.photoUrl];
+          changed = true;
+        }
+        if (!existing.title || existing.title === "(untitled)") {
+          if (item.title && item.title !== "(untitled)") {
+            existing.title = item.title;
+            changed = true;
+          }
+        }
+        if (createdAt) {
+          // Only back-date if our current createdAt is clearly a placeholder
+          // (import stamped "now") AND scraper gave us an older date.
+          const existingCreated = new Date(existing.createdAt).getTime();
+          const scrapedCreated = new Date(createdAt).getTime();
+          if (scrapedCreated < existingCreated - 24 * 60 * 60 * 1000) {
+            existing.createdAt = createdAt;
+            changed = true;
+          }
+        }
+        if (changed) {
+          existing.updatedAt = nowIso;
+          mutated.add(existing.id);
+          updatedCount++;
+        }
+      } else {
+        const newListing: ListingDraft = {
+          id: `imp_mrc_${crypto.randomBytes(6).toString("hex")}`,
+          photos: item.photoUrl ? [item.photoUrl] : [],
+          title: item.title || "(untitled)",
+          description: "",
+          price: item.price ?? null,
+          quantity: 1,
+          condition: "",
+          category: "",
+          platforms: ["mercari"],
+          status: "listed",
+          mercariStatus: "listed",
+          mercariListingUrl: item.url,
+          createdAt: createdAt || nowIso,
+          updatedAt: nowIso,
+        };
+        listings.push(newListing);
+        byUrl.set(item.url, newListing);
+        addedCount++;
+      }
     }
 
-    if (added.length > 0) {
-      const updated = [...listings, ...added];
-      await redis.set(REDIS_KEYS.listings, JSON.stringify(updated));
+    if (addedCount > 0 || updatedCount > 0) {
+      await redis.set(REDIS_KEYS.listings, JSON.stringify(listings));
     }
 
     return Response.json({
       success: true,
       scrapedCount: scraped.length,
-      importedCount: added.length,
-      skippedCount: scraped.length - added.length,
+      importedCount: addedCount,
+      updatedCount,
+      skippedCount: scraped.length - addedCount - updatedCount,
       reachedUrl: data.reachedUrl,
       firstCardPreview: data.firstCardPreview,
     });

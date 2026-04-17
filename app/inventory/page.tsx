@@ -143,7 +143,8 @@ export default function InventoryPage() {
                   ``,
                   `Found ${data.scrapedCount} listings.`,
                   `Imported ${data.importedCount} new items.`,
-                  `Skipped ${data.skippedCount} already in dashboard.`,
+                  `Updated ${data.updatedCount || 0} existing items with fresh data.`,
+                  `Skipped ${data.skippedCount} unchanged.`,
                 ];
                 if (data.firstCardPreview) {
                   msg.push("");
