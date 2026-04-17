@@ -823,6 +823,57 @@ export default function ListingsPage() {
         </p>
       </div>
 
+      {/* Workflow reminder — collapsible */}
+      <details className="rounded-md border border-border bg-muted/30 text-sm">
+        <summary className="cursor-pointer select-none px-3 py-2 font-medium text-foreground/80">
+          How to list an item (click to expand)
+        </summary>
+        <div className="px-4 pb-4 pt-1 space-y-2 text-muted-foreground">
+          <ol className="list-decimal ml-5 space-y-1">
+            <li>
+              <strong>Upload photos</strong> — drop them in the box above or click
+              to pick from your phone/laptop. AI auto-fills title, description,
+              price, category, condition, and packaging size.
+            </li>
+            <li>
+              <strong>Review the draft</strong> — expand a listing card and
+              adjust anything the AI got wrong. Key fields to double-check:
+              Brand (use &quot;Unbranded&quot; if none — required on Mercari),
+              Condition, Price, and the package Weight/L×W×H (used for
+              Mercari&rsquo;s shipping label).
+            </li>
+            <li>
+              <strong>Tick the platforms</strong> you want to list on (eBay,
+              Mercari, Facebook). If the item is big/heavy and should be pickup
+              only on Facebook, check &quot;Facebook: local pickup only&quot;.
+            </li>
+            <li>
+              <strong>Click Publish to All</strong> (green button, appears when
+              2+ platforms are ticked). eBay goes via API; Mercari + Facebook
+              each open a Chromium window on the Mac and fill their forms in
+              parallel.
+            </li>
+            <li>
+              <strong>Watch the Mac</strong> (optional) — you&rsquo;ll see one
+              Chromium window per marketplace. They auto-submit; windows close
+              a few seconds after. From phone, just wait for the alerts.
+            </li>
+            <li>
+              <strong>If something fails</strong>, hit &quot;Reset Draft&quot;
+              on the card (shows up on errored/stuck listings), then try again.
+              Each platform&rsquo;s alert shows which field blocked the submit.
+            </li>
+          </ol>
+          <p className="pt-2 text-xs">
+            <strong>Notes:</strong> Listings are one source of truth — the
+            dashboard draft. Publishing pushes it to each platform&rsquo;s site.
+            Mercari items land as Drafts you can preview before going live;
+            Facebook items publish immediately. Mac must be awake for
+            Mercari/Facebook (eBay works regardless).
+          </p>
+        </div>
+      </details>
+
       {/* Upload Zone */}
       <Card
         className={cn(
