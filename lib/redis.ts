@@ -60,6 +60,10 @@ export const REDIS_KEYS = {
   // Marketplace connections
   marketplaceConnection: (platform: string) => `marketplace:connection:${platform}`,
 
+  // Local Mac automation servers (tunnel URLs)
+  mercariServerUrl: "mercari:server:url",
+  transcriptServerUrl: "transcript:server:url",
+
   // eBay OAuth
   ebayToken: "ebay:oauth:token",
 } as const;
