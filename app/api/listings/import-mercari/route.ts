@@ -158,6 +158,8 @@ export async function POST(request: NextRequest) {
       skippedCount: scraped.length - addedCount - updatedCount,
       reachedUrl: data.reachedUrl,
       firstCardPreview: data.firstCardPreview,
+      firstCardHtml: data.firstCardHtml,
+      allPrices: data.allPrices,
     });
   } catch (error: any) {
     console.error("import-mercari error:", error);

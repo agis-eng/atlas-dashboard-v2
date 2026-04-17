@@ -146,10 +146,23 @@ export default function InventoryPage() {
                   `Updated ${data.updatedCount || 0} existing items with fresh data.`,
                   `Skipped ${data.skippedCount} unchanged.`,
                 ];
+                if (data.allPrices && data.allPrices.length) {
+                  msg.push("");
+                  msg.push(`Prices found on page (${data.allPrices.length}):`);
+                  msg.push(data.allPrices.slice(0, 20).join(", "));
+                } else {
+                  msg.push("");
+                  msg.push("NO PRICES FOUND anywhere on page — likely lazy-loaded or rendered outside document.body.innerText");
+                }
                 if (data.firstCardPreview) {
                   msg.push("");
-                  msg.push("First card preview (for debugging):");
+                  msg.push("First card text:");
                   msg.push(data.firstCardPreview);
+                }
+                if (data.firstCardHtml) {
+                  msg.push("");
+                  msg.push("First card HTML (first 800ch):");
+                  msg.push(data.firstCardHtml);
                 }
                 alert(msg.join("\n"));
                 window.location.reload();
