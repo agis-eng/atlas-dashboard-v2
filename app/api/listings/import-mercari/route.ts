@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
 import crypto from "crypto";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 // Pulls the user's active Mercari listings via the Mac server and merges
 // them into the dashboard's Redis state. Dedupes by mercariListingUrl.
@@ -61,6 +61,37 @@ export async function POST(request: NextRequest) {
       listedText: string;
     }> = data.items || [];
 
+    // Follow up with per-item detail fetches to get authoritative price +
+    // days-listed. Mercari's seller dashboard doesn't reliably expose prices,
+    // so we pull from each listing's detail page.
+    if (scraped.length > 0) {
+      try {
+        const urls = scraped.map((s) => s.url);
+        const detailsRes = await fetch(`${serverUrl}/mercari/fetch-item-details`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(secret ? { "X-Mercari-Secret": secret } : {}),
+          },
+          body: JSON.stringify({ urls }),
+        });
+        if (detailsRes.ok) {
+          const detailData = await detailsRes.json();
+          const byUrl = new Map<string, any>();
+          for (const d of detailData.results || []) byUrl.set(d.url, d);
+          for (const s of scraped) {
+            const d = byUrl.get(s.url);
+            if (!d) continue;
+            if (d.price != null) s.price = d.price;
+            if (d.daysListed != null) s.daysListed = d.daysListed;
+            if (d.title && (!s.title || s.title === "(untitled)")) s.title = d.title;
+          }
+        }
+      } catch (err) {
+        console.warn("fetch-item-details failed — continuing with seller-page data", err);
+      }
+    }
+
     // Load existing listings — we both add new ones AND back-fill
     // price/photo/createdAt on existing imports where the scraper now
     // has better data.
@@ -92,9 +123,10 @@ export async function POST(request: NextRequest) {
 
       const existing = byUrl.get(item.url);
       if (existing) {
-        // Back-fill missing fields without overwriting user-edited data
+        // Detail-page data is authoritative — always overwrite price if we
+        // got one. Other fields only fill if missing so user edits survive.
         let changed = false;
-        if ((existing.price == null || existing.price === 0) && item.price != null) {
+        if (item.price != null && existing.price !== item.price) {
           existing.price = item.price;
           changed = true;
         }
