@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, Sparkles, Loader2, ExternalLink } from "lucide-react";
+import { Package, Sparkles, Loader2, ExternalLink, Download } from "lucide-react";
 
 interface Listing {
   id: string;
@@ -37,6 +37,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string>("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -114,7 +115,7 @@ export default function InventoryPage() {
         </Card>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Button
           onClick={runAnalysis}
           disabled={analyzing || listings.length === 0}
@@ -127,8 +128,39 @@ export default function InventoryPage() {
           )}
           {analyzing ? "Analyzing…" : "AI Price Analysis"}
         </Button>
+
+        <Button
+          variant="outline"
+          disabled={importing}
+          onClick={async () => {
+            setImporting(true);
+            try {
+              const res = await fetch("/api/listings/import-mercari", { method: "POST" });
+              const data = await res.json();
+              if (res.ok) {
+                alert(
+                  `Mercari import:\n\nFound ${data.scrapedCount} listings on Mercari.\nImported ${data.importedCount} new items.\nSkipped ${data.skippedCount} already in dashboard.`
+                );
+                window.location.reload();
+              } else {
+                alert(`Import failed: ${data.details || data.error}`);
+              }
+            } catch (err: any) {
+              alert(`Import error: ${err?.message || err}`);
+            }
+            setImporting(false);
+          }}
+        >
+          {importing ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4 mr-2" />
+          )}
+          {importing ? "Importing…" : "Import from Mercari"}
+        </Button>
+
         <span className="text-xs text-muted-foreground">
-          Claude reviews your inventory and flags pricing + staleness issues.
+          Claude reviews pricing; Import pulls existing Mercari listings into the dashboard.
         </span>
       </div>
 
