@@ -102,7 +102,10 @@ export async function POST(request: NextRequest) {
           return Response.json(
             {
               error: data?.error || "Mac server start failed",
-              details: data,
+              details:
+                typeof data?.error === "string"
+                  ? data.error
+                  : JSON.stringify(data).substring(0, 500),
             },
             { status }
           );
@@ -141,7 +144,13 @@ export async function POST(request: NextRequest) {
               "Fill failed: " + String(data?.error || "").substring(0, 300),
           });
           return Response.json(
-            { error: "Fill failed", details: data?.error || data },
+            {
+              error: "Fill failed",
+              details:
+                typeof data?.error === "string"
+                  ? data.error
+                  : JSON.stringify(data).substring(0, 500),
+            },
             { status: status || 500 }
           );
         }
@@ -181,7 +190,13 @@ export async function POST(request: NextRequest) {
             error: "Mercari: " + errMsg,
           });
           return Response.json(
-            { error: "Submit failed", details: data?.error || data },
+            {
+              error: "Submit failed",
+              details:
+                typeof data?.error === "string"
+                  ? data.error
+                  : JSON.stringify(data).substring(0, 500),
+            },
             { status: status || 500 }
           );
         }
