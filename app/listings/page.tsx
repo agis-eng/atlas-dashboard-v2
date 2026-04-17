@@ -61,6 +61,7 @@ interface ListingDraft {
   lengthIn?: number;
   widthIn?: number;
   heightIn?: number;
+  facebookLocalOnly?: boolean;
   mercariError?: string;
   error?: string;
   createdAt: string;
@@ -1190,6 +1191,7 @@ function ListingCard({
   const [editCondition, setEditCondition] = useState(listing.condition);
   const [editCategory, setEditCategory] = useState(listing.category);
   const [editBrand, setEditBrand] = useState(listing.brand || "");
+  const [editFbLocalOnly, setEditFbLocalOnly] = useState(!!listing.facebookLocalOnly);
   const [editWeight, setEditWeight] = useState((listing.weightOz ?? "").toString());
   const [editLength, setEditLength] = useState((listing.lengthIn ?? "").toString());
   const [editWidth, setEditWidth] = useState((listing.widthIn ?? "").toString());
@@ -1207,11 +1209,12 @@ function ListingCard({
     setEditCondition(listing.condition);
     setEditCategory(listing.category);
     setEditBrand(listing.brand || "");
+    setEditFbLocalOnly(!!listing.facebookLocalOnly);
     setEditWeight((listing.weightOz ?? "").toString());
     setEditLength((listing.lengthIn ?? "").toString());
     setEditWidth((listing.widthIn ?? "").toString());
     setEditHeight((listing.heightIn ?? "").toString());
-  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.brand, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn]);
+  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.brand, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn, listing.facebookLocalOnly]);
 
   function saveEdits() {
     onUpdate({
@@ -1222,6 +1225,7 @@ function ListingCard({
       condition: editCondition,
       category: editCategory,
       brand: editBrand,
+      facebookLocalOnly: editFbLocalOnly,
       platforms: Array.from(selectedPlatforms) as any,
       weightOz: editWeight ? parseFloat(editWeight) : undefined,
       lengthIn: editLength ? parseFloat(editLength) : undefined,
@@ -1423,6 +1427,18 @@ function ListingCard({
                   className="text-sm"
                 />
               </div>
+              {selectedPlatforms.has("facebook") && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={editFbLocalOnly}
+                    onChange={(e) => setEditFbLocalOnly(e.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  Facebook: local pickup only (for big items). Default is
+                  shipping&nbsp;+&nbsp;pickup with free shipping to buyer.
+                </label>
+              )}
 
               {/* Package size + weight (for Mercari shipping) */}
               <div>

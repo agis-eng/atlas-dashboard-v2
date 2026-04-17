@@ -193,6 +193,10 @@ export interface ListingDraft {
   mercariError?: string;
   mercariFieldStatus?: string;
   facebookFieldStatus?: string;
+  // Facebook Marketplace shipping: default is Facebook-managed shipping
+  // (seller pays, free for buyer) plus local pickup. Set true for big items
+  // that should be local pickup only.
+  facebookLocalOnly?: boolean;
   facebookError?: string;
   error?: string;
   createdAt: string;
