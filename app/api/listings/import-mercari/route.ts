@@ -52,8 +52,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const scraped: Array<{ url: string; title: string; price: number | null; photoUrl: string }> =
-      data.items || [];
+    const scraped: Array<{
+      url: string;
+      title: string;
+      price: number | null;
+      photoUrl: string;
+      daysListed: number | null;
+      listedText: string;
+    }> = data.items || [];
 
     // Load existing listings and dedupe by mercariListingUrl
     const raw = await redis.get(REDIS_KEYS.listings);
@@ -68,10 +74,19 @@ export async function POST(request: NextRequest) {
         .filter(Boolean) as string[]
     );
 
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
     const added: ListingDraft[] = [];
     for (const item of scraped) {
       if (!item.url || existingUrls.has(item.url)) continue;
+      // Back-date createdAt using the scraped "X days ago" hint so the
+      // inventory page shows the real age.
+      const createdAt =
+        item.daysListed != null
+          ? new Date(
+              now.getTime() - item.daysListed * 24 * 60 * 60 * 1000
+            ).toISOString()
+          : nowIso;
       added.push({
         id: `imp_mrc_${crypto.randomBytes(6).toString("hex")}`,
         photos: item.photoUrl ? [item.photoUrl] : [],
@@ -85,8 +100,8 @@ export async function POST(request: NextRequest) {
         status: "listed",
         mercariStatus: "listed",
         mercariListingUrl: item.url,
-        createdAt: now,
-        updatedAt: now,
+        createdAt,
+        updatedAt: nowIso,
       });
     }
 
@@ -101,6 +116,7 @@ export async function POST(request: NextRequest) {
       importedCount: added.length,
       skippedCount: scraped.length - added.length,
       reachedUrl: data.reachedUrl,
+      firstCardPreview: data.firstCardPreview,
     });
   } catch (error: any) {
     console.error("import-mercari error:", error);

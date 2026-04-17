@@ -138,9 +138,19 @@ export default function InventoryPage() {
               const res = await fetch("/api/listings/import-mercari", { method: "POST" });
               const data = await res.json();
               if (res.ok) {
-                alert(
-                  `Mercari import:\n\nFound ${data.scrapedCount} listings on Mercari.\nImported ${data.importedCount} new items.\nSkipped ${data.skippedCount} already in dashboard.`
-                );
+                const msg = [
+                  `Mercari import:`,
+                  ``,
+                  `Found ${data.scrapedCount} listings.`,
+                  `Imported ${data.importedCount} new items.`,
+                  `Skipped ${data.skippedCount} already in dashboard.`,
+                ];
+                if (data.firstCardPreview) {
+                  msg.push("");
+                  msg.push("First card preview (for debugging):");
+                  msg.push(data.firstCardPreview);
+                }
+                alert(msg.join("\n"));
                 window.location.reload();
               } else {
                 alert(`Import failed: ${data.details || data.error}`);
