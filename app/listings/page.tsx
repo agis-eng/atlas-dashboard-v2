@@ -568,8 +568,23 @@ export default function ListingsPage() {
       });
       const data = await res.json();
 
-      if (data.status === "login_required" && data.liveViewUrl) {
-        // Open the remote browser for the user to log in
+      if (data.macLogin) {
+        // Login happens in the Chromium window on the user's Mac
+        setMarketplaceStatus((prev) => ({
+          ...prev,
+          [platform]: {
+            platform,
+            profileName: `${platform}-mac-local`,
+            connected: true,
+            lastValidated: new Date().toISOString(),
+          },
+        }));
+        alert(
+          data.message ||
+            `Log into ${platform} in the Chromium window on your Mac, then close the tab.`
+        );
+      } else if (data.status === "login_required" && data.liveViewUrl) {
+        // Legacy path — remote browser (no longer used, kept for safety)
         setPendingConnect({ platform, sessionId: data.sessionId, liveViewUrl: data.liveViewUrl });
         window.open(data.liveViewUrl, "_blank");
       } else {

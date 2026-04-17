@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, MarketplaceConnection } from "@/lib/redis";
-import {
-  createContext,
-  createSession,
-  reconnectSession,
-  releaseSession,
-} from "@/lib/browserbase";
+
+// The connect endpoint no longer uses Browserbase — it proxies to the Mac-
+// local marketplace-server's /{platform}/login endpoint, which opens a login
+// tab in the persistent Chromium window on the Mac. The Mac's profile dir is
+// what holds the actual login state; this route just keeps an optimistic
+// "connected" flag in Redis so the UI's Publish button stays enabled.
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -28,15 +28,12 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-const LOGIN_URLS = {
-  mercari: "https://www.mercari.com/login/",
-  facebook: "https://www.facebook.com/login/",
-} as const;
-
-const VERIFY_URLS = {
-  mercari: "https://www.mercari.com/mypage/",
-  facebook: "https://www.facebook.com/marketplace/you/selling/",
-} as const;
+async function getMacServerUrl(redis: ReturnType<typeof getRedis>) {
+  const raw = await redis.get(REDIS_KEYS.mercariServerUrl);
+  if (!raw) return null;
+  const url = typeof raw === "string" ? raw : String(raw);
+  return url.replace(/\/+$/, "");
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,8 +43,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { platform, action, sessionId } = await request.json();
-
+    const { platform, action } = await request.json();
     if (!platform || !["mercari", "facebook"].includes(platform)) {
       return Response.json({ error: "Invalid platform" }, { status: 400 });
     }
@@ -55,127 +51,92 @@ export async function POST(request: NextRequest) {
     const redis = getRedis();
 
     if (action === "start") {
-      // Get or create a persistent Browserbase context for this platform
-      const existingRaw = await redis.get(REDIS_KEYS.marketplaceConnection(platform));
-      const existing: MarketplaceConnection | null = existingRaw
-        ? typeof existingRaw === "string"
-          ? JSON.parse(existingRaw)
-          : (existingRaw as MarketplaceConnection)
-        : null;
-
-      const contextId = existing?.contextId || (await createContext());
-
-      // Create a browser session using that context with persist: true
-      // so the user's login gets saved for later publish sessions.
-      const session = await createSession({
-        contextId,
-        persist: true,
-        keepAlive: true,
-        timeout: 600,
-      });
-
-      // Navigate to the login page in the session
-      const { browser, page } = await reconnectSession(session.id);
-      await page.goto(LOGIN_URLS[platform as keyof typeof LOGIN_URLS], {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-      await browser.close();
-
-      // Save the contextId immediately so subsequent sessions reuse it
-      const pendingConnection: MarketplaceConnection = {
-        platform: platform as "mercari" | "facebook",
-        profileName: `${platform}-session`,
-        connected: existing?.connected || false,
-        lastValidated: existing?.lastValidated || new Date().toISOString(),
-        contextId,
-      };
-      await redis.set(
-        REDIS_KEYS.marketplaceConnection(platform),
-        JSON.stringify(pendingConnection)
-      );
-
-      return Response.json({
-        status: "login_required",
-        sessionId: session.id,
-        liveViewUrl: session.liveViewUrl,
-        message: `Open the link below to log into ${platform}. Your session is saved so you only need to do this once.`,
-      });
-    }
-
-    if (action === "verify") {
-      const existingRaw = await redis.get(REDIS_KEYS.marketplaceConnection(platform));
-      const existing: MarketplaceConnection | null = existingRaw
-        ? typeof existingRaw === "string"
-          ? JSON.parse(existingRaw)
-          : (existingRaw as MarketplaceConnection)
-        : null;
-
-      if (!existing?.contextId) {
+      const serverUrl = await getMacServerUrl(redis);
+      if (!serverUrl) {
         return Response.json(
-          { error: "No connection in progress. Start a new connection first." },
-          { status: 400 }
+          {
+            error:
+              "Mac marketplace-server is not reachable. Make sure your Mac is on and the mercari-tunnel launchd agent is running.",
+          },
+          { status: 503 }
         );
       }
 
-      // Release the old session used for login (so its cookies get saved to the context)
-      if (sessionId) {
-        await releaseSession(sessionId);
-        // Wait for context to be committed
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-
-      // Create a fresh session using the saved context to verify login persisted
-      const verifySession = await createSession({
-        contextId: existing.contextId,
-        persist: false,
-        keepAlive: false,
-        timeout: 60,
+      // Tell the Mac server to open a login tab
+      const secret = process.env.MERCARI_SERVER_SECRET;
+      const res = await fetch(`${serverUrl}/${platform}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { "X-Mercari-Secret": secret } : {}),
+        },
+        body: JSON.stringify({}),
       });
-
-      let isLoggedIn = false;
-      let finalUrl = "";
-      try {
-        const { browser, page } = await reconnectSession(verifySession.id);
-        await page.goto(VERIFY_URLS[platform as keyof typeof VERIFY_URLS], {
-          waitUntil: "domcontentloaded",
-          timeout: 30000,
-        });
-        // Give the page a moment to redirect if not logged in
-        await page.waitForTimeout(2000);
-        finalUrl = page.url();
-        isLoggedIn = !finalUrl.includes("/login");
-        await browser.close();
-      } finally {
-        await releaseSession(verifySession.id);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return Response.json(
+          {
+            error: "Failed to open login tab on the Mac",
+            details:
+              typeof data?.error === "string"
+                ? data.error
+                : JSON.stringify(data).substring(0, 300),
+          },
+          { status: 502 }
+        );
       }
 
+      // Optimistically mark as connected so the UI's Publish button unlocks.
+      // Actual login state lives in the Mac profile — publish attempts will
+      // fail with a clear 401 if the user didn't complete the login tab.
       const connection: MarketplaceConnection = {
         platform: platform as "mercari" | "facebook",
-        profileName: existing.profileName,
-        connected: isLoggedIn,
+        profileName: `${platform}-mac-local`,
+        connected: true,
         lastValidated: new Date().toISOString(),
-        contextId: existing.contextId,
-        error: isLoggedIn
-          ? undefined
-          : `Login not detected (ended on ${finalUrl}). Please try connecting again.`,
       };
       await redis.set(
         REDIS_KEYS.marketplaceConnection(platform),
         JSON.stringify(connection)
       );
 
-      return Response.json({ connection });
+      return Response.json({
+        status: "login_required",
+        macLogin: true,
+        message: `A ${platform} login tab was opened in the Chromium window on your Mac. Log in there, then close the tab.`,
+      });
     }
 
-    return Response.json({ error: "Invalid action. Use 'start' or 'verify'" }, { status: 400 });
+    if (action === "verify") {
+      // No remote verification needed — login state is on the Mac profile.
+      // Just return the stored connection record.
+      const existingRaw = await redis.get(
+        REDIS_KEYS.marketplaceConnection(platform)
+      );
+      const connection: MarketplaceConnection | null = existingRaw
+        ? typeof existingRaw === "string"
+          ? JSON.parse(existingRaw)
+          : (existingRaw as MarketplaceConnection)
+        : null;
+      return Response.json({
+        connection: connection || {
+          platform,
+          profileName: `${platform}-mac-local`,
+          connected: false,
+          lastValidated: new Date().toISOString(),
+        },
+      });
+    }
+
+    return Response.json(
+      { error: "Invalid action. Use 'start' or 'verify'" },
+      { status: 400 }
+    );
   } catch (error: any) {
     const msg = error?.message || String(error);
-    const stack = error?.stack || "";
-    console.error("MKT_CONNECT_ERROR message:", msg);
-    console.error("MKT_CONNECT_ERROR stack:", stack.substring(0, 2000));
+    console.error("MKT_CONNECT_ERROR:", msg);
     return Response.json(
-      { error: "Failed to connect marketplace: " + msg.substring(0, 300), details: msg },
+      { error: "Failed to connect marketplace: " + msg.substring(0, 300) },
       { status: 500 }
     );
   }
