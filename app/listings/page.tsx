@@ -707,6 +707,24 @@ export default function ListingsPage() {
     }
   }
 
+  async function publishToAllSelected(listing: ListingDraft) {
+    if (!listing.title || !listing.price) {
+      alert("Title and price are required");
+      return;
+    }
+    const platforms = listing.platforms || [];
+    if (platforms.length === 0) {
+      alert("Select at least one platform first");
+      return;
+    }
+    const tasks: Array<{ platform: string; promise: Promise<any> }> = [];
+    if (platforms.includes("ebay")) tasks.push({ platform: "ebay", promise: publishToEbay(listing) });
+    if (platforms.includes("mercari")) tasks.push({ platform: "mercari", promise: publishToMercari(listing) });
+    if (platforms.includes("facebook")) tasks.push({ platform: "facebook", promise: publishToFacebook(listing) });
+    // Fire in parallel — each platform reports its own errors via its existing alert.
+    await Promise.allSettled(tasks.map((t) => t.promise));
+  }
+
   async function publishToFacebook(listing: ListingDraft) {
     if (!listing.title || !listing.price) {
       alert("Title and price are required");
@@ -1125,6 +1143,7 @@ export default function ListingsPage() {
                     onPublishEbay={() => publishToEbay(listing)}
                     onPublishMercari={() => publishToMercari(listing)}
                     onPublishFacebook={() => publishToFacebook(listing)}
+                    onPublishAll={() => publishToAllSelected(listing)}
                     onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
                     marketplaceStatus={marketplaceStatus}
                     publishProgress={publishProgress[listing.id]}
@@ -1155,6 +1174,7 @@ export default function ListingsPage() {
                   onPublishEbay={() => {}}
                   onPublishMercari={() => {}}
                   onPublishFacebook={() => {}}
+                  onPublishAll={() => {}}
                   onReanalyze={() => {}}
                   marketplaceStatus={marketplaceStatus}
                   publishProgress={undefined}
@@ -1180,6 +1200,7 @@ function ListingCard({
   onPublishEbay,
   onPublishMercari,
   onPublishFacebook,
+  onPublishAll,
   onReanalyze,
   marketplaceStatus,
   publishProgress,
@@ -1195,6 +1216,7 @@ function ListingCard({
   onPublishEbay: () => void;
   onPublishMercari: () => void;
   onPublishFacebook: () => void;
+  onPublishAll: () => void;
   onReanalyze: () => void;
   marketplaceStatus: MarketplaceStatus;
   publishProgress?: string;
@@ -1567,6 +1589,25 @@ function ListingCard({
                   >
                     <RotateCcw className="h-3 w-3 mr-1" />
                     Reset Draft
+                  </Button>
+                )}
+
+                {selectedPlatforms.size >= 2 && listing.status !== "listed" && (
+                  <Button
+                    size="sm"
+                    className="text-xs bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => {
+                      saveEdits();
+                      setTimeout(onPublishAll, 100);
+                    }}
+                    disabled={listing.status === "listing"}
+                  >
+                    {listing.status === "listing" && publishProgress ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3 mr-1" />
+                    )}
+                    Publish to All ({selectedPlatforms.size})
                   </Button>
                 )}
 
