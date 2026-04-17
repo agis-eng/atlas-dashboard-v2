@@ -192,6 +192,7 @@ export interface ListingDraft {
   facebookStatus?: "pending" | "publishing" | "listed" | "error";
   mercariError?: string;
   mercariFieldStatus?: string;
+  facebookFieldStatus?: string;
   facebookError?: string;
   error?: string;
   createdAt: string;

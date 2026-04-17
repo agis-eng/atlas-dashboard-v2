@@ -696,52 +696,54 @@ export default function ListingsPage() {
       alert("Title and price are required");
       return;
     }
-    if (!marketplaceStatus.facebook?.connected) {
-      alert("Connect your Facebook account first");
-      return;
-    }
 
     await updateListing(listing.id, { status: "listing" });
-    const steps = ["start", "fill", "photos", "submit"] as const;
-    const stepLabels: Record<string, string> = {
-      start: "Opening Facebook...",
-      fill: "Filling details...",
-      photos: "Uploading photos...",
-      submit: "Submitting listing...",
-    };
 
-    let scrapeId = "";
+    let sessionId = "";
 
     try {
-      for (const step of steps) {
-        setPublishProgress((prev) => ({ ...prev, [listing.id]: stepLabels[step] }));
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Opening Facebook..." }));
+      const startRes = await fetch("/api/listings/publish/facebook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, step: "start" }),
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(startData.details || startData.error || "Failed to open Facebook");
+      sessionId = startData.sessionId || "";
 
-        const res = await fetch("/api/listings/publish/facebook", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id, scrapeId, step }),
-        });
-        const data = await res.json();
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Uploading photos & filling details..." }));
+      const fillRes = await fetch("/api/listings/publish/facebook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill" }),
+      });
+      const fillData = await fillRes.json();
+      if (!fillRes.ok) throw new Error(fillData.details || fillData.error || "Failed to fill fields");
 
-        if (!res.ok) {
-          throw new Error(data.error || `Step "${step}" failed`);
-        }
-
-        if (data.scrapeId) scrapeId = data.scrapeId;
-
-        if (step === "submit") {
-          await updateListing(listing.id, {
-            status: "listed",
-            facebookListingUrl: data.listingUrl,
-          });
-        }
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
+      const submitRes = await fetch("/api/listings/publish/facebook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "submit" }),
+      });
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) throw new Error(submitData.details || submitData.error || "Failed to publish");
+      if (submitData.success === false) {
+        throw new Error(submitData.details || submitData.error || "Publish did not complete — check the browser window");
       }
+
+      await updateListing(listing.id, {
+        status: "listed",
+        facebookListingUrl: submitData.listingUrl,
+      });
     } catch (err: any) {
       console.error("Facebook publish error:", err);
       await updateListing(listing.id, {
         status: "error",
         error: `Facebook: ${err.message}`,
       });
+      alert(`Facebook publish failed:\n${err.message}`);
     } finally {
       setPublishProgress((prev) => {
         const next = { ...prev };
@@ -1604,16 +1606,14 @@ function ListingCard({
                       saveEdits();
                       setTimeout(onPublishFacebook, 100);
                     }}
-                    disabled={listing.status === "listing" || !marketplaceStatus.facebook?.connected}
+                    disabled={listing.status === "listing"}
                   >
                     {listing.status === "listing" && publishProgress ? (
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                     ) : (
                       <Facebook className="h-3 w-3 mr-1" />
                     )}
-                    {!marketplaceStatus.facebook?.connected
-                      ? "Connect Facebook"
-                      : publishProgress || "Publish to Facebook"}
+                    {publishProgress || "Publish to Facebook"}
                   </Button>
                 )}
 
