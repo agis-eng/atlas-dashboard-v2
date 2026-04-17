@@ -166,25 +166,29 @@ export async function removeNotebookLMLogo(base64WithPrefix: string, mimeType: s
   const ai = client();
   const model = "gemini-3-pro-image-preview";
 
-  const prompt = `TASK: Inpaint a small overlay badge in the lower-right corner of the slide.
+  const prompt = `TASK: Remove the NotebookLM badge in the lower-right corner of this slide and inpaint the area so the removal is seamless.
 
-DETECTION CRITERIA — only act if ALL of these are true:
-- There is a small overlay element in the LOWER-RIGHT CORNER of the image.
-- That element looks like an applied watermark/badge (not part of the slide's own content): typically a small rounded pill, capsule, or icon-plus-text label sitting on top of the underlying design.
-- It is clearly distinct from the slide's headline, body text, illustrations, charts, or decorative graphics.
+ABOUT THE BADGE — what you're looking for:
+- NotebookLM stamps every slide it generates with a small identifying badge in the LOWER-RIGHT corner.
+- It is typically a compact rounded capsule/pill or small icon-plus-text element.
+- Common forms: a colorful sparkle/star icon, a "NotebookLM" text label, or an icon+text combo. It may be solid-colored, translucent, or partially blended into the slide background.
+- It sits ON TOP of the slide's underlying design — always a superimposed overlay, never part of the slide's native layout.
+- It can appear on any background: light, dark, photographic, or over illustrations. It may be subtle (low-contrast, semi-transparent) but it is ALWAYS present.
 
-IF AND ONLY IF such an overlay exists in the lower-right:
-- Remove it.
-- Inpaint the cleared area using the surrounding background pixels so the removal is seamless and invisible.
+INSTRUCTIONS — assume the badge is present unless you are certain it is not:
+- Scan the entire lower-right region of the image thoroughly. Do not require a specific size, color, or exact position — only that it is a superimposed overlay in that corner.
+- If you see ANY element in the lower-right corner that could plausibly be a NotebookLM identifier (any icon, capsule, small text label, sparkle/star mark, or similar superimposed graphic), remove it and inpaint the area using the surrounding background pixels for a seamless result.
+- Err on the side of removal: if you're uncertain whether something is a badge or part of the design, and it's in the lower-right corner AND has the character of an overlaid mark (isolated, small, looks "applied"), remove it.
+- Only return the image unchanged if the lower-right corner is completely clean with absolutely nothing overlaid on it.
 
 ABSOLUTE PROHIBITIONS — these apply in every case:
-- DO NOT add, draw, render, or invent any new logo, badge, watermark, text, or icon anywhere in the image. If no qualifying overlay exists, return the input image UNCHANGED.
+- DO NOT add, draw, render, or invent any new logo, badge, watermark, text, or icon anywhere in the image.
 - DO NOT remove, edit, recolor, reposition, or restyle any headline, subheading, body copy, bullet, caption, label, number, or any other text on the slide.
 - DO NOT remove, edit, recolor, reposition, or restyle any illustration, photo, chart, diagram, icon, shape, or decorative graphic that is part of the slide's own composition.
 - DO NOT change the background, colors, layout, framing, or aspect ratio.
-- DO NOT touch anything outside the small lower-right corner region.
+- DO NOT touch anything outside the lower-right corner region.
 
-The output must be pixel-identical to the input everywhere except the small lower-right region where the overlay badge was removed (if one was present at all).`;
+The output must be pixel-identical to the input everywhere except the lower-right region where the NotebookLM badge was removed.`;
 
   const response = await ai.models.generateContent({
     model,
