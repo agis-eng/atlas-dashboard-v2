@@ -1519,7 +1519,7 @@ function ListingCard({
                   {analyzing ? "Analyzing..." : "Re-analyze"}
                 </Button>
 
-                {listing.status === "error" && (
+                {(listing.status === "error" || listing.status === "listing") && (
                   <Button
                     size="sm"
                     variant="outline"
