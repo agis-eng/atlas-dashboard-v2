@@ -168,6 +168,8 @@ export interface ListingDraft {
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
+  ebayOfferId?: string;
+  ebaySku?: string;
   mercariListingUrl?: string;
   facebookListingUrl?: string;
   aiAnalysis?: {

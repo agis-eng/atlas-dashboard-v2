@@ -42,6 +42,8 @@ interface ListingDraft {
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
+  ebayOfferId?: string;
+  ebaySku?: string;
   mercariListingUrl?: string;
   facebookListingUrl?: string;
   aiAnalysis?: {
@@ -449,6 +451,8 @@ export default function ListingsPage() {
         await updateListing(listing.id, {
           status: "listed",
           ebayListingId: pubData.listingId || offerId,
+          ebayOfferId: offerId,
+          ebaySku: sku,
         });
       } else {
         throw new Error(pubData.errors?.[0]?.message || "Failed to publish");
@@ -1678,6 +1682,62 @@ function ListingCard({
                   >
                     <RotateCcw className="h-3 w-3 mr-1" />
                     Move to Drafts
+                  </Button>
+                )}
+
+                {listing.status === "listed" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={async () => {
+                      const next = prompt(
+                        `New price (current: $${listing.price})`,
+                        String(listing.price || "")
+                      );
+                      if (!next) return;
+                      const n = parseFloat(next);
+                      if (!isFinite(n) || n <= 0) {
+                        alert("Enter a valid price");
+                        return;
+                      }
+                      const res = await fetch("/api/listings/update-price", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ listingId: listing.id, newPrice: n }),
+                      });
+                      const data = await res.json();
+                      const summary = (data.results || [])
+                        .map((r: any) => `${r.platform}: ${r.ok ? "✓" : `✗ ${r.skipped ? r.reason : r.error || r.data?.error || "failed"}`}`)
+                        .join("\n");
+                      alert(`Price update → $${n}\n\n${summary || "no platforms to update"}`);
+                    }}
+                  >
+                    Change Price
+                  </Button>
+                )}
+
+                {listing.status === "listed" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                    onClick={async () => {
+                      if (!confirm("Mark as sold and remove listing from all platforms?")) return;
+                      const res = await fetch("/api/listings/delist", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ listingId: listing.id }),
+                      });
+                      const data = await res.json();
+                      const summary = (data.results || [])
+                        .map((r: any) => `${r.platform}: ${r.ok ? "✓ removed" : `✗ ${r.skipped ? r.reason : r.error || r.data?.error || "failed"}`}`)
+                        .join("\n");
+                      alert(`Delist result:\n\n${summary || "no platforms to delist"}`);
+                      window.location.reload();
+                    }}
+                  >
+                    Mark as Sold
                   </Button>
                 )}
 
