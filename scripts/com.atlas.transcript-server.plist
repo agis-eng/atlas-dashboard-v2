@@ -7,6 +7,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/node</string>
+        <string>--env-file=/Users/eriklaine/.openclaw/workspace/.env</string>
         <string>/Users/eriklaine/.openclaw/workspace/transcript-server.js</string>
     </array>
     <key>RunAtLoad</key>

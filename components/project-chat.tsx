@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/copy-button";
 import { VoiceMessageAction } from "@/components/voice-message-action";
 import { useVoice } from "@/components/voice-provider";
 import type { VoiceContext } from "@/lib/voice-context";
@@ -485,16 +486,12 @@ export function ProjectChat({ projectId, projectName }: ProjectChatProps) {
                   <>
                     <MarkdownMessage content={msg.content} isUser={msg.role === "user"} />
                     {msg.role === "assistant" && msg.content ? (
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center gap-2">
+                        <CopyButton text={msg.content} className="px-0" />
                         <VoiceMessageAction
                           context={getVoiceContext(msg)}
                           label="Continue by voice"
-                          className={cn(
-                            "px-0",
-                            msg.role === "assistant"
-                              ? "text-muted-foreground hover:text-foreground"
-                              : "text-white/80 hover:text-white"
-                          )}
+                          className="px-0 text-muted-foreground hover:text-foreground"
                         />
                       </div>
                     ) : null}

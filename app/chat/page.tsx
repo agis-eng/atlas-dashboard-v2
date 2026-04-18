@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VoiceMessageAction } from "@/components/voice-message-action";
+import { CopyButton } from "@/components/copy-button";
 import { useVoice } from "@/components/voice-provider";
 import {
   Send,
@@ -429,13 +430,16 @@ export default function ChatPage() {
                     >
                       <CardContent className="p-3">
                         <MarkdownMessage content={msg.content} isUser={msg.role === "user"} />
-                        {isLastAssistant && msg.content ? (
-                          <div className="mt-2">
-                            <VoiceMessageAction
-                              context={getVoiceContext(msg)}
-                              label="Continue by voice"
-                              className="px-0"
-                            />
+                        {msg.role === "assistant" && msg.content ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <CopyButton text={msg.content} className="px-0" />
+                            {isLastAssistant ? (
+                              <VoiceMessageAction
+                                context={getVoiceContext(msg)}
+                                label="Continue by voice"
+                                className="px-0"
+                              />
+                            ) : null}
                           </div>
                         ) : null}
                       </CardContent>

@@ -80,6 +80,7 @@ export default function BrainDetailPage({
   >({});
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  const [expandedNoteIndex, setExpandedNoteIndex] = useState<number | null>(null);
   const [loadingEmails, setLoadingEmails] = useState(false);
 
   // Chat
@@ -822,25 +823,40 @@ export default function BrainDetailPage({
               </div>
             )}
             {brain.notes && brain.notes.length > 0 ? (
-              brain.notes.map((note: any, i: number) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded border text-xs">
-                  <Checkbox
-                    checked={selectedNoteIndices.includes(i)}
-                    onCheckedChange={(checked) => {
-                      setSelectedNoteIndices(prev =>
-                        checked ? [...prev, i] : prev.filter(idx => idx !== i)
-                      );
-                    }}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="whitespace-pre-wrap">{note.content}</p>
-                    <p className="text-muted-foreground mt-1">
-                      {new Date(note.date).toLocaleDateString()}
-                    </p>
+              brain.notes.map((note: any, i: number) => {
+                const isExpanded = expandedNoteIndex === i;
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex items-start gap-2 p-2 rounded border text-xs transition-colors",
+                      isExpanded && "bg-muted/50"
+                    )}
+                  >
+                    <Checkbox
+                      checked={selectedNoteIndices.includes(i)}
+                      onCheckedChange={(checked) => {
+                        setSelectedNoteIndices(prev =>
+                          checked ? [...prev, i] : prev.filter(idx => idx !== i)
+                        );
+                      }}
+                      className="mt-0.5"
+                    />
+                    <button
+                      type="button"
+                      className="flex-1 min-w-0 text-left cursor-pointer hover:text-foreground"
+                      onClick={() => setExpandedNoteIndex(isExpanded ? null : i)}
+                    >
+                      <p className={cn("whitespace-pre-wrap", !isExpanded && "line-clamp-2")}>
+                        {note.content}
+                      </p>
+                      <p className="text-muted-foreground mt-1">
+                        {new Date(note.date).toLocaleDateString()}
+                      </p>
+                    </button>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : !showNoteForm ? (
               <p className="text-xs text-muted-foreground">No notes yet</p>
             ) : null}
