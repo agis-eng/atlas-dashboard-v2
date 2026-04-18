@@ -37,7 +37,16 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(brain);
+    // Strip internal blob fields so the raw Blob URL never leaves the server
+    const safeBrain = {
+      ...brain,
+      documents: (brain.documents || []).map(({ url, blobKey, content, ...rest }: any) => ({
+        ...rest,
+        hasFile: Boolean(url),
+      })),
+    };
+
+    return NextResponse.json(safeBrain);
   } catch (error) {
     console.error("Error reading brain:", error);
     return NextResponse.json(

@@ -677,9 +677,9 @@ export default function BrainDetailPage({
                       }}
                     />
                     <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    {doc.url ? (
+                    {doc.hasFile ? (
                       <a
-                        href={doc.url}
+                        href={`/api/brain/${id}/documents/${i}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-1 min-w-0 hover:text-foreground"

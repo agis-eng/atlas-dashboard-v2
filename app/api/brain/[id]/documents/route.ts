@@ -87,9 +87,10 @@ export async function POST(
     brain.lastUpdated = new Date().toISOString().split('T')[0];
     await writeBrains(user.profile, data);
 
-    return NextResponse.json({ 
-      success: true, 
-      document: brain.documents[brain.documents.length - 1]
+    const { url: _u, blobKey: _k, content: _c, ...safeDoc } = brain.documents[brain.documents.length - 1];
+    return NextResponse.json({
+      success: true,
+      document: { ...safeDoc, hasFile: true },
     });
   } catch (error) {
     console.error("Error uploading document:", error);
@@ -123,9 +124,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      documents: brain.documents || []
-    });
+    const safeDocs = (brain.documents || []).map(({ url, blobKey, content, ...rest }: any) => ({
+      ...rest,
+      hasFile: Boolean(url),
+    }));
+    return NextResponse.json({ documents: safeDocs });
   } catch (error) {
     console.error("Error reading documents:", error);
     return NextResponse.json(
