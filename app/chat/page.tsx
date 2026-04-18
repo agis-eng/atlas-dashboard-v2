@@ -422,7 +422,7 @@ export default function ChatPage() {
                       </div>
                     )}
                     <Card
-                      className={`max-w-[70%] ${
+                      className={`max-w-[85%] md:max-w-[70%] ${
                         msg.role === "user"
                           ? "bg-orange-600 text-white border-orange-600"
                           : "bg-card"
@@ -459,7 +459,7 @@ export default function ChatPage() {
                   <div className="h-8 w-8 rounded-full bg-orange-600/10 flex items-center justify-center shrink-0">
                     <Bot className="h-4 w-4 text-orange-600" />
                   </div>
-                  <Card className="max-w-[70%] bg-card">
+                  <Card className="max-w-[85%] md:max-w-[70%] bg-card">
                     <CardContent className="p-3">
                       <MarkdownMessage content={streamingContent} isUser={false} />
                     </CardContent>

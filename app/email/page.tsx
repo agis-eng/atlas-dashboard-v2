@@ -1157,7 +1157,7 @@ export default function EmailPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="ml-auto h-7 text-xs"
+                    className="ml-auto h-9 sm:h-7 text-xs"
                     onClick={() => selectAllInSection(categorized.newsletters)}
                   >
                     {categorized.newsletters.every((e) => selected.has(e.id))
@@ -1197,7 +1197,7 @@ export default function EmailPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="ml-auto h-7 text-xs"
+                    className="ml-auto h-9 sm:h-7 text-xs"
                     onClick={() => selectAllInSection(categorized.spam)}
                   >
                     {categorized.spam.every((e) => selected.has(e.id))
@@ -1398,14 +1398,14 @@ export default function EmailPage() {
               </div>
 
               {/* Quick Categorize */}
-              <div className="flex gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
+              <div className="flex flex-wrap gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
                 <span className="text-xs font-medium text-muted-foreground self-center mr-2">
                   Categorize:
                 </span>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className="h-9 sm:h-7 text-xs"
                   onClick={async () => {
                     await handleCategorize(selectedEmail.from, "topOfMind");
                     await loadEmails(true);
@@ -1417,7 +1417,7 @@ export default function EmailPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className="h-9 sm:h-7 text-xs"
                   onClick={async () => {
                     await handleCategorize(selectedEmail.from, "fyi");
                     await loadEmails(true);
@@ -1429,7 +1429,7 @@ export default function EmailPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className="h-9 sm:h-7 text-xs"
                   onClick={async () => {
                     await handleCategorize(selectedEmail.from, "newsletter");
                     await loadEmails(true);
@@ -1441,7 +1441,7 @@ export default function EmailPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs text-destructive"
+                  className="h-9 sm:h-7 text-xs text-destructive"
                   onClick={async () => {
                     await handleCategorize(selectedEmail.from, "spam");
                     await handleDeleteEmail(selectedEmail.id);
@@ -1604,7 +1604,7 @@ export default function EmailPage() {
                         key={folder}
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs"
+                        className="h-9 sm:h-7 text-xs"
                         disabled={movingToFolder}
                         onClick={() => moveToFolder(selectedEmail.id, folder)}
                       >
@@ -1614,7 +1614,7 @@ export default function EmailPage() {
                   </div>
                   <div className="flex gap-2">
                     <Input
-                      className="h-7 text-xs"
+                      className="h-9 sm:h-7 text-xs"
                       placeholder="Custom folder name..."
                       value={customFolder}
                       onChange={(e) => setCustomFolder(e.target.value)}
@@ -1626,7 +1626,7 @@ export default function EmailPage() {
                     />
                     <Button
                       size="sm"
-                      className="h-7 text-xs"
+                      className="h-9 sm:h-7 text-xs"
                       disabled={!customFolder.trim() || movingToFolder}
                       onClick={() =>
                         moveToFolder(selectedEmail.id, customFolder.trim())
@@ -1710,7 +1710,7 @@ export default function EmailPage() {
                         key={label}
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs border-orange-500/30 hover:bg-orange-500/10"
+                        className="h-9 sm:h-7 text-xs border-orange-500/30 hover:bg-orange-500/10"
                         onClick={() =>
                           snoozeEmail(selectedEmail, hours, display)
                         }
