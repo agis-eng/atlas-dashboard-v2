@@ -186,6 +186,47 @@ export default function BrainDetailPage({
     }
   }
 
+  async function deleteNote(index: number) {
+    if (!confirm("Delete this note?")) return;
+    try {
+      const res = await fetch(`/api/brain/${id}/notes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSelectedNoteIndices((prev) =>
+        prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i))
+      );
+      if (expandedNoteIndex === index) setExpandedNoteIndex(null);
+      else if (expandedNoteIndex !== null && expandedNoteIndex > index)
+        setExpandedNoteIndex(expandedNoteIndex - 1);
+      toast.success("Note deleted");
+      await loadBrain();
+    } catch {
+      toast.error("Failed to delete note");
+    }
+  }
+
+  async function deleteDocument(index: number, name: string) {
+    if (!confirm(`Delete "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/brain/${id}/documents`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSelectedDocIndices((prev) =>
+        prev.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i))
+      );
+      toast.success("Document deleted");
+      await loadBrain();
+    } catch {
+      toast.error("Failed to delete document");
+    }
+  }
+
   async function addLink() {
     if (!newLink.url) return;
     try {
@@ -700,6 +741,14 @@ export default function BrainDetailPage({
                         </p>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      aria-label="Delete document"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted"
+                      onClick={() => deleteDocument(i, doc.name)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -870,6 +919,14 @@ export default function BrainDetailPage({
                       <p className="text-muted-foreground mt-1">
                         {new Date(note.date).toLocaleDateString()}
                       </p>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete note"
+                      className="shrink-0 mt-0.5 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted"
+                      onClick={() => deleteNote(i)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 );
