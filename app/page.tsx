@@ -192,7 +192,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 sm:p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       {/* Greeting */}
       <div
         className={`transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}

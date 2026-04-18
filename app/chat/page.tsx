@@ -334,7 +334,7 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Sidebar - Chat Sessions */}
-      <div className="w-64 border-r border-border flex flex-col bg-card/50">
+      <div className="hidden md:flex w-64 border-r border-border flex-col bg-card/50">
         <div className="p-3 border-b border-border">
           <Button
             onClick={startNewChat}

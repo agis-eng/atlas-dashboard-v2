@@ -119,7 +119,7 @@ export function AppSidebar({ currentUser }: AppSidebarProps) {
     <TooltipProvider delay={0}>
       <aside
         className={cn(
-          "relative flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 ease-in-out",
+          "relative hidden md:flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 ease-in-out",
           collapsed ? "w-16" : "w-56"
         )}
       >
