@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
+import { put, del } from "@vercel/blob";
+import crypto from "crypto";
+
+const MAX_DOC_SIZE = 25 * 1024 * 1024; // 25 MB per document
 
 function getBrainsKey(userId: string) { return `brains:${userId}`; }
 
@@ -52,28 +56,32 @@ export async function POST(
       );
     }
 
-    // For now, store document content in Redis (small files only)
-    // TODO: Use S3 or similar for production
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = file.name;
-    
-    let content = null;
-    // Only store text content for small files
-    if ((file.name.endsWith('.txt') || file.name.endsWith('.md')) && file.size < 100000) {
-      content = buffer.toString('utf-8');
+    if (file.size > MAX_DOC_SIZE) {
+      return NextResponse.json(
+        { error: `File too large: max ${MAX_DOC_SIZE / 1024 / 1024}MB` },
+        { status: 400 }
+      );
     }
 
-    // Update brain metadata
+    // Upload to Vercel Blob with a random key so URLs aren't guessable
+    const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+    const blobKey = `brain/${id}/${crypto.randomUUID()}${ext}`;
+    const blob = await put(blobKey, file, {
+      access: "public",
+      contentType: file.type || "application/octet-stream",
+    });
+
     if (!brain.documents) {
       brain.documents = [];
     }
 
     brain.documents.push({
-      name: filename,
+      name: file.name,
       size: file.size,
       type: file.type,
       uploadedAt: new Date().toISOString(),
-      content: content // Store inline for small text files
+      url: blob.url,
+      blobKey,
     });
 
     brain.lastUpdated = new Date().toISOString().split('T')[0];
@@ -157,9 +165,17 @@ export async function DELETE(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    brain.documents.splice(index, 1);
+    const [removed] = brain.documents.splice(index, 1);
     brain.lastUpdated = new Date().toISOString().split("T")[0];
     await writeBrains(user.profile, data);
+
+    if (removed?.url) {
+      try {
+        await del(removed.url);
+      } catch (e) {
+        console.error("Blob delete failed (continuing):", e);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -677,12 +677,29 @@ export default function BrainDetailPage({
                       }}
                     />
                     <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{doc.name}</p>
-                      <p className="text-muted-foreground">
-                        {(doc.size / 1024).toFixed(1)} KB
-                      </p>
-                    </div>
+                    {doc.url ? (
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 min-w-0 hover:text-foreground"
+                      >
+                        <p className="font-medium truncate underline-offset-2 hover:underline">{doc.name}</p>
+                        <p className="text-muted-foreground">
+                          {(doc.size / 1024).toFixed(1)} KB
+                        </p>
+                      </a>
+                    ) : (
+                      <div
+                        className="flex-1 min-w-0"
+                        title="Preview unavailable — re-upload to enable opening"
+                      >
+                        <p className="font-medium truncate">{doc.name}</p>
+                        <p className="text-muted-foreground">
+                          {(doc.size / 1024).toFixed(1)} KB · re-upload to open
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
