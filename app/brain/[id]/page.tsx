@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CopyButton } from "@/components/copy-button";
 
 interface BrainData {
   id: string;
@@ -103,8 +104,8 @@ export default function BrainDetailPage({
       if (res.ok) {
         const data = await res.json();
         setBrain(data);
-        setSelectedNoteIndices(data.notes?.map((_: any, i: number) => i) || []);
-        setSelectedDocIndices(data.documents?.map((_: any, i: number) => i) || []);
+        setSelectedNoteIndices([]);
+        setSelectedDocIndices([]);
       }
     } catch {
       console.error("Failed to load brain");
@@ -598,13 +599,18 @@ export default function BrainDetailPage({
                   }`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
+                    className={`max-w-[85%] md:max-w-[80%] rounded-lg p-3 ${
                       msg.role === "user"
                         ? "bg-purple-600 text-white"
                         : "bg-muted"
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === "assistant" && msg.content ? (
+                      <div className="mt-2">
+                        <CopyButton text={msg.content} className="px-0" />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ))
