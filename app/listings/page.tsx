@@ -39,6 +39,8 @@ interface ListingDraft {
   condition: string;
   category: string;
   brand?: string;
+  size?: string;
+  sizeType?: string;
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
@@ -366,6 +368,11 @@ export default function ListingsPage() {
             title: listing.title,
             description: listing.description,
             imageUrls,
+            aspects: {
+              Brand: [listing.brand || "Unbranded"],
+              "Size Type": [listing.sizeType || "Regular"],
+              ...(listing.size ? { Size: [listing.size] } : {}),
+            },
           },
           condition: EBAY_CONDITION_MAP[listing.condition] || "USED_GOOD",
           availability: {
@@ -711,12 +718,12 @@ export default function ListingsPage() {
     }
   }
 
-  async function publishToAllSelected(listing: ListingDraft) {
+  async function publishToAllSelected(listing: ListingDraft, platformsOverride?: string[]) {
     if (!listing.title || !listing.price) {
       alert("Title and price are required");
       return;
     }
-    const platforms = listing.platforms || [];
+    const platforms = platformsOverride ?? listing.platforms ?? [];
     if (platforms.length === 0) {
       alert("Select at least one platform first");
       return;
@@ -1198,7 +1205,7 @@ export default function ListingsPage() {
                     onPublishEbay={() => publishToEbay(listing)}
                     onPublishMercari={() => publishToMercari(listing)}
                     onPublishFacebook={() => publishToFacebook(listing)}
-                    onPublishAll={() => publishToAllSelected(listing)}
+                    onPublishAll={(platforms) => publishToAllSelected(listing, platforms)}
                     onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
                     marketplaceStatus={marketplaceStatus}
                     publishProgress={publishProgress[listing.id]}
@@ -1271,7 +1278,7 @@ function ListingCard({
   onPublishEbay: () => void;
   onPublishMercari: () => void;
   onPublishFacebook: () => void;
-  onPublishAll: () => void;
+  onPublishAll: (platforms?: string[]) => void;
   onReanalyze: () => void;
   marketplaceStatus: MarketplaceStatus;
   publishProgress?: string;
@@ -1288,6 +1295,8 @@ function ListingCard({
   const [editLength, setEditLength] = useState((listing.lengthIn ?? "").toString());
   const [editWidth, setEditWidth] = useState((listing.widthIn ?? "").toString());
   const [editHeight, setEditHeight] = useState((listing.heightIn ?? "").toString());
+  const [editSize, setEditSize] = useState(listing.size || "");
+  const [editSizeType, setEditSizeType] = useState(listing.sizeType || "Regular");
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
     new Set(listing.platforms)
   );
@@ -1306,7 +1315,9 @@ function ListingCard({
     setEditLength((listing.lengthIn ?? "").toString());
     setEditWidth((listing.widthIn ?? "").toString());
     setEditHeight((listing.heightIn ?? "").toString());
-  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.brand, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn, listing.facebookLocalOnly]);
+    setEditSize(listing.size || "");
+    setEditSizeType(listing.sizeType || "Regular");
+  }, [listing.title, listing.description, listing.price, listing.quantity, listing.condition, listing.category, listing.brand, listing.size, listing.sizeType, listing.weightOz, listing.lengthIn, listing.widthIn, listing.heightIn, listing.facebookLocalOnly]);
 
   function saveEdits() {
     onUpdate({
@@ -1317,6 +1328,8 @@ function ListingCard({
       condition: editCondition,
       category: editCategory,
       brand: editBrand,
+      size: editSize || undefined,
+      sizeType: editSizeType || undefined,
       facebookLocalOnly: editFbLocalOnly,
       platforms: Array.from(selectedPlatforms) as any,
       weightOz: editWeight ? parseFloat(editWeight) : undefined,
@@ -1519,6 +1532,37 @@ function ListingCard({
                   className="text-sm"
                 />
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    Size (required on eBay for apparel)
+                  </label>
+                  <Input
+                    value={editSize}
+                    onChange={(e) => setEditSize(e.target.value)}
+                    placeholder="e.g. M, 10, One Size"
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1">
+                    Size Type
+                  </label>
+                  <select
+                    value={editSizeType}
+                    onChange={(e) => setEditSizeType(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="Regular">Regular</option>
+                    <option value="Plus">Plus</option>
+                    <option value="Petite">Petite</option>
+                    <option value="Big & Tall">Big &amp; Tall</option>
+                    <option value="Maternity">Maternity</option>
+                    <option value="Juniors">Juniors</option>
+                    <option value="Tall">Tall</option>
+                  </select>
+                </div>
+              </div>
               {selectedPlatforms.has("facebook") && (
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input
@@ -1653,7 +1697,7 @@ function ListingCard({
                     className="text-xs bg-green-600 hover:bg-green-700 text-white"
                     onClick={() => {
                       saveEdits();
-                      setTimeout(onPublishAll, 100);
+                      onPublishAll(Array.from(selectedPlatforms));
                     }}
                     disabled={listing.status === "listing"}
                   >

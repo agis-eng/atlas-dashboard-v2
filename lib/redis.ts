@@ -165,6 +165,8 @@ export interface ListingDraft {
   condition: string;
   category: string;
   brand?: string;
+  size?: string;
+  sizeType?: string;
   platforms: ("ebay" | "mercari" | "facebook")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
