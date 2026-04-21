@@ -1675,34 +1675,46 @@ function ListingCard({
                   Package (AI estimate — used for Mercari shipping)
                 </label>
                 <div className="grid grid-cols-4 gap-2">
-                  <Input
-                    value={editWeight}
-                    onChange={(e) => setEditWeight(e.target.value)}
-                    placeholder="oz"
-                    className="text-xs"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={editLength}
-                    onChange={(e) => setEditLength(e.target.value)}
-                    placeholder="L (in)"
-                    className="text-xs"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={editWidth}
-                    onChange={(e) => setEditWidth(e.target.value)}
-                    placeholder="W (in)"
-                    className="text-xs"
-                    inputMode="decimal"
-                  />
-                  <Input
-                    value={editHeight}
-                    onChange={(e) => setEditHeight(e.target.value)}
-                    placeholder="H (in)"
-                    className="text-xs"
-                    inputMode="decimal"
-                  />
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-0.5">Weight (oz)</label>
+                    <Input
+                      value={editWeight}
+                      onChange={(e) => setEditWeight(e.target.value)}
+                      placeholder="oz"
+                      className="text-xs"
+                      inputMode="decimal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-0.5">Length (in)</label>
+                    <Input
+                      value={editLength}
+                      onChange={(e) => setEditLength(e.target.value)}
+                      placeholder="L"
+                      className="text-xs"
+                      inputMode="decimal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-0.5">Width (in)</label>
+                    <Input
+                      value={editWidth}
+                      onChange={(e) => setEditWidth(e.target.value)}
+                      placeholder="W"
+                      className="text-xs"
+                      inputMode="decimal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-0.5">Height (in)</label>
+                    <Input
+                      value={editHeight}
+                      onChange={(e) => setEditHeight(e.target.value)}
+                      placeholder="H"
+                      className="text-xs"
+                      inputMode="decimal"
+                    />
+                  </div>
                 </div>
               </div>
 
