@@ -763,9 +763,13 @@ export default function ListingsPage() {
       await updateListing(listing.id, fieldOverrides);
     }
 
-    // Pre-flight: warn (and skip) any platform that isn't connected, so the
-    // user doesn't see status flip to "listed" when only one actually ran.
+    // Pre-flight: skip (a) already-listed platforms to avoid duplicates, and
+    // (b) unconnected platforms so status doesn't look like they posted.
     const skipped: string[] = [];
+    const alreadyListed: string[] = [];
+    if (platforms.includes("ebay") && merged.ebayListingId) alreadyListed.push("eBay");
+    if (platforms.includes("mercari") && merged.mercariListingUrl) alreadyListed.push("Mercari");
+    if (platforms.includes("facebook") && merged.facebookListingUrl) alreadyListed.push("Facebook");
     if (platforms.includes("mercari") && !marketplaceStatus.mercari?.connected) {
       skipped.push("Mercari (not connected)");
     }
@@ -773,12 +777,18 @@ export default function ListingsPage() {
       skipped.push("Facebook (not connected)");
     }
     const actual = platforms.filter((p) => {
+      if (p === "ebay" && merged.ebayListingId) return false;
+      if (p === "mercari" && merged.mercariListingUrl) return false;
+      if (p === "facebook" && merged.facebookListingUrl) return false;
       if (p === "mercari" && !marketplaceStatus.mercari?.connected) return false;
       if (p === "facebook" && !marketplaceStatus.facebook?.connected) return false;
       return true;
     });
-    if (skipped.length) {
-      alert(`Skipping: ${skipped.join(", ")}. Connect those first.`);
+    const notes: string[] = [];
+    if (alreadyListed.length) notes.push(`Already listed: ${alreadyListed.join(", ")}`);
+    if (skipped.length) notes.push(`Not connected: ${skipped.join(", ")}`);
+    if (notes.length) {
+      alert(`${notes.join(" · ")}.${actual.length ? " Publishing to the rest." : ""}`);
     }
     if (actual.length === 0) return;
 
@@ -1884,7 +1894,7 @@ function ListingCard({
                   </Button>
                 )}
 
-                {selectedPlatforms.has("ebay") && listing.status !== "listed" && (
+                {selectedPlatforms.has("ebay") && listing.status !== "listed" && !listing.ebayListingId && (
                   <Button
                     size="sm"
                     className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
@@ -1903,7 +1913,7 @@ function ListingCard({
                   </Button>
                 )}
 
-                {selectedPlatforms.has("mercari") && listing.status !== "listed" && (
+                {selectedPlatforms.has("mercari") && listing.status !== "listed" && !listing.mercariListingUrl && (
                   <Button
                     size="sm"
                     className="text-xs bg-red-500 hover:bg-red-600 text-white"
@@ -1924,7 +1934,7 @@ function ListingCard({
                   </Button>
                 )}
 
-                {selectedPlatforms.has("facebook") && listing.status !== "listed" && (
+                {selectedPlatforms.has("facebook") && listing.status !== "listed" && !listing.facebookListingUrl && (
                   <Button
                     size="sm"
                     className="text-xs bg-blue-500 hover:bg-blue-600 text-white"
