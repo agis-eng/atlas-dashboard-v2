@@ -718,22 +718,86 @@ export default function ListingsPage() {
     }
   }
 
-  async function publishToAllSelected(listing: ListingDraft, platformsOverride?: string[]) {
-    if (!listing.title || !listing.price) {
+  async function publishToAllSelected(
+    listing: ListingDraft,
+    platformsOverride?: string[],
+    fieldOverrides?: Partial<ListingDraft>
+  ) {
+    // Merge fresh edit state on top of the stale prop capture
+    const merged = { ...listing, ...(fieldOverrides || {}) } as ListingDraft;
+
+    if (!merged.title || !merged.price) {
       alert("Title and price are required");
       return;
     }
-    const platforms = platformsOverride ?? listing.platforms ?? [];
+    const platforms = platformsOverride ?? merged.platforms ?? [];
     if (platforms.length === 0) {
       alert("Select at least one platform first");
       return;
     }
+
+    // Persist the latest edit state to Redis before firing publishers.
+    // Mercari/Facebook publishers read the listing server-side by id, so they
+    // need Redis to have the fresh values. eBay reads from the passed-in
+    // object, so it gets `merged`.
+    if (fieldOverrides && Object.keys(fieldOverrides).length > 0) {
+      await updateListing(listing.id, fieldOverrides);
+    }
+
+    // Pre-flight: warn (and skip) any platform that isn't connected, so the
+    // user doesn't see status flip to "listed" when only one actually ran.
+    const skipped: string[] = [];
+    if (platforms.includes("mercari") && !marketplaceStatus.mercari?.connected) {
+      skipped.push("Mercari (not connected)");
+    }
+    if (platforms.includes("facebook") && !marketplaceStatus.facebook?.connected) {
+      skipped.push("Facebook (not connected)");
+    }
+    const actual = platforms.filter((p) => {
+      if (p === "mercari" && !marketplaceStatus.mercari?.connected) return false;
+      if (p === "facebook" && !marketplaceStatus.facebook?.connected) return false;
+      return true;
+    });
+    if (skipped.length) {
+      alert(`Skipping: ${skipped.join(", ")}. Connect those first.`);
+    }
+    if (actual.length === 0) return;
+
     const tasks: Array<{ platform: string; promise: Promise<any> }> = [];
-    if (platforms.includes("ebay")) tasks.push({ platform: "ebay", promise: publishToEbay(listing) });
-    if (platforms.includes("mercari")) tasks.push({ platform: "mercari", promise: publishToMercari(listing) });
-    if (platforms.includes("facebook")) tasks.push({ platform: "facebook", promise: publishToFacebook(listing) });
-    // Fire in parallel — each platform reports its own errors via its existing alert.
-    await Promise.allSettled(tasks.map((t) => t.promise));
+    if (actual.includes("ebay")) tasks.push({ platform: "ebay", promise: publishToEbay(merged) });
+    if (actual.includes("mercari")) tasks.push({ platform: "mercari", promise: publishToMercari(merged) });
+    if (actual.includes("facebook")) tasks.push({ platform: "facebook", promise: publishToFacebook(merged) });
+    const results = await Promise.allSettled(tasks.map((t) => t.promise));
+
+    // Reconcile final status from server state so one platform's success
+    // doesn't mislabel the overall listing.
+    try {
+      const res = await fetch("/api/listings");
+      if (res.ok) {
+        const data = await res.json();
+        const current = (data.listings || []).find((l: any) => l.id === listing.id);
+        if (current) {
+          const posted: string[] = [];
+          const failed: string[] = [];
+          if (actual.includes("ebay")) (current.ebayListingId ? posted : failed).push("eBay");
+          if (actual.includes("mercari")) (current.mercariListingUrl ? posted : failed).push("Mercari");
+          if (actual.includes("facebook")) (current.facebookListingUrl ? posted : failed).push("Facebook");
+          if (failed.length === 0) {
+            alert(`Listed to ${posted.join(", ")}`);
+          } else {
+            alert(
+              `Listed: ${posted.join(", ") || "none"}\nFailed: ${failed.join(", ")}\nFix and retry the failed ones.`
+            );
+            // Ensure status isn't "listed" if some platforms didn't post
+            if (posted.length > 0 && current.status === "listed") {
+              await updateListing(listing.id, { status: "ready" });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("publishToAllSelected reconcile error:", e);
+    }
   }
 
   async function publishToFacebook(listing: ListingDraft) {
@@ -1205,7 +1269,7 @@ export default function ListingsPage() {
                     onPublishEbay={() => publishToEbay(listing)}
                     onPublishMercari={() => publishToMercari(listing)}
                     onPublishFacebook={() => publishToFacebook(listing)}
-                    onPublishAll={(platforms) => publishToAllSelected(listing, platforms)}
+                    onPublishAll={(platforms, overrides) => publishToAllSelected(listing, platforms, overrides)}
                     onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
                     marketplaceStatus={marketplaceStatus}
                     publishProgress={publishProgress[listing.id]}
@@ -1278,7 +1342,7 @@ function ListingCard({
   onPublishEbay: () => void;
   onPublishMercari: () => void;
   onPublishFacebook: () => void;
-  onPublishAll: (platforms?: string[]) => void;
+  onPublishAll: (platforms?: string[], overrides?: Partial<ListingDraft>) => void;
   onReanalyze: () => void;
   marketplaceStatus: MarketplaceStatus;
   publishProgress?: string;
@@ -1697,7 +1761,23 @@ function ListingCard({
                     className="text-xs bg-green-600 hover:bg-green-700 text-white"
                     onClick={() => {
                       saveEdits();
-                      onPublishAll(Array.from(selectedPlatforms));
+                      onPublishAll(Array.from(selectedPlatforms), {
+                        title: editTitle,
+                        description: editDesc,
+                        price: editPrice ? parseFloat(editPrice) : null,
+                        quantity: editQuantity ? parseInt(editQuantity) : 1,
+                        condition: editCondition,
+                        category: editCategory,
+                        brand: editBrand,
+                        size: editSize || undefined,
+                        sizeType: editSizeType || undefined,
+                        facebookLocalOnly: editFbLocalOnly,
+                        platforms: Array.from(selectedPlatforms) as any,
+                        weightOz: editWeight ? parseFloat(editWeight) : undefined,
+                        lengthIn: editLength ? parseFloat(editLength) : undefined,
+                        widthIn: editWidth ? parseFloat(editWidth) : undefined,
+                        heightIn: editHeight ? parseFloat(editHeight) : undefined,
+                      });
                     }}
                     disabled={listing.status === "listing"}
                   >
