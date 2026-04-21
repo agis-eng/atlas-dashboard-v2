@@ -456,7 +456,7 @@ export default function ListingsPage() {
 
       if (pubRes.ok) {
         await updateListing(listing.id, {
-          status: "listed",
+          status: computeListingStatus(listing, { ebay: true }),
           ebayListingId: pubData.listingId || offerId,
           ebayOfferId: offerId,
           ebaySku: sku,
@@ -699,7 +699,7 @@ export default function ListingsPage() {
       }
 
       await updateListing(listing.id, {
-        status: "listed",
+        status: computeListingStatus(listing, { mercari: true }),
         mercariListingUrl: submitData.listingUrl,
       });
     } catch (err: any) {
@@ -716,6 +716,25 @@ export default function ListingsPage() {
         return next;
       });
     }
+  }
+
+  // Compute status after a successful per-platform publish.
+  // Status flips to "listed" only when every selected platform has a URL
+  // (so listing to one market doesn't hide the card from the drafts tab
+  // before the other selected markets are done).
+  function computeListingStatus(
+    listing: ListingDraft,
+    justListed: Partial<Record<"ebay" | "mercari" | "facebook", boolean>>
+  ): "listed" | "ready" {
+    const selected = listing.platforms || [];
+    if (selected.length === 0) return "listed";
+    const allDone = selected.every((p) => {
+      if (p === "ebay") return justListed.ebay ?? !!listing.ebayListingId;
+      if (p === "mercari") return justListed.mercari ?? !!listing.mercariListingUrl;
+      if (p === "facebook") return justListed.facebook ?? !!listing.facebookListingUrl;
+      return true;
+    });
+    return allDone ? "listed" : "ready";
   }
 
   async function publishToAllSelected(
@@ -843,7 +862,7 @@ export default function ListingsPage() {
       }
 
       await updateListing(listing.id, {
-        status: "listed",
+        status: computeListingStatus(listing, { facebook: true }),
         facebookListingUrl: submitData.listingUrl,
       });
     } catch (err: any) {
