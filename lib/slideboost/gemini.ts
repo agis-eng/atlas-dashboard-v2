@@ -23,38 +23,44 @@ function firstInlineImage(response: any): string | null {
   return null;
 }
 
-// Try Pro (best quality) first, fall back to Flash on 503/UNAVAILABLE.
-// Pro = gemini-3-pro-image-preview ("Nano Banana Pro") — better quality but capacity-constrained.
-// Flash = gemini-2.5-flash-image ("Nano Banana") — stable fallback.
+// Image model fallback chain (best → most stable):
+//   1. gemini-3-pro-image-preview     ("Nano Banana Pro") — top quality, capacity-constrained
+//   2. gemini-3.1-flash-image-preview ("Nano Banana 2")   — Gemini 3.1, fast & high-quality
+//   3. gemini-2.5-flash-image         ("Nano Banana")     — stable older model
 async function generateImageWithFallback(
   ai: any,
   parts: any[],
   config?: any,
 ): Promise<{ response: any; modelUsed: string }> {
-  const PRO = "gemini-3-pro-image-preview";
-  const FLASH = "gemini-2.5-flash-image";
-  try {
-    const response = await ai.models.generateContent({
-      model: PRO,
-      contents: { parts },
-      ...(config ? { config } : {}),
-    });
-    return { response, modelUsed: PRO };
-  } catch (e: any) {
-    const msg = e?.message || String(e);
-    const isUnavailable =
-      msg.includes("503") ||
-      msg.includes("UNAVAILABLE") ||
-      msg.includes("high demand");
-    if (!isUnavailable) throw e;
-    console.warn(`[slideboost] ${PRO} unavailable, falling back to ${FLASH}`);
-    const response = await ai.models.generateContent({
-      model: FLASH,
-      contents: { parts },
-      ...(config ? { config } : {}),
-    });
-    return { response, modelUsed: FLASH };
+  const CHAIN = [
+    "gemini-3-pro-image-preview",
+    "gemini-3.1-flash-image-preview",
+    "gemini-2.5-flash-image",
+  ];
+  let lastError: any = null;
+  for (const model of CHAIN) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: { parts },
+        ...(config ? { config } : {}),
+      });
+      if (model !== CHAIN[0]) {
+        console.warn(`[slideboost] used fallback model: ${model}`);
+      }
+      return { response, modelUsed: model };
+    } catch (e: any) {
+      lastError = e;
+      const msg = e?.message || String(e);
+      const isUnavailable =
+        msg.includes("503") ||
+        msg.includes("UNAVAILABLE") ||
+        msg.includes("high demand");
+      if (!isUnavailable) throw e;
+      console.warn(`[slideboost] ${model} unavailable, trying next…`);
+    }
   }
+  throw lastError ?? new Error("All image models unavailable");
 }
 
 export async function editSlideImage(
