@@ -23,17 +23,17 @@ function firstInlineImage(response: any): string | null {
   return null;
 }
 
-// Image model fallback chain (best → most stable):
-//   1. gemini-3-pro-image-preview     ("Nano Banana Pro") — top quality, capacity-constrained
-//   2. gemini-3.1-flash-image-preview ("Nano Banana 2")   — Gemini 3.1, fast & high-quality
-//   3. gemini-2.5-flash-image         ("Nano Banana")     — stable older model
+// Image model fallback chain (preferred → fallback):
+//   1. gemini-3.1-flash-image-preview ("Nano Banana 2")   — Gemini 3.1, primary choice
+//   2. gemini-2.5-flash-image         ("Nano Banana")     — stable fallback
+// Note: gemini-3-pro-image-preview ("Nano Banana Pro") is excluded — currently 503-locked
+// and adds latency. Re-add as first if/when it becomes available.
 async function generateImageWithFallback(
   ai: any,
   parts: any[],
   config?: any,
 ): Promise<{ response: any; modelUsed: string }> {
   const CHAIN = [
-    "gemini-3-pro-image-preview",
     "gemini-3.1-flash-image-preview",
     "gemini-2.5-flash-image",
   ];
