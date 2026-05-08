@@ -31,7 +31,7 @@ export async function editSlideImage(
   refImageMime?: string,
 ) {
   const ai = client();
-  const model = "gemini-3-pro-image-preview";
+  const model = "gemini-2.5-flash-image";
 
   const parts: any[] = [
     { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
@@ -92,7 +92,7 @@ export async function editSlideImage(
 
 export async function upscaleSlideImage(slideBase64: string, slideMime: string) {
   const ai = client();
-  const model = "gemini-3-pro-image-preview";
+  const model = "gemini-2.5-flash-image";
 
   const parts = [
     { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
@@ -164,7 +164,7 @@ export async function replaceLogo(
 
 export async function removeNotebookLMLogo(base64WithPrefix: string, mimeType: string) {
   const ai = client();
-  const model = "gemini-3-pro-image-preview";
+  const model = "gemini-2.5-flash-image";
 
   const prompt = `TASK: Remove the NotebookLM badge in the lower-right corner of this slide and inpaint the area so the removal is seamless.
 
@@ -238,7 +238,7 @@ export async function analyzeAndReviseSlide(
   logoMimeType?: string,
 ) {
   const ai = client();
-  const model = "gemini-3-pro-preview";
+  const model = "gemini-2.5-pro";
 
   const systemInstruction = `
     You are a world-class presentation strategist and creative director.
