@@ -23,6 +23,40 @@ function firstInlineImage(response: any): string | null {
   return null;
 }
 
+// Try Pro (best quality) first, fall back to Flash on 503/UNAVAILABLE.
+// Pro = gemini-3-pro-image-preview ("Nano Banana Pro") — better quality but capacity-constrained.
+// Flash = gemini-2.5-flash-image ("Nano Banana") — stable fallback.
+async function generateImageWithFallback(
+  ai: any,
+  parts: any[],
+  config?: any,
+): Promise<{ response: any; modelUsed: string }> {
+  const PRO = "gemini-3-pro-image-preview";
+  const FLASH = "gemini-2.5-flash-image";
+  try {
+    const response = await ai.models.generateContent({
+      model: PRO,
+      contents: { parts },
+      ...(config ? { config } : {}),
+    });
+    return { response, modelUsed: PRO };
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isUnavailable =
+      msg.includes("503") ||
+      msg.includes("UNAVAILABLE") ||
+      msg.includes("high demand");
+    if (!isUnavailable) throw e;
+    console.warn(`[slideboost] ${PRO} unavailable, falling back to ${FLASH}`);
+    const response = await ai.models.generateContent({
+      model: FLASH,
+      contents: { parts },
+      ...(config ? { config } : {}),
+    });
+    return { response, modelUsed: FLASH };
+  }
+}
+
 export async function editSlideImage(
   slideBase64: string,
   slideMime: string,
@@ -31,7 +65,6 @@ export async function editSlideImage(
   refImageMime?: string,
 ) {
   const ai = client();
-  const model = "gemini-2.5-flash-image";
 
   const parts: any[] = [
     { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
@@ -77,12 +110,8 @@ export async function editSlideImage(
 
   parts.push({ text: promptText });
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: { parts },
-    config: {
-      imageConfig: { imageSize: "2K" },
-    },
+  const { response } = await generateImageWithFallback(ai, parts, {
+    imageConfig: { imageSize: "2K" },
   });
 
   const out = firstInlineImage(response);
@@ -92,7 +121,6 @@ export async function editSlideImage(
 
 export async function upscaleSlideImage(slideBase64: string, slideMime: string) {
   const ai = client();
-  const model = "gemini-2.5-flash-image";
 
   const parts = [
     { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
@@ -110,10 +138,8 @@ export async function upscaleSlideImage(slideBase64: string, slideMime: string) 
     },
   ];
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: { parts },
-    config: { imageConfig: { imageSize: "2K" } },
+  const { response } = await generateImageWithFallback(ai, parts, {
+    imageConfig: { imageSize: "2K" },
   });
 
   const out = firstInlineImage(response);
@@ -128,7 +154,6 @@ export async function replaceLogo(
   logoMime: string,
 ) {
   const ai = client();
-  const model = "gemini-2.5-flash-image";
 
   const parts = [
     { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
@@ -152,10 +177,7 @@ export async function replaceLogo(
     },
   ];
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: { parts },
-  });
+  const { response } = await generateImageWithFallback(ai, parts);
 
   const out = firstInlineImage(response);
   if (!out) throw new Error("Logo replacement failed.");
@@ -164,7 +186,6 @@ export async function replaceLogo(
 
 export async function removeNotebookLMLogo(base64WithPrefix: string, mimeType: string) {
   const ai = client();
-  const model = "gemini-2.5-flash-image";
 
   const prompt = `TASK: Remove the NotebookLM badge in the lower-right corner of this slide and inpaint the area so the removal is seamless.
 
@@ -190,18 +211,14 @@ ABSOLUTE PROHIBITIONS — these apply in every case:
 
 The output must be pixel-identical to the input everywhere except the lower-right region where the NotebookLM badge was removed.`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { inlineData: { data: stripPrefix(base64WithPrefix), mimeType } },
-        { text: prompt },
-      ],
-    },
-    config: {
-      imageConfig: { imageSize: "2K" },
-    },
-  });
+  const { response } = await generateImageWithFallback(
+    ai,
+    [
+      { inlineData: { data: stripPrefix(base64WithPrefix), mimeType } },
+      { text: prompt },
+    ],
+    { imageConfig: { imageSize: "2K" } },
+  );
 
   const out = firstInlineImage(response);
   if (!out) throw new Error("NotebookLM logo removal failed.");
@@ -210,20 +227,14 @@ The output must be pixel-identical to the input everywhere except the lower-righ
 
 export async function removeWatermark(base64WithPrefix: string, mimeType: string) {
   const ai = client();
-  const model = "gemini-2.5-flash-image";
 
   const prompt =
     "Analyze this slide image. Identify any watermarks, logos, or website URLs overlaid on the design. Remove them completely and fill the resulting area with a seamless background that matches the surrounding texture and colors exactly. Do not modify the main text or content of the slide.";
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { inlineData: { data: stripPrefix(base64WithPrefix), mimeType } },
-        { text: prompt },
-      ],
-    },
-  });
+  const { response } = await generateImageWithFallback(ai, [
+    { inlineData: { data: stripPrefix(base64WithPrefix), mimeType } },
+    { text: prompt },
+  ]);
 
   const out = firstInlineImage(response);
   if (!out) throw new Error("Cleanup failed.");
