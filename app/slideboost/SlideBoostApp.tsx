@@ -1030,11 +1030,10 @@ export default function SlideBoostApp() {
                         type="button"
                         onClick={handleBulkRemoveNotebookLM}
                         disabled={isRemovingNotebookLM || isCleaning || isUpscaling}
-                        className="flex items-center gap-1 px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+                        className="p-1.5 hover:bg-rose-200 bg-rose-100 text-rose-700 rounded-md transition-colors disabled:opacity-40"
                         title="Remove NotebookLM logo from selected slides"
                     >
-                        <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} />
-                        <span>{isRemovingNotebookLM ? 'Removing...' : 'No-Logo'}</span>
+                        <Eraser className={`w-4 h-4 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} />
                     </button>
                     <button
                         type="button"
