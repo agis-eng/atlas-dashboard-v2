@@ -720,21 +720,27 @@ export default function SlideBoostApp() {
 
   const handleBulkRemoveNotebookLM = async () => {
     if (slides.length === 0 || isCleaning || isUpscaling || isRemovingNotebookLM) return;
-    if (!window.confirm(`Start removing NotebookLM branding from all ${slides.length} slides?`)) return;
+
+    // If slides are checked, only process those; otherwise process all
+    const usingSelection = selectedSlideIds.size > 0;
+    const targetSlides = usingSelection
+      ? slides.map((s, i) => ({ slide: s, globalIdx: i })).filter(({ slide }) => selectedSlideIds.has(slide.id))
+      : slides.map((s, i) => ({ slide: s, globalIdx: i }));
+
+    const label = usingSelection ? `${targetSlides.length} selected slide${targetSlides.length !== 1 ? 's' : ''}` : `all ${slides.length} slides`;
+    if (!window.confirm(`Remove NotebookLM branding from ${label}?`)) return;
 
     await ensureApiKey();
 
     cancelRef.current = false;
     setIsRemovingNotebookLM(true);
-    setBulkProgress({ current: 0, total: slides.length });
+    setBulkProgress({ current: 0, total: targetSlides.length });
 
     try {
-      let localSlides = [...slides];
-
-      for (let i = 0; i < localSlides.length; i++) {
+      for (let t = 0; t < targetSlides.length; t++) {
         if (cancelRef.current) break;
-        setBulkProgress({ current: i + 1, total: localSlides.length });
-        const slide = localSlides[i];
+        setBulkProgress({ current: t + 1, total: targetSlides.length });
+        const { slide, globalIdx } = targetSlides[t];
 
         try {
           const compressedBase64 = await compressImageForExport(slide.base64Data!, 1280, 720);
@@ -749,7 +755,7 @@ export default function SlideBoostApp() {
               break;
             } catch (err) {
               lastErr = err;
-              console.warn(`Slide ${i+1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
+              console.warn(`Slide ${globalIdx + 1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
               if (attempt < MAX_ATTEMPTS) {
                 await new Promise(r => setTimeout(r, 1500 * attempt));
               }
@@ -759,26 +765,18 @@ export default function SlideBoostApp() {
 
           setSlides(prev => {
             const next = [...prev];
-             // Safety check
-            if (!next[i] || next[i].id !== slide.id) return next;
-
-            const target = next[i];
+            if (!next[globalIdx] || next[globalIdx].id !== slide.id) return next;
+            const target = next[globalIdx];
             const history = [...(target.history || [])];
             if (target.base64Data) {
               history.push(target.base64Data);
               if (history.length > MAX_HISTORY) history.shift();
             }
-
-            next[i] = {
-              ...target,
-              base64Data: modified,
-              imageUrl: modified,
-              history: history
-            };
+            next[globalIdx] = { ...target, base64Data: modified, imageUrl: modified, history };
             return next;
           });
         } catch (err) {
-          console.error(`Slide ${i+1} NotebookLM removal failed:`, err);
+          console.error(`Slide ${globalIdx + 1} NotebookLM removal failed:`, err);
         }
         await new Promise(r => setTimeout(r, 200));
       }
@@ -1060,7 +1058,7 @@ export default function SlideBoostApp() {
                             className={`flex items-center gap-1 text-[9px] font-black uppercase tracking-widest transition-colors ${isRemovingNotebookLM ? 'text-gray-400 cursor-wait' : 'text-rose-600 hover:text-rose-700'}`}
                             title="Remove NotebookLM Branding"
                             >
-                            <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} /> {isRemovingNotebookLM ? 'Removing...' : 'No-Logo'}
+                            <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} /> {isRemovingNotebookLM ? 'Removing...' : selectedSlideIds.size > 0 ? `No-Logo (${selectedSlideIds.size})` : 'No-Logo'}
                             </button>
                             <button 
                             onClick={handleBulkUpscale}
