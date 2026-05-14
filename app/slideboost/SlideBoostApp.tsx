@@ -1026,10 +1026,20 @@ export default function SlideBoostApp() {
                     <button onClick={handleBulkDownload} className="p-1.5 hover:bg-amber-200 text-amber-700 rounded-md transition-colors" title="Download Selected">
                         <Download className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                         type="button"
-                        onClick={handleBulkDelete} 
-                        className="flex items-center gap-1 px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors text-[10px] font-black uppercase tracking-widest" 
+                        onClick={handleBulkRemoveNotebookLM}
+                        disabled={isRemovingNotebookLM || isCleaning || isUpscaling}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+                        title="Remove NotebookLM logo from selected slides"
+                    >
+                        <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} />
+                        <span>{isRemovingNotebookLM ? 'Removing...' : 'No-Logo'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleBulkDelete}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors text-[10px] font-black uppercase tracking-widest"
                         title="Delete Selected"
                     >
                         <Trash2 className="w-3 h-3" />
