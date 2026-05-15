@@ -1020,7 +1020,7 @@ export default function SlideBoostApp() {
           </section>
 
           <section className="space-y-3">
-            {selectedSlideIds.size > 0 ? (
+            {selectedSlideIds.size > 0 && (
                 <div className="flex items-center gap-2 bg-amber-50 p-2 rounded-lg -mx-2 mb-2 border border-amber-100 animate-in fade-in slide-in-from-top-1">
                     <span className="text-xs font-bold text-amber-800 flex-1 pl-1">{selectedSlideIds.size} Selected</span>
                     <button onClick={handleBulkDownload} className="p-1.5 hover:bg-amber-200 text-amber-700 rounded-md transition-colors" title="Download Selected">
