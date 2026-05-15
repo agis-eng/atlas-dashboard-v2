@@ -24,17 +24,16 @@ function firstInlineImage(response: any): string | null {
 }
 
 // Image model fallback chain (preferred → fallback):
-//   1. gemini-2.5-flash-image  — confirmed available, stable primary
-//   2. gemini-2.0-flash        — fallback if 2.5 unavailable
-// Note: gemini-3.1-flash-image-preview removed — not in available models list as of May 2026
+//   1. gemini-3.1-flash-image-preview — primary (Nano Banana 2)
+//   2. gemini-2.5-flash-image         — fallback
 async function generateImageWithFallback(
   ai: any,
   parts: any[],
   config?: any,
 ): Promise<{ response: any; modelUsed: string }> {
   const CHAIN = [
+    "gemini-3.1-flash-image-preview",
     "gemini-2.5-flash-image",
-    "gemini-2.0-flash",
   ];
   let lastError: any = null;
   for (const model of CHAIN) {
