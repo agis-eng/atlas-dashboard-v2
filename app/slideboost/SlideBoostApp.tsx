@@ -1152,6 +1152,21 @@ export default function SlideBoostApp() {
                 </div>
               ))}
             </div>
+
+            {/* Prominent No-Logo button — shows when slides are checked */}
+            {selectedSlideIds.size > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkRemoveNotebookLM}
+                disabled={isRemovingNotebookLM || isCleaning || isUpscaling}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:cursor-wait mt-2"
+              >
+                <Eraser className={`w-4 h-4 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} />
+                {isRemovingNotebookLM
+                  ? `Removing logos...`
+                  : `Remove Logo — ${selectedSlideIds.size} Slide${selectedSlideIds.size !== 1 ? 's' : ''}`}
+              </button>
+            )}
           </section>
         </div>
       </aside>
