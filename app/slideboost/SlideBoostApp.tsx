@@ -1082,7 +1082,7 @@ export default function SlideBoostApp() {
                             className={`flex items-center gap-1 text-[9px] font-black uppercase tracking-widest transition-colors ${isRemovingNotebookLM ? 'text-gray-400 cursor-wait' : 'text-rose-600 hover:text-rose-700'}`}
                             title="Remove NotebookLM Branding"
                             >
-                            <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} /> {isRemovingNotebookLM ? 'Removing...' : selectedSlideIds.size > 0 ? `No-Logo (${selectedSlideIds.size})` : 'No-Logo'}
+                            <Eraser className={`w-3 h-3 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} /> {isRemovingNotebookLM ? 'Removing...' : selectedSlideIds.size > 0 ? `Clean (${selectedSlideIds.size})` : 'Clean Logo'}
                             </button>
                             <button 
                             onClick={handleBulkUpscale}
