@@ -1048,7 +1048,22 @@ export default function SlideBoostApp() {
                         <X className="w-4 h-4" />
                     </button>
                 </div>
-            ) : (
+            )}
+
+            {/* Full-width Remove Logo button — right below selection bar, always visible */}
+            {selectedSlideIds.size > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkRemoveNotebookLM}
+                disabled={isRemovingNotebookLM || isCleaning || isUpscaling}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:cursor-wait"
+              >
+                <Eraser className={`w-3.5 h-3.5 ${isRemovingNotebookLM ? 'animate-pulse' : ''}`} />
+                {isRemovingNotebookLM ? 'Removing Logos...' : `Remove Logo — ${selectedSlideIds.size} Slide${selectedSlideIds.size !== 1 ? 's' : ''}`}
+              </button>
+            )}
+
+            {selectedSlideIds.size > 0 ? null : (
                 <div className="flex items-center justify-between px-1">
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Current Deck</h4>
                     {slides.length > 0 && (
