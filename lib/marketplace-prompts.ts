@@ -54,3 +54,45 @@ Find the photo upload button or area and add these images.`,
 
   getListingUrl: `The listing should now be posted. Find and return the URL of the newly created Facebook Marketplace listing.`,
 };
+
+// ----- Batch listing: shippability decision -----
+
+export interface ShippabilityInput {
+  estimated_value_usd: number;
+  weight_lbs: number;
+  longest_side_in: number;
+  category: string;
+}
+
+export interface ShippabilityOutput {
+  estimated_shipping_cost_usd: number;
+  estimated_ebay_fees_usd: number;
+  estimated_mercari_fees_usd: number;
+  estimated_profit_if_shipped_usd: number;
+  recommendation: "ship_online" | "local_only";
+  reason: string;
+}
+
+export function buildShippabilityPrompt(input: ShippabilityInput): string {
+  return `You are deciding whether a resale item is worth shipping (eBay + Mercari) or should be local pickup only (Facebook Marketplace).
+
+Item:
+  estimated_value_usd: ${input.estimated_value_usd}
+  weight_lbs: ${input.weight_lbs}
+  longest_side_in: ${input.longest_side_in}
+  category: ${input.category}
+
+Estimate USPS Ground Advantage / Mercari prepaid label shipping cost for this weight and size in the continental US. eBay final value fee is ~13% + $0.30. Mercari fee is ~10% + payment processing.
+
+If estimated_profit_if_shipped_usd is below $3, recommend "local_only". Otherwise recommend "ship_online".
+
+Respond with strict JSON only, no commentary:
+{
+  "estimated_shipping_cost_usd": number,
+  "estimated_ebay_fees_usd": number,
+  "estimated_mercari_fees_usd": number,
+  "estimated_profit_if_shipped_usd": number,
+  "recommendation": "ship_online" | "local_only",
+  "reason": "<one short sentence>"
+}`;
+}
