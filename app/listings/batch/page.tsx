@@ -49,6 +49,7 @@ export default function BatchListingPage() {
   const [stage, setStage] = useState<Stage>("idle");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
@@ -104,6 +105,68 @@ export default function BatchListingPage() {
 
   function updateDraft(idx: number, patch: Partial<Draft>) {
     setDrafts(prev => prev.map((d, i) => i === idx ? { ...d, ...patch } : d));
+  }
+
+  function movePhoto(fromIdx: number, photoIdx: number, toProductId: string) {
+    setDrafts(prev => {
+      const next = prev.map(d => ({ ...d, blobUrls: [...d.blobUrls], photoIds: [...d.photoIds] }));
+      const from = next[fromIdx];
+      const movedUrl = from.blobUrls.splice(photoIdx, 1)[0];
+      const movedId = from.photoIds.splice(photoIdx, 1)[0];
+
+      if (toProductId === "__new__") {
+        next.push({
+          ...from,
+          productId: crypto.randomUUID(),
+          blobUrls: [movedUrl],
+          photoIds: [movedId],
+          title: "",
+          price: 0,
+          status: "needs_review",
+          rowStatus: "ready",
+          selected: false,
+        });
+      } else {
+        const toIdx = next.findIndex(d => d.productId === toProductId);
+        if (toIdx >= 0) {
+          next[toIdx].blobUrls.push(movedUrl);
+          next[toIdx].photoIds.push(movedId);
+        }
+      }
+
+      return next.filter(d => d.blobUrls.length > 0);
+    });
+  }
+
+  async function reanalyzeSelected() {
+    const selected = drafts.filter(d => d.selected);
+    if (selected.length === 0) return;
+    setStage("analyzing");
+    try {
+      const res = await fetch("/api/listings/batch/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groups: selected.map(d => ({
+            productId: d.productId,
+            photoIds: d.photoIds,
+            blobUrls: d.blobUrls,
+            lowConfidence: false,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error("Re-analyze failed");
+      const { drafts: refreshed } = await res.json() as { drafts: Draft[] };
+      setDrafts(prev => prev.map(d => {
+        const updated = refreshed.find(r => r.productId === d.productId);
+        return updated ? { ...d, ...updated, selected: d.selected, rowStatus: "ready" } : d;
+      }));
+      toast.success(`Re-analyzed ${refreshed.length} products`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setStage("ready");
+    }
   }
 
   async function publishSelected() {
@@ -166,13 +229,17 @@ export default function BatchListingPage() {
                       />
                     </td>
                     <td className="p-2">
-                      <div className="flex gap-1 flex-wrap max-w-[160px]">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRow(expandedRow === d.productId ? null : d.productId)}
+                        className="flex gap-1 flex-wrap max-w-[160px] cursor-pointer hover:opacity-80"
+                      >
                         {d.blobUrls.slice(0, 3).map((url, j) => (
                           <img key={j} src={url} alt="" className="w-12 h-12 object-cover rounded border" />
                         ))}
                         {d.blobUrls.length > 3 && <span className="text-xs text-gray-500 self-end">+{d.blobUrls.length - 3}</span>}
                         {d.status === "needs_review" && <span title={d.routingReason} className="text-yellow-600">⚠️</span>}
-                      </div>
+                      </button>
                     </td>
                     <td className="p-2">
                       <input
@@ -256,7 +323,46 @@ export default function BatchListingPage() {
             </table>
           </div>
 
-          <div className="mt-4 flex justify-end">
+          {expandedRow && (() => {
+            const rowIdx = drafts.findIndex(d => d.productId === expandedRow);
+            if (rowIdx < 0) return null;
+            const row = drafts[rowIdx];
+            return (
+              <div className="mt-4 p-4 border rounded bg-gray-50">
+                <div className="flex justify-between items-center mb-2">
+                  <div className="font-semibold">Reassign photos: {row.title || "Untitled"}</div>
+                  <button onClick={() => setExpandedRow(null)} className="text-sm text-gray-500">Close</button>
+                </div>
+                <div className="grid grid-cols-6 gap-2">
+                  {row.blobUrls.map((url, j) => (
+                    <div key={j} className="relative">
+                      <img src={url} className="w-full aspect-square object-cover rounded border" />
+                      <select
+                        value={row.productId}
+                        onChange={(e) => movePhoto(rowIdx, j, e.target.value)}
+                        className="absolute bottom-1 left-1 right-1 text-xs px-1 py-0.5 bg-white/90 border rounded"
+                      >
+                        <option value={row.productId}>This product</option>
+                        {drafts.filter(d => d.productId !== row.productId).map(d => (
+                          <option key={d.productId} value={d.productId}>{d.title || "Untitled"}</option>
+                        ))}
+                        <option value="__new__">→ New product</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              className="px-3 py-2 border rounded text-sm"
+              disabled={drafts.filter(d => d.selected).length === 0 || (stage as Stage) === "publishing"}
+              onClick={reanalyzeSelected}
+            >
+              Re-analyze selected
+            </button>
             <button
               className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
               disabled={drafts.filter(d => d.selected).length === 0 || (stage as Stage) === "publishing"}
