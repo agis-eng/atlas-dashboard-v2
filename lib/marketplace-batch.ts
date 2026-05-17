@@ -1,6 +1,8 @@
 // Pure functions for batch listing. No I/O. Factored so they can be tested
 // in isolation later (e.g. `node --test`) without spinning up the framework.
 
+import { randomUUID } from "crypto";
+
 export interface PhotoRecord {
   photoId: string;
   blobUrl: string;
@@ -13,10 +15,6 @@ export interface PhotoGroup {
   blobUrls: string[];
   lowConfidence: boolean;
   confidenceReason?: string;
-}
-
-function uuid(): string {
-  return (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
 }
 
 /**
@@ -34,27 +32,28 @@ export function groupByExifGap(
 
   const groups: PhotoGroup[] = [];
   const gapMs = gapSeconds * 1000;
+  let lastTime: number | null = null;
 
   for (const photo of withTime) {
     const last = groups[groups.length - 1];
-    const lastPhotoTime = last ? photos.find(p => p.photoId === last.photoIds[last.photoIds.length - 1])!.exifTimestampMs! : null;
 
-    if (last && lastPhotoTime !== null && (photo.exifTimestampMs! - lastPhotoTime) <= gapMs) {
+    if (last && lastTime !== null && (photo.exifTimestampMs! - lastTime) <= gapMs) {
       last.photoIds.push(photo.photoId);
       last.blobUrls.push(photo.blobUrl);
     } else {
       groups.push({
-        productId: uuid(),
+        productId: randomUUID(),
         photoIds: [photo.photoId],
         blobUrls: [photo.blobUrl],
         lowConfidence: false,
       });
     }
+    lastTime = photo.exifTimestampMs;
   }
 
   if (withoutTime.length > 0) {
     groups.push({
-      productId: uuid(),
+      productId: randomUUID(),
       photoIds: withoutTime.map(p => p.photoId),
       blobUrls: withoutTime.map(p => p.blobUrl),
       lowConfidence: true,
