@@ -182,7 +182,7 @@ Single full-width table. Each row = one product. All cells inline-editable.
 
 **Header actions:**
 - `[Scan Atlas/Products]` — initial load (calls scan + analyze sequentially)
-- `[Re-analyze selected]` — re-run AI on edited rows (cheap; respects current photo grouping)
+- `[Re-analyze selected]` — re-runs both the analyze and shippability prompts on selected rows using their current photo grouping (does not re-scan the folder or re-group photos). Use when you've manually edited a row's photo set and want fresh AI output.
 - `[Publish All Selected (N)]` — fires batch publish; disabled if any selected row is `needs_review`
 
 **Mobile:** Below 768px, the table stacks vertically as cards (one product per card). The table is the primary listing-from-phone surface, so mobile must work.
