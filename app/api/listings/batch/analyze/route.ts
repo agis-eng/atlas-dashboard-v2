@@ -27,6 +27,7 @@ interface Draft {
   weight_lbs: number;
   dims_in: { length: number; width: number; height: number };
   category: string;
+  brand?: string;
   quantity: number;
   routing: ShippabilityRecommendation;
   routingReason: string;
@@ -88,35 +89,41 @@ export async function POST(request: NextRequest) {
       try {
         const analyzed = await callAnalyze(group.blobUrls, baseUrl, cookieHeader);
 
-        const value = Number(analyzed.price) || 0;
-        const weight = Number(analyzed.weight_lbs) || 1;
-        const dims = analyzed.dims_in || { length: 8, width: 8, height: 4 };
+        const ai = analyzed?.analysis || {};
+        const value = Number(ai.suggestedPrice) || 0;
+        const weight = (Number(ai.suggestedWeightOz) || 16) / 16;
+        const dims = {
+          length: Number(ai.suggestedLengthIn) || 8,
+          width: Number(ai.suggestedWidthIn) || 8,
+          height: Number(ai.suggestedHeightIn) || 4,
+        };
         const longestSide = Math.max(dims.length, dims.width, dims.height);
 
         const shippability = await callShippability({
           estimated_value_usd: value,
           weight_lbs: weight,
           longest_side_in: longestSide,
-          category: analyzed.category || "general",
+          category: ai.suggestedCategory || "general",
         });
 
         const recommendation: ShippabilityRecommendation = shippability?.recommendation || "local_only";
         const routing = applyRouting(recommendation);
 
-        const hasTitleAndPrice = !!analyzed.title && Number(analyzed.price) > 0;
+        const hasTitleAndPrice = !!ai.suggestedTitle && Number(ai.suggestedPrice) > 0;
         const status: Draft["status"] = (group.lowConfidence || !hasTitleAndPrice) ? "needs_review" : "ready";
 
         drafts.push({
           productId: group.productId,
           photoIds: group.photoIds,
           blobUrls: group.blobUrls,
-          title: analyzed.title || "",
-          description: analyzed.description || "",
-          condition: analyzed.condition || "USED_GOOD",
+          title: ai.suggestedTitle || "",
+          description: ai.suggestedDescription || "",
+          condition: ai.suggestedCondition || "USED_GOOD",
           price: value,
           weight_lbs: weight,
           dims_in: dims,
-          category: analyzed.category || "",
+          category: ai.suggestedCategory || "",
+          brand: ai.suggestedBrand || undefined,
           quantity: 1,
           routing: recommendation,
           routingReason: shippability?.reason || "Shippability check failed; defaulted to local",

@@ -33,6 +33,51 @@ interface PublishEvent {
   error?: string;
 }
 
+async function ensureListingRecord(
+  draft: RowDraft,
+  baseUrl: string,
+  cookieHeader: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const platforms: ("ebay" | "mercari" | "facebook")[] = [];
+  if (draft.platforms.ebay) platforms.push("ebay");
+  if (draft.platforms.mercari) platforms.push("mercari");
+  if (draft.platforms.facebook) platforms.push("facebook");
+
+  const body = {
+    id: draft.productId,
+    photos: draft.blobUrls,
+    title: draft.title,
+    description: draft.description,
+    price: draft.price,
+    quantity: draft.quantity,
+    condition: draft.condition,
+    category: draft.category,
+    brand: draft.brand,
+    size: draft.size,
+    sizeType: draft.sizeType,
+    platforms,
+    status: "ready",
+    weightOz: Math.round((draft.weight_lbs || 1) * 16),
+    lengthIn: draft.dims_in?.length,
+    widthIn: draft.dims_in?.width,
+    heightIn: draft.dims_in?.height,
+    facebookLocalOnly: draft.facebookLocalOnly,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const res = await fetch(`${baseUrl}/api/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to persist listing record: HTTP ${res.status}`);
+  }
+}
+
 async function publishOne(
   platform: Platform,
   draft: RowDraft,
@@ -61,23 +106,37 @@ async function publishOne(
       },
     };
   } else {
-    url = `${baseUrl}/api/listings/publish/${platform}`;
-    body = {
-      listingId: draft.productId,
-      step: "start",
-      listing: {
-        title: draft.title,
-        description: appendQty(draft.description, draft.quantity),
-        price: draft.price,
-        condition: draft.condition,
-        brand: draft.brand,
-        photos: draft.blobUrls,
-        weight_lbs: draft.weight_lbs,
-        dims_in: draft.dims_in,
-        category: draft.category,
-        ...(platform === "facebook" ? { facebookLocalOnly: draft.facebookLocalOnly } : {}),
-      },
-    };
+    // Mercari/Facebook: drive start → fill → submit
+    const url = `${baseUrl}/api/listings/publish/${platform}`;
+    // Suppress unused-var warning for appendQty in this branch
+    void appendQty;
+    async function postStep(step: string, sessionId?: string): Promise<any> {
+      const body: any = { listingId: draft.productId, step };
+      if (sessionId) body.sessionId = sessionId;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      }
+      return data;
+    }
+
+    try {
+      const startData = await postStep("start");
+      const sessionId = startData.sessionId || "";
+      await postStep("fill", sessionId);
+      const submitData = await postStep("submit", sessionId);
+      if (submitData.success === false) {
+        return { ok: false, error: submitData.details || submitData.error || "Publish did not complete" };
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   }
 
   try {
@@ -102,6 +161,25 @@ async function publishRow(
   cookieHeader: string,
   emit: (evt: PublishEvent) => void
 ): Promise<void> {
+  const needsRedisRecord = draft.platforms.mercari || draft.platforms.facebook;
+  if (needsRedisRecord) {
+    try {
+      await ensureListingRecord(draft, baseUrl, cookieHeader);
+    } catch (err) {
+      // Emit failed events for Mercari and Facebook so the UI shows the error
+      for (const p of ["mercari", "facebook"] as const) {
+        if (draft.platforms[p]) {
+          emit({ productId: draft.productId, platform: p, status: "started" });
+          emit({ productId: draft.productId, platform: p, status: "failed", error: (err as Error).message });
+        }
+      }
+      // Strip them so we don't double-emit in the Promise.allSettled below
+      draft.platforms.mercari = false;
+      draft.platforms.facebook = false;
+      // If ebay is also off, nothing to do
+    }
+  }
+
   const platforms: Platform[] = [];
   if (draft.platforms.ebay) platforms.push("ebay");
   if (draft.platforms.mercari) platforms.push("mercari");
