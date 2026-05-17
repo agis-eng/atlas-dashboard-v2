@@ -31,6 +31,7 @@ import {
   Palette,
   Sprout,
   Workflow,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ const navItems = [
   { icon: Film, label: "Recordings", href: "/recordings" },
   { icon: BookOpen, label: "Memory", href: "/memory" },
   { icon: Tag, label: "Listings", href: "/listings" },
+  { icon: Layers, label: "Batch Listings", href: "/listings/batch" },
   { icon: Package, label: "Inventory", href: "/inventory" },
   { icon: ShoppingBag, label: "eBay", href: "/ebay" },
   { icon: Headphones, label: "Voice Lab", href: "/voice-lab" },
