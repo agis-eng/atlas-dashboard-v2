@@ -396,6 +396,81 @@ export default function BatchListingPage() {
             </table>
           </div>
 
+          <div className="md:hidden space-y-3">
+            {drafts.map((d, i) => (
+              <div key={d.productId} className="border rounded p-3 bg-white">
+                <div className="flex items-start gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={!!d.selected}
+                    disabled={d.status === "needs_review"}
+                    onChange={(e) => updateDraft(i, { selected: e.target.checked })}
+                  />
+                  <button onClick={() => setExpandedRow(expandedRow === d.productId ? null : d.productId)} className="flex gap-1">
+                    {d.blobUrls.slice(0, 3).map((url, j) => (
+                      <img key={j} src={url} alt="" className="w-14 h-14 object-cover rounded border" />
+                    ))}
+                    {d.blobUrls.length > 3 && <span className="text-xs text-gray-500 self-end">+{d.blobUrls.length - 3}</span>}
+                  </button>
+                  <span className={`ml-auto text-xs ${
+                    d.rowStatus === "listed" ? "text-green-600" :
+                    d.rowStatus === "partial" ? "text-yellow-600" :
+                    d.rowStatus === "failed" ? "text-red-600" :
+                    d.rowStatus === "publishing" ? "text-blue-600" :
+                    d.status === "needs_review" ? "text-yellow-600" : "text-gray-700"
+                  }`}>
+                    {d.rowStatus === "listed" ? "Listed" :
+                     d.rowStatus === "partial" ? "Partial" :
+                     d.rowStatus === "failed" ? "Failed" :
+                     d.rowStatus === "publishing" ? "Publishing…" :
+                     d.status === "needs_review" ? "Needs review" : "Ready"}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={d.title}
+                  placeholder="Title"
+                  onChange={(e) => updateDraft(i, { title: e.target.value })}
+                  className="w-full px-2 py-1 border rounded text-sm mb-2"
+                />
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <label className="text-xs">
+                    Price
+                    <input type="number" min="0" step="0.01" value={d.price} onChange={(e) => updateDraft(i, { price: Number(e.target.value) })} className="w-full px-2 py-1 border rounded text-sm" />
+                  </label>
+                  <label className="text-xs">
+                    Qty
+                    <input type="number" min="1" value={d.quantity} onChange={(e) => updateDraft(i, { quantity: Math.max(1, Number(e.target.value)) })} className="w-full px-2 py-1 border rounded text-sm" />
+                  </label>
+                  <label className="text-xs">
+                    Lbs
+                    <input type="number" min="0" step="0.1" value={d.weight_lbs} onChange={(e) => updateDraft(i, { weight_lbs: Number(e.target.value) })} className="w-full px-2 py-1 border rounded text-sm" />
+                  </label>
+                </div>
+                <select
+                  value={d.routing}
+                  onChange={(e) => {
+                    const recommendation = e.target.value as "ship_online" | "local_only";
+                    if (recommendation === "ship_online") {
+                      updateDraft(i, { routing: recommendation, platforms: { ebay: true, mercari: true, facebook: true }, facebookLocalOnly: false });
+                    } else {
+                      updateDraft(i, { routing: recommendation, platforms: { ebay: false, mercari: false, facebook: true }, facebookLocalOnly: true });
+                    }
+                  }}
+                  className="w-full px-2 py-1 border rounded text-sm"
+                >
+                  <option value="ship_online">Online (eBay+Mercari+FB)</option>
+                  <option value="local_only">FB local only</option>
+                </select>
+                {d.publishErrors && Object.keys(d.publishErrors).length > 0 && (
+                  <div className="text-xs text-red-600 mt-2">
+                    {Object.entries(d.publishErrors).map(([p, e]) => <div key={p}>{p}: {e}</div>)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
           {expandedRow && (() => {
             const rowIdx = drafts.findIndex(d => d.productId === expandedRow);
             if (rowIdx < 0) return null;
