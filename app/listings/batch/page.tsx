@@ -107,6 +107,21 @@ export default function BatchListingPage() {
     setDrafts(prev => prev.map((d, i) => i === idx ? { ...d, ...patch } : d));
   }
 
+  function applyEvent(evt: { productId: string; platform: string; status: string; error?: string }) {
+    setDrafts(prev => prev.map(d => {
+      if (d.productId !== evt.productId) return d;
+      const next = { ...d };
+      if (!next.publishErrors) next.publishErrors = {};
+      if (evt.status === "failed" && evt.error) {
+        next.publishErrors = { ...next.publishErrors, [evt.platform]: evt.error };
+      } else if (evt.status === "success") {
+        const { [evt.platform]: _drop, ...rest } = next.publishErrors;
+        next.publishErrors = rest;
+      }
+      return next;
+    }));
+  }
+
   function movePhoto(fromIdx: number, photoIdx: number, toProductId: string) {
     setDrafts(prev => {
       const next = prev.map(d => ({ ...d, blobUrls: [...d.blobUrls], photoIds: [...d.photoIds] }));
@@ -170,8 +185,66 @@ export default function BatchListingPage() {
   }
 
   async function publishSelected() {
-    // Wired up in Task 11
-    toast.info("Publish wiring lands in Task 11");
+    const selected = drafts.filter(d => d.selected && d.status === "ready");
+    if (selected.length === 0) {
+      toast.warning("No ready rows selected");
+      return;
+    }
+
+    setStage("publishing");
+    setDrafts(prev => prev.map(d => d.selected && d.status === "ready" ? { ...d, rowStatus: "publishing", publishErrors: {} } : d));
+
+    try {
+      const res = await fetch("/api/listings/batch/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ drafts: selected }),
+      });
+      if (!res.body) throw new Error("No response stream");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const evt of events) {
+          const line = evt.trim().replace(/^data:\s*/, "");
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.done) continue;
+            if (data.productId && data.platform) {
+              applyEvent(data);
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+
+      setDrafts(prev => prev.map(d => {
+        if (d.rowStatus !== "publishing") return d;
+        const platforms = (["ebay", "mercari", "facebook"] as const).filter(p => d.platforms[p]);
+        const errs = d.publishErrors || {};
+        const failed = platforms.filter(p => errs[p]);
+        if (failed.length === 0) return { ...d, rowStatus: "listed" };
+        if (failed.length === platforms.length) return { ...d, rowStatus: "failed" };
+        return { ...d, rowStatus: "partial" };
+      }));
+
+      toast.success("Batch publish complete");
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setStage("ready");
+    }
   }
 
   return (
