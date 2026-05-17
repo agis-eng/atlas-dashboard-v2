@@ -102,6 +102,15 @@ export default function BatchListingPage() {
     }
   }
 
+  function updateDraft(idx: number, patch: Partial<Draft>) {
+    setDrafts(prev => prev.map((d, i) => i === idx ? { ...d, ...patch } : d));
+  }
+
+  async function publishSelected() {
+    // Wired up in Task 11
+    toast.info("Publish wiring lands in Task 11");
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Batch Listings</h1>
@@ -125,10 +134,137 @@ export default function BatchListingPage() {
 
       {stage === "ready" && drafts.length > 0 && (
         <div className="mt-6">
-          <p className="text-sm text-gray-600 mb-2">{drafts.length} draft listings — review table coming in next task.</p>
-          <pre className="text-xs bg-gray-50 p-2 rounded overflow-auto max-h-96">
-            {JSON.stringify(drafts.map(d => ({ title: d.title, price: d.price, routing: d.routing })), null, 2)}
-          </pre>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="p-2 text-left w-8">
+                    <input
+                      type="checkbox"
+                      checked={drafts.every(d => d.selected)}
+                      onChange={(e) => setDrafts(drafts.map(d => ({ ...d, selected: e.target.checked && d.status === "ready" })))}
+                    />
+                  </th>
+                  <th className="p-2 text-left">Photos</th>
+                  <th className="p-2 text-left">Title</th>
+                  <th className="p-2 text-left w-20">Price</th>
+                  <th className="p-2 text-left w-16">Qty</th>
+                  <th className="p-2 text-left w-16">Lbs</th>
+                  <th className="p-2 text-left w-40">Routing</th>
+                  <th className="p-2 text-left w-32">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drafts.map((d, i) => (
+                  <tr key={d.productId} className="border-b align-top">
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={!!d.selected}
+                        disabled={d.status === "needs_review"}
+                        onChange={(e) => updateDraft(i, { selected: e.target.checked })}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <div className="flex gap-1 flex-wrap max-w-[160px]">
+                        {d.blobUrls.slice(0, 3).map((url, j) => (
+                          <img key={j} src={url} alt="" className="w-12 h-12 object-cover rounded border" />
+                        ))}
+                        {d.blobUrls.length > 3 && <span className="text-xs text-gray-500 self-end">+{d.blobUrls.length - 3}</span>}
+                        {d.status === "needs_review" && <span title={d.routingReason} className="text-yellow-600">⚠️</span>}
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        value={d.title}
+                        onChange={(e) => updateDraft(i, { title: e.target.value })}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={d.price}
+                        onChange={(e) => updateDraft(i, { price: Number(e.target.value) })}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={d.quantity}
+                        onChange={(e) => updateDraft(i, { quantity: Math.max(1, Number(e.target.value)) })}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={d.weight_lbs}
+                        onChange={(e) => updateDraft(i, { weight_lbs: Number(e.target.value) })}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <select
+                        value={d.routing}
+                        onChange={(e) => {
+                          const recommendation = e.target.value as "ship_online" | "local_only";
+                          if (recommendation === "ship_online") {
+                            updateDraft(i, { routing: recommendation, platforms: { ebay: true, mercari: true, facebook: true }, facebookLocalOnly: false });
+                          } else {
+                            updateDraft(i, { routing: recommendation, platforms: { ebay: false, mercari: false, facebook: true }, facebookLocalOnly: true });
+                          }
+                        }}
+                        className="px-2 py-1 border rounded text-sm w-full"
+                        title={`${d.routingReason} (est profit: $${d.estimatedProfit})`}
+                      >
+                        <option value="ship_online">Online (eBay+Mercari+FB)</option>
+                        <option value="local_only">FB local only</option>
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <span className={
+                        d.rowStatus === "listed" ? "text-green-600" :
+                        d.rowStatus === "partial" ? "text-yellow-600" :
+                        d.rowStatus === "failed" ? "text-red-600" :
+                        d.rowStatus === "publishing" ? "text-blue-600" :
+                        d.status === "needs_review" ? "text-yellow-600" : "text-gray-700"
+                      }>
+                        {d.rowStatus === "listed" ? "Listed" :
+                         d.rowStatus === "partial" ? "Partial" :
+                         d.rowStatus === "failed" ? "Failed" :
+                         d.rowStatus === "publishing" ? "Publishing…" :
+                         d.status === "needs_review" ? "Needs review" : "Ready"}
+                      </span>
+                      {d.publishErrors && Object.keys(d.publishErrors).length > 0 && (
+                        <div className="text-xs text-red-600 mt-1">
+                          {Object.entries(d.publishErrors).map(([p, e]) => <div key={p}>{p}: {e}</div>)}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <button
+              className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
+              disabled={drafts.filter(d => d.selected).length === 0 || (stage as Stage) === "publishing"}
+              onClick={publishSelected}
+            >
+              Publish All Selected ({drafts.filter(d => d.selected).length})
+            </button>
+          </div>
         </div>
       )}
     </div>
