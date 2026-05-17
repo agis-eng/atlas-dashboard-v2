@@ -3,7 +3,6 @@ import { NextRequest } from "next/server";
 import { put } from "@vercel/blob";
 import crypto from "crypto";
 import sharp from "sharp";
-import heicConvert from "heic-convert";
 import exifr from "exifr";
 
 export const maxDuration = 300;
@@ -21,13 +20,8 @@ interface UploadedPhoto {
 }
 
 async function heicToJpeg(buffer: Buffer): Promise<Buffer> {
-  // Try sharp first (faster, native), fall back to heic-convert (pure JS, slower but always works)
-  try {
-    return await sharp(buffer).jpeg({ quality: 85 }).toBuffer();
-  } catch {
-    const out = await heicConvert({ buffer: buffer.buffer as ArrayBuffer, format: "JPEG", quality: 0.85 });
-    return Buffer.from(out);
-  }
+  // Vercel's runtime includes libvips with HEIF, so sharp handles HEIC natively.
+  return await sharp(buffer).jpeg({ quality: 85 }).toBuffer();
 }
 
 async function extractExifTimestamp(buffer: Buffer): Promise<number | null> {
