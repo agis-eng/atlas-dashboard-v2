@@ -15,6 +15,7 @@ import {
   Search,
   Image,
   Presentation,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -33,6 +34,7 @@ const moreNav = [
   { label: "SlideBoost", href: "/slideboost", icon: Presentation },
   { label: "LogoClear", href: "/logo", icon: Image },
   { label: "Listings", href: "/listings", icon: Tag },
+  { label: "Batch Listings", href: "/listings/batch", icon: Layers },
   { label: "Inventory", href: "/inventory", icon: Package },
   { label: "eBay", href: "/ebay", icon: ShoppingBag },
   { label: "Tasks", href: "/tasks" },

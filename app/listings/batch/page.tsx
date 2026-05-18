@@ -257,7 +257,7 @@ export default function BatchListingPage() {
           <input
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif"
+            accept="image/png,image/jpeg,image/webp"
             className="hidden"
             onChange={handleFilePick}
           />

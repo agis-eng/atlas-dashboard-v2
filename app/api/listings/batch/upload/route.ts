@@ -2,14 +2,16 @@
 import { NextRequest } from "next/server";
 import { put } from "@vercel/blob";
 import crypto from "crypto";
-import sharp from "sharp";
 import exifr from "exifr";
 
 export const maxDuration = 300;
 
 const MAX_SIZE = 15 * 1024 * 1024; // 15MB per photo
 const MAX_FILES = 100;
-const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif"];
+// HEIC intentionally omitted from `accept` and from this list.
+// iOS Safari auto-converts HEIC to JPEG when the file picker omits HEIC,
+// which keeps the lambda small (no sharp/libheif required server-side).
+const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 interface UploadedPhoto {
   photoId: string;
@@ -17,11 +19,6 @@ interface UploadedPhoto {
   originalName: string;
   exifTimestampMs: number | null;
   sizeBytes: number;
-}
-
-async function heicToJpeg(buffer: Buffer): Promise<Buffer> {
-  // Vercel's runtime includes libvips with HEIF, so sharp handles HEIC natively.
-  return await sharp(buffer).jpeg({ quality: 85 }).toBuffer();
 }
 
 async function extractExifTimestamp(buffer: Buffer): Promise<number | null> {
@@ -63,7 +60,7 @@ export async function POST(request: NextRequest) {
       const lowerType = (file.type || "").toLowerCase();
 
       if (!ALLOWED_TYPES.includes(lowerType)) {
-        skippedReasons.push(`${file.name}: unsupported type ${file.type}`);
+        skippedReasons.push(`${file.name}: unsupported type ${file.type || "unknown"}`);
         continue;
       }
       if (file.size > MAX_SIZE) {
@@ -72,19 +69,15 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const originalBuffer = Buffer.from(await file.arrayBuffer());
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const exifTimestampMs = await extractExifTimestamp(buffer);
 
-        // EXIF read from the original buffer (works for HEIC and JPEG)
-        const exifTimestampMs = await extractExifTimestamp(originalBuffer);
+        const subtype = lowerType.split("/")[1];
+        const ext = subtype === "jpeg" ? "jpg" : subtype;
 
-        // Convert HEIC → JPEG; pass through others
-        const isHeic = lowerType === "image/heic" || lowerType === "image/heif";
-        const jpegBuffer = isHeic ? await heicToJpeg(originalBuffer) : originalBuffer;
-        const ext = isHeic ? "jpg" : (lowerType.split("/")[1] === "jpeg" ? "jpg" : lowerType.split("/")[1]);
-
-        const blob = await put(`listings/batch/${batchId}/${i + 1}.${ext}`, jpegBuffer, {
+        const blob = await put(`listings/batch/${batchId}/${i + 1}.${ext}`, buffer, {
           access: "public",
-          contentType: isHeic ? "image/jpeg" : lowerType,
+          contentType: lowerType,
         });
 
         photos.push({
@@ -92,7 +85,7 @@ export async function POST(request: NextRequest) {
           blobUrl: blob.url,
           originalName: file.name,
           exifTimestampMs,
-          sizeBytes: jpegBuffer.length,
+          sizeBytes: buffer.length,
         });
       } catch (err) {
         skippedReasons.push(`${file.name}: ${(err as Error).message}`);
