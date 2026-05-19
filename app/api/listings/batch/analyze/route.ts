@@ -6,7 +6,7 @@ import { buildShippabilityPrompt, ShippabilityOutput } from "@/lib/marketplace-p
 
 const anthropic = new Anthropic();
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 interface IncomingGroup {
   productId: string;

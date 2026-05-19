@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { appendQty } from "@/lib/marketplace-batch";
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 const CONCURRENCY = 2;
 
