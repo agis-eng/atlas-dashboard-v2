@@ -611,7 +611,10 @@ export default function SlideBoostApp() {
         next[currentIndex] = { ...next[currentIndex], base64Data: clean, imageUrl: clean, history: newHistory };
         return next;
       });
-    } catch (e) { alert("Cleanup failed."); }
+    } catch (e) {
+      console.error("Cleanup failed:", e);
+      alert("Cleanup failed: " + (e instanceof Error ? e.message : String(e)));
+    }
     finally { setIsCleaning(false); }
   };
 
@@ -622,19 +625,22 @@ export default function SlideBoostApp() {
     cancelRef.current = false;
     setIsCleaning(true);
     setBulkProgress({ current: 0, total: slides.length });
-    
+
+    const failures: { idx: number; msg: string }[] = [];
+    let succeeded = 0;
+
     try {
       let localSlides = [...slides];
-      
+
       for (let i = 0; i < localSlides.length; i++) {
         if (cancelRef.current) break;
         setBulkProgress({ current: i + 1, total: localSlides.length });
         const slide = localSlides[i];
-        
+
         try {
           const compressedBase64 = await compressImageForExport(slide.base64Data!, 1280, 720);
           const cleaned = await removeWatermark(compressedBase64, "image/jpeg");
-          
+
           setSlides(prev => {
             const next = [...prev];
             const target = next[i];
@@ -651,8 +657,11 @@ export default function SlideBoostApp() {
             };
             return next;
           });
+          succeeded++;
         } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
           console.error(`Slide ${i+1} clean failed:`, err);
+          failures.push({ idx: i + 1, msg });
         }
         await new Promise(r => setTimeout(r, 200));
       }
@@ -661,6 +670,10 @@ export default function SlideBoostApp() {
     } finally {
       setIsCleaning(false);
       setBulkProgress(null);
+      if (failures.length > 0) {
+        const sample = failures.slice(0, 3).map(f => `Slide ${f.idx}: ${f.msg}`).join("\n");
+        alert(`Clean All finished — ${succeeded} succeeded, ${failures.length} failed.\n\nFirst errors:\n${sample}\n\nCheck the browser console for full details.`);
+      }
     }
   };
 
@@ -736,6 +749,9 @@ export default function SlideBoostApp() {
     setIsRemovingNotebookLM(true);
     setBulkProgress({ current: 0, total: targetSlides.length });
 
+    const failures: { idx: number; msg: string }[] = [];
+    let succeeded = 0;
+
     try {
       for (let t = 0; t < targetSlides.length; t++) {
         if (cancelRef.current) break;
@@ -775,8 +791,11 @@ export default function SlideBoostApp() {
             next[globalIdx] = { ...target, base64Data: modified, imageUrl: modified, history };
             return next;
           });
+          succeeded++;
         } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
           console.error(`Slide ${globalIdx + 1} NotebookLM removal failed:`, err);
+          failures.push({ idx: globalIdx + 1, msg });
         }
         await new Promise(r => setTimeout(r, 200));
       }
@@ -785,6 +804,10 @@ export default function SlideBoostApp() {
     } finally {
       setIsRemovingNotebookLM(false);
       setBulkProgress(null);
+      if (failures.length > 0) {
+        const sample = failures.slice(0, 3).map(f => `Slide ${f.idx}: ${f.msg}`).join("\n");
+        alert(`Remove NotebookLM finished — ${succeeded} succeeded, ${failures.length} failed.\n\nFirst errors:\n${sample}\n\nCheck the browser console for full details.`);
+      }
     }
   };
 

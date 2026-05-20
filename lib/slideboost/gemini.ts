@@ -24,14 +24,16 @@ function firstInlineImage(response: any): string | null {
 }
 
 // Image model fallback chain (preferred → fallback):
-//   1. gemini-3.1-flash-image-preview — primary (Nano Banana 2)
-//   2. gemini-2.5-flash-image         — fallback
+//   1. gemini-3-pro-image-preview     — primary (Nano Banana Pro, most capable for surgical edits)
+//   2. gemini-3.1-flash-image-preview — fallback (Nano Banana 2)
+//   3. gemini-2.5-flash-image         — last-resort fallback
 async function generateImageWithFallback(
   ai: any,
   parts: any[],
   config?: any,
 ): Promise<{ response: any; modelUsed: string }> {
   const CHAIN = [
+    "gemini-3-pro-image-preview",
     "gemini-3.1-flash-image-preview",
     "gemini-2.5-flash-image",
   ];
@@ -53,9 +55,15 @@ async function generateImageWithFallback(
       const isUnavailable =
         msg.includes("503") ||
         msg.includes("UNAVAILABLE") ||
-        msg.includes("high demand");
+        msg.includes("high demand") ||
+        msg.includes("quota") ||
+        msg.includes("RESOURCE_EXHAUSTED") ||
+        msg.includes("429") ||
+        msg.includes("not found") ||
+        msg.includes("NOT_FOUND") ||
+        msg.includes("404");
       if (!isUnavailable) throw e;
-      console.warn(`[slideboost] ${model} unavailable, trying next…`);
+      console.warn(`[slideboost] ${model} unavailable (${msg.slice(0, 100)}), trying next…`);
     }
   }
   throw lastError ?? new Error("All image models unavailable");
@@ -103,12 +111,14 @@ export async function editSlideImage(
          - If reducing text size, ensure the text remains legible and sharp.
          - Maintain the original font style unless asked to change it.
 
-      4. PRESERVE BRANDING:
-         - Keep colors and logos consistent, only change the spatial layout or size as requested.
+      4. PRESERVE UNREQUESTED ELEMENTS:
+         - Only modify what the user's command targets. Leave all other slide elements (text, layout, colors, branding) unchanged.
+         - If the user explicitly asks to REMOVE, REPLACE, or MODIFY a logo, watermark, badge, or branding element, you MUST execute that instruction — remove the element completely and inpaint the area seamlessly with the surrounding background.
 
       FAILURE CASE TO AVOID:
-      - Do NOT return an image that looks exactly like the original.
-      - The change must be visually obvious to the user.
+      - Do NOT return an image that looks exactly like the original when the user requested a change.
+      - The requested change must be visually obvious to the user.
+      - If the user asked to remove something, it MUST be gone in the output.
 
       Return the fully composited, high-resolution (2K) image.`;
 
@@ -189,44 +199,14 @@ export async function replaceLogo(
 }
 
 export async function removeNotebookLMLogo(base64WithPrefix: string, mimeType: string) {
-  const ai = client();
-
-  const prompt = `TASK: Remove the NotebookLM badge in the lower-right corner of this slide and inpaint the area so the removal is seamless.
-
-ABOUT THE BADGE — what you're looking for:
-- NotebookLM stamps every slide it generates with a small identifying badge in the LOWER-RIGHT corner.
-- It is typically a compact rounded capsule/pill or small icon-plus-text element.
-- Common forms: a colorful sparkle/star icon, a "NotebookLM" text label, or an icon+text combo. It may be solid-colored, translucent, or partially blended into the slide background.
-- It sits ON TOP of the slide's underlying design — always a superimposed overlay, never part of the slide's native layout.
-- It can appear on any background: light, dark, photographic, or over illustrations. It may be subtle (low-contrast, semi-transparent) but it is ALWAYS present.
-
-INSTRUCTIONS — assume the badge is present unless you are certain it is not:
-- Scan the entire lower-right region of the image thoroughly. Do not require a specific size, color, or exact position — only that it is a superimposed overlay in that corner.
-- If you see ANY element in the lower-right corner that could plausibly be a NotebookLM identifier (any icon, capsule, small text label, sparkle/star mark, or similar superimposed graphic), remove it and inpaint the area using the surrounding background pixels for a seamless result.
-- Err on the side of removal: if you're uncertain whether something is a badge or part of the design, and it's in the lower-right corner AND has the character of an overlaid mark (isolated, small, looks "applied"), remove it.
-- Only return the image unchanged if the lower-right corner is completely clean with absolutely nothing overlaid on it.
-
-ABSOLUTE PROHIBITIONS — these apply in every case:
-- DO NOT add, draw, render, or invent any new logo, badge, watermark, text, or icon anywhere in the image.
-- DO NOT remove, edit, recolor, reposition, or restyle any headline, subheading, body copy, bullet, caption, label, number, or any other text on the slide.
-- DO NOT remove, edit, recolor, reposition, or restyle any illustration, photo, chart, diagram, icon, shape, or decorative graphic that is part of the slide's own composition.
-- DO NOT change the background, colors, layout, framing, or aspect ratio.
-- DO NOT touch anything outside the lower-right corner region.
-
-The output must be pixel-identical to the input everywhere except the lower-right region where the NotebookLM badge was removed.`;
-
-  const { response } = await generateImageWithFallback(
-    ai,
-    [
-      { inlineData: { data: stripPrefix(base64WithPrefix), mimeType } },
-      { text: prompt },
-    ],
-    { imageConfig: { imageSize: "2K" } },
+  // Routes through editSlideImage — the dedicated NotebookLM prompt was being silently
+  // ignored by the image models. The editSlideImage prompt is more aggressive about
+  // forcing an actual edit and has been proven to work for "remove the logo" instructions.
+  return editSlideImage(
+    base64WithPrefix,
+    mimeType,
+    "Remove the NotebookLM logo badge from the lower-right corner of this slide. The badge is a small overlay (sparkle/star icon, sometimes with 'NotebookLM' text, in a rounded capsule shape) that NotebookLM stamps on every slide it generates — it is not part of the original slide design. Erase the badge completely and inpaint the area cleanly using the surrounding background pixels so no trace of it remains. Do not modify any other element of the slide.",
   );
-
-  const out = firstInlineImage(response);
-  if (!out) throw new Error("NotebookLM logo removal failed.");
-  return out;
 }
 
 export async function removeWatermark(base64WithPrefix: string, mimeType: string) {
