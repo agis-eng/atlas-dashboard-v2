@@ -761,13 +761,18 @@ export default function SlideBoostApp() {
         try {
           const compressedBase64 = await compressImageForExport(slide.base64Data!, 1280, 720);
 
+          // Route through the editSlideImage endpoint directly — the exact same path
+          // that works for manual single-slide edits. Avoids the indirect
+          // /api/slideboost/remove-notebooklm-logo route which has been unreliable.
+          const NOTEBOOKLM_INSTRUCTION = "Remove the NotebookLM logo badge from the lower-right corner of this slide. The badge is a small overlay (sparkle/star icon, sometimes with 'NotebookLM' text, in a rounded capsule shape) that NotebookLM stamps on every slide it generates — it is not part of the original slide design. Erase the badge completely and inpaint the area cleanly using the surrounding background pixels so no trace of it remains. Do not modify any other element of the slide.";
+
           let modified: string | null = null;
           let lastErr: unknown = null;
           const MAX_ATTEMPTS = 3;
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             if (cancelRef.current) break;
             try {
-              modified = await removeNotebookLMLogo(compressedBase64, "image/jpeg");
+              modified = await editSlideImage(compressedBase64, "image/jpeg", NOTEBOOKLM_INSTRUCTION);
               break;
             } catch (err) {
               lastErr = err;
