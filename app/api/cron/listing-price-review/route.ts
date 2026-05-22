@@ -17,6 +17,8 @@ import { evaluatePriceDrop } from "@/lib/listing-price-rules";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 interface ScrapedFacebookListing {
   title: string;
   price: number | null;
@@ -192,13 +194,65 @@ async function handle(request: NextRequest) {
     const decision = evaluatePriceDrop(evalInput, now);
 
     if (!decision.shouldDrop) {
-      results.push({
-        title: draft.title,
-        action: "no-drop",
-        reason: decision.reason,
-        ageDays: decision.ageDays,
-        clicks: match.clicks,
-      });
+      // Not dropping — but if the listing is >=14 days old, "renew" it by
+      // re-saving at the same price. The edit-save round-trip on Facebook
+      // refreshes the listing's visibility (same algorithmic boost as
+      // clicking FB's "Renew your listing?" tip).
+      const shouldRenew = decision.ageDays >= 14;
+      if (!shouldRenew || dryRun) {
+        results.push({
+          title: draft.title,
+          action: dryRun && shouldRenew ? "would-renew" : "no-drop",
+          reason: decision.reason,
+          ageDays: decision.ageDays,
+          clicks: match.clicks,
+        });
+        continue;
+      }
+
+      // Respect the same 7-day cool-off as price drops — don't repeatedly
+      // re-save a listing every time the cron fires within a week.
+      const lastTouch = (draft as any).lastRenewedAt || (draft as any).lastPriceChangeAt;
+      if (lastTouch) {
+        const daysSinceTouch = Math.floor(
+          (now.getTime() - new Date(lastTouch).getTime()) / MS_PER_DAY
+        );
+        if (daysSinceTouch < 7) {
+          results.push({
+            title: draft.title,
+            action: "no-renew",
+            reason: `Touched ${daysSinceTouch}d ago — 7-day cool-off`,
+            ageDays: decision.ageDays,
+            clicks: match.clicks,
+          });
+          continue;
+        }
+      }
+
+      try {
+        await updateFacebookPrice(draft.facebookListingUrl!, draft.price as number);
+        const idx = listings.findIndex((l) => l.id === draft.id);
+        if (idx >= 0) {
+          listings[idx] = {
+            ...listings[idx],
+            updatedAt: now.toISOString(),
+            ...({ lastRenewedAt: now.toISOString() } as any),
+          };
+        }
+        results.push({
+          title: draft.title,
+          action: "renewed",
+          price: draft.price,
+          ageDays: decision.ageDays,
+          clicks: match.clicks,
+        });
+      } catch (err) {
+        results.push({
+          title: draft.title,
+          action: "renew-failed",
+          error: (err as Error).message,
+        });
+      }
       continue;
     }
 
