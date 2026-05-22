@@ -61,8 +61,8 @@ async function callEbay(baseUrl: string, cookieHeader: string, body: any): Promi
 
 export async function POST(request: NextRequest) {
   try {
-    const { getSessionUserFromRequest } = await import("@/lib/auth");
-    const user = await getSessionUserFromRequest(request);
+    const { getServiceOrSessionUser } = await import("@/lib/auth");
+    const user = await getServiceOrSessionUser(request);
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json() as PublishRequest;
