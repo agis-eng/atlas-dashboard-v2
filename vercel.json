@@ -1,3 +1,9 @@
 {
-  "alias": ["atlas-dashboard-v2.vercel.app"]
+  "alias": ["atlas-dashboard-v2.vercel.app"],
+  "crons": [
+    {
+      "path": "/api/cron/listing-price-review",
+      "schedule": "0 14 * * 1"
+    }
+  ]
 }
