@@ -151,8 +151,10 @@ async function callDashboard(pathname, body) {
   let created = 0;
   for (const d of drafts) {
     const platforms = ["ebay", "mercari", "facebook"].filter(p => d.platforms?.[p]);
+    // Omit `id` — POST /api/listings treats body.id as "update existing"
+    // and 404s if the listing doesn't already exist. Without it the route
+    // generates a fresh listing id and inserts the new record.
     const record = {
-      id: d.productId,
       photos: d.blobUrls,
       title: d.title || "Untitled",
       description: d.description || "",
