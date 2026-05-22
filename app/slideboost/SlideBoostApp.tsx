@@ -761,24 +761,32 @@ export default function SlideBoostApp() {
         try {
           const compressedBase64 = await compressImageForExport(slide.base64Data!, 1280, 720);
 
-          // Route through the editSlideImage endpoint directly — the exact same path
-          // that works for manual single-slide edits. Avoids the indirect
-          // /api/slideboost/remove-notebooklm-logo route which has been unreliable.
-          const NOTEBOOKLM_INSTRUCTION = "Remove the NotebookLM logo badge from the lower-right corner of this slide. The badge is a small overlay (sparkle/star icon, sometimes with 'NotebookLM' text, in a rounded capsule shape) that NotebookLM stamps on every slide it generates — it is not part of the original slide design. Erase the badge completely and inpaint the area cleanly using the surrounding background pixels so no trace of it remains. Do not modify any other element of the slide.";
+          // Generic instruction — avoids brand-name triggers that cause model refusals
+          const REMOVE_BADGE_INSTRUCTION = "Remove the small overlay badge in the lower-right corner of this slide. It is a superimposed graphic sitting on top of the slide content — not part of the original design. Erase it completely and inpaint the cleared area with the surrounding background so no trace remains. Do not modify any other element of the slide.";
+
+          // Only retry on transient network errors (503/504/UNAVAILABLE).
+          // Model refusals ("Image modification failed") are not retryable and
+          // burning 3 attempts causes the 300s function timeout on slide 2+.
+          const isRetryable = (err: unknown) => {
+            const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+            return msg.includes('503') || msg.includes('504') || msg.includes('unavailable') || msg.includes('high demand');
+          };
 
           let modified: string | null = null;
           let lastErr: unknown = null;
-          const MAX_ATTEMPTS = 3;
+          const MAX_ATTEMPTS = 2;
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             if (cancelRef.current) break;
             try {
-              modified = await editSlideImage(compressedBase64, "image/jpeg", NOTEBOOKLM_INSTRUCTION);
+              modified = await editSlideImage(compressedBase64, "image/jpeg", REMOVE_BADGE_INSTRUCTION);
               break;
             } catch (err) {
               lastErr = err;
               console.warn(`Slide ${globalIdx + 1} attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
-              if (attempt < MAX_ATTEMPTS) {
-                await new Promise(r => setTimeout(r, 1500 * attempt));
+              if (attempt < MAX_ATTEMPTS && isRetryable(err)) {
+                await new Promise(r => setTimeout(r, 2000));
+              } else {
+                break;
               }
             }
           }
