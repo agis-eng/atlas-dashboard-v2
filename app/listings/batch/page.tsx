@@ -3,6 +3,37 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { upload } from "@vercel/blob/client";
+import exifr from "exifr";
+
+// Concurrency cap on parallel browser→Blob uploads.
+// Higher = faster on good wifi but iOS/Safari throttles parallel network ops.
+const UPLOAD_CONCURRENCY = 4;
+
+async function extractExifTimestampMs(file: File): Promise<number | null> {
+  try {
+    const exif = await exifr.parse(file, ["DateTimeOriginal"]);
+    if (exif?.DateTimeOriginal instanceof Date) {
+      return exif.DateTimeOriginal.getTime();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface PhotoUploadResult {
+  photoId: string;
+  blobUrl: string;
+  originalName: string;
+  exifTimestampMs: number | null;
+  sizeBytes: number;
+}
+
+interface PhotoUploadFailure {
+  originalName: string;
+  reason: string;
+}
 
 type Stage = "idle" | "uploading" | "grouping" | "analyzing" | "ready" | "publishing";
 
@@ -51,25 +82,75 @@ export default function BatchListingPage() {
   const [uploadProgress, setUploadProgress] = useState<string>("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  async function uploadOne(
+    file: File,
+    batchId: string,
+    idx: number
+  ): Promise<PhotoUploadResult> {
+    const exifTimestampMs = await extractExifTimestampMs(file);
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const blob = await upload(`listings/batch/${batchId}/${idx}-${safeName}`, file, {
+      access: "public",
+      handleUploadUrl: "/api/listings/batch/upload-token",
+      contentType: file.type || "image/jpeg",
+    });
+    return {
+      photoId: crypto.randomUUID(),
+      blobUrl: blob.url,
+      originalName: file.name,
+      exifTimestampMs,
+      sizeBytes: file.size,
+    };
+  }
+
+  async function uploadAll(
+    files: File[],
+    batchId: string
+  ): Promise<{ ok: PhotoUploadResult[]; failed: PhotoUploadFailure[] }> {
+    const ok: PhotoUploadResult[] = [];
+    const failed: PhotoUploadFailure[] = [];
+    let idx = 0;
+    let completed = 0;
+
+    async function worker() {
+      while (idx < files.length) {
+        const myIdx = idx++;
+        const file = files[myIdx];
+        try {
+          const result = await uploadOne(file, batchId, myIdx + 1);
+          ok.push(result);
+        } catch (err) {
+          failed.push({ originalName: file.name, reason: (err as Error).message });
+        } finally {
+          completed++;
+          setUploadProgress(`Uploading photos... ${completed}/${files.length}`);
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
+    return { ok, failed };
+  }
+
   async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
     setStage("uploading");
-    setUploadProgress(`Uploading ${files.length} photos...`);
+    setUploadProgress(`Uploading photos... 0/${files.length}`);
 
     const batchId = crypto.randomUUID();
-    const formData = new FormData();
-    for (const f of files) formData.append("photos", f);
-    formData.append("batchId", batchId);
 
     try {
-      const uploadRes = await fetch("/api/listings/batch/upload", { method: "POST", body: formData });
-      if (!uploadRes.ok) throw new Error("Upload failed");
-      const upload = await uploadRes.json();
+      const { ok: uploadedPhotos, failed } = await uploadAll(files, batchId);
 
-      if (upload.skippedCount > 0) {
-        toast.warning(`Skipped ${upload.skippedCount} files`, { description: upload.skippedReasons.join("\n") });
+      if (failed.length > 0) {
+        toast.warning(`${failed.length} of ${files.length} uploads failed`, {
+          description: failed.slice(0, 5).map(f => `${f.originalName}: ${f.reason}`).join("\n"),
+        });
+      }
+      if (uploadedPhotos.length === 0) {
+        throw new Error("No photos uploaded successfully");
       }
 
       setStage("grouping");
@@ -77,7 +158,7 @@ export default function BatchListingPage() {
       const groupRes = await fetch("/api/listings/batch/group", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batchId, photos: upload.photos }),
+        body: JSON.stringify({ batchId, photos: uploadedPhotos }),
       });
       if (!groupRes.ok) throw new Error("Grouping failed");
       const { groups } = await groupRes.json() as { groups: Group[] };
