@@ -17,29 +17,15 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "No photos provided" }, { status: 400 });
     }
 
-    // Fetch photos from blob URLs and build content blocks for Claude Vision
-    const imageBlocks: Anthropic.Messages.ImageBlockParam[] = [];
-
-    for (const photoUrl of photos.slice(0, 6)) {
-      try {
-        const res = await fetch(photoUrl);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const base64 = buffer.toString("base64");
-        const contentType = res.headers.get("content-type") || "image/jpeg";
-        const mediaType = contentType.startsWith("image/") ? contentType : "image/jpeg";
-
-        imageBlocks.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: mediaType as any,
-            data: base64,
-          },
-        });
-      } catch {
-        console.error(`Failed to fetch photo: ${photoUrl}`);
-      }
-    }
+    // Send Anthropic the photo URLs directly. The model fetches them
+    // server-side, which bypasses the 5 MB base64 payload cap that
+    // large iPhone JPEGs hit when we encoded them ourselves.
+    const imageBlocks: Anthropic.Messages.ImageBlockParam[] = photos
+      .slice(0, 6)
+      .map((photoUrl: string) => ({
+        type: "image",
+        source: { type: "url", url: photoUrl },
+      }));
 
     if (imageBlocks.length === 0) {
       return Response.json({ error: "Could not read any photos" }, { status: 400 });

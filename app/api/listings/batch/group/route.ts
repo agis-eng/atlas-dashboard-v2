@@ -15,24 +15,14 @@ interface VisionVerdict {
   splitInto?: number[][];
 }
 
-async function fetchAsBase64Image(url: string): Promise<Anthropic.Messages.ImageBlockParam | null> {
-  try {
-    const res = await fetch(url);
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const base64 = buffer.toString("base64");
-    const contentType = res.headers.get("content-type") || "image/jpeg";
-    return {
-      type: "image",
-      source: { type: "base64", media_type: contentType as any, data: base64 },
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function visionVerdictForGroup(group: PhotoGroup): Promise<VisionVerdict | null> {
+  // Send URLs directly — Anthropic fetches them server-side, bypassing
+  // the 5 MB base64 payload limit that iPhone JPEGs trip over.
   const urls = group.blobUrls.slice(0, 6);
-  const images = (await Promise.all(urls.map(fetchAsBase64Image))).filter(Boolean) as Anthropic.Messages.ImageBlockParam[];
+  const images: Anthropic.Messages.ImageBlockParam[] = urls.map(url => ({
+    type: "image",
+    source: { type: "url", url },
+  }));
   if (images.length === 0) return null;
 
   const response = await anthropic.messages.create({
