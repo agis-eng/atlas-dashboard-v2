@@ -1,0 +1,79 @@
+name: Fix Vercel Alias After Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  alias:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Vercel production deployment to be READY
+        id: wait
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TEAM_ID: team_nkNa02k6nXE4XH6UqAJTRoem
+          PROJECT_ID: atlas-dashboard-v2
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          echo "Waiting for production deployment of commit $COMMIT_SHA..."
+          DEPLOYMENT_ID=""
+          for i in $(seq 1 30); do
+            sleep 10
+            RESPONSE=$(curl -s \
+              "https://api.vercel.com/v6/deployments?projectId=$PROJECT_ID&teamId=$TEAM_ID&limit=10&target=production" \
+              -H "Authorization: Bearer $VERCEL_TOKEN")
+            # Find deployment matching this commit SHA that is READY
+            DEPLOYMENT_ID=$(echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          sha = '$COMMIT_SHA'
+          for d in data.get('deployments', []):
+              meta = d.get('meta', {})
+              if meta.get('githubCommitSha', '').startswith(sha[:12]) and d.get('state') == 'READY':
+                  print(d['uid'])
+                  break
+          " 2>/dev/null || echo "")
+            if [ -n "$DEPLOYMENT_ID" ]; then
+              echo "Found READY deployment: $DEPLOYMENT_ID"
+              echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Attempt $i: deployment not ready yet..."
+          done
+          if [ -z "$DEPLOYMENT_ID" ]; then
+            echo "Timed out waiting for deployment. Will use latest READY deployment."
+            DEPLOYMENT_ID=$(curl -s \
+              "https://api.vercel.com/v6/deployments?projectId=$PROJECT_ID&teamId=$TEAM_ID&limit=5&target=production" \
+              -H "Authorization: Bearer $VERCEL_TOKEN" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for d in data.get('deployments', []):
+              if d.get('state') == 'READY':
+                  print(d['uid'])
+                  break
+          " 2>/dev/null || echo "")
+            echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Assign production aliases
+        if: steps.wait.outputs.deployment_id != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          TEAM_ID: team_nkNa02k6nXE4XH6UqAJTRoem
+          DEPLOYMENT_ID: ${{ steps.wait.outputs.deployment_id }}
+        run: |
+          ALIASES=(
+            "atlas-dashboard-v2.vercel.app"
+            "atlas-dashboard-v2-agis-engs-projects.vercel.app"
+          )
+          for ALIAS in "${ALIASES[@]}"; do
+            echo "Assigning $ALIAS → $DEPLOYMENT_ID"
+            RESULT=$(curl -s -X POST \
+              "https://api.vercel.com/v2/deployments/$DEPLOYMENT_ID/aliases?teamId=$TEAM_ID" \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"alias\": \"$ALIAS\"}")
+            echo "$RESULT"
+          done
+          echo "✅ Aliases assigned to $DEPLOYMENT_ID"
