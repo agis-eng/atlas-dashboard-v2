@@ -43,7 +43,16 @@ export async function POST(request: NextRequest) {
     });
     return Response.json(json);
   } catch (err) {
-    console.error("[batch/upload-token] error", err);
-    return Response.json({ error: (err as Error).message }, { status: 400 });
+    const msg = (err as Error).message || String(err);
+    const stack = (err as Error).stack || "";
+    const tokenSet = !!process.env.BLOB_READ_WRITE_TOKEN;
+    // Single line so it survives Vercel's log truncation in the dashboard.
+    console.error(
+      `[batch/upload-token] FAIL tokenSet=${tokenSet} msg=${msg} stack=${stack.split("\n")[0]}`
+    );
+    return Response.json(
+      { error: msg, tokenSet, hint: tokenSet ? undefined : "BLOB_READ_WRITE_TOKEN env var is missing" },
+      { status: 400 }
+    );
   }
 }
