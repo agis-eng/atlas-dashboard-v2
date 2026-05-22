@@ -89,11 +89,14 @@ export default function BatchListingPage() {
   ): Promise<PhotoUploadResult> {
     const exifTimestampMs = await extractExifTimestampMs(file);
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    console.log(`[batch-upload] start ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+    const t0 = performance.now();
     const blob = await upload(`listings/batch/${batchId}/${idx}-${safeName}`, file, {
       access: "public",
       handleUploadUrl: "/api/listings/batch/upload-token",
       contentType: file.type || "image/jpeg",
     });
+    console.log(`[batch-upload] done ${file.name} in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
     return {
       photoId: crypto.randomUUID(),
       blobUrl: blob.url,
@@ -110,20 +113,37 @@ export default function BatchListingPage() {
     const ok: PhotoUploadResult[] = [];
     const failed: PhotoUploadFailure[] = [];
     let idx = 0;
+    let started = 0;
     let completed = 0;
+
+    function render() {
+      setUploadProgress(
+        `Uploading photos: ${completed}/${files.length} complete, ${started - completed} in flight`
+      );
+    }
 
     async function worker() {
       while (idx < files.length) {
         const myIdx = idx++;
         const file = files[myIdx];
+        started++;
+        render();
         try {
-          const result = await uploadOne(file, batchId, myIdx + 1);
+          // 90s per-file timeout so silent hangs surface as errors
+          const result = await Promise.race([
+            uploadOne(file, batchId, myIdx + 1),
+            new Promise<PhotoUploadResult>((_, reject) =>
+              setTimeout(() => reject(new Error("upload timed out after 90s")), 90_000)
+            ),
+          ]);
           ok.push(result);
         } catch (err) {
-          failed.push({ originalName: file.name, reason: (err as Error).message });
+          const msg = (err as Error).message || String(err);
+          console.error(`[batch-upload] FAIL ${file.name}: ${msg}`);
+          failed.push({ originalName: file.name, reason: msg });
         } finally {
           completed++;
-          setUploadProgress(`Uploading photos... ${completed}/${files.length}`);
+          render();
         }
       }
     }
