@@ -548,11 +548,27 @@ export default function LogoPage() {
   }
 
   // ─── Save / Load Logos ───
+
+  // Auto-save the current canvas state after every edit so it survives navigation
+  useEffect(() => {
+    if (history.length === 0) return;
+    try {
+      localStorage.setItem("logoclear-active", history[history.length - 1]);
+    } catch { /* ignore quota errors */ }
+  }, [history]);
+
+  // On mount: load the saved gallery AND restore the last active canvas
   useEffect(() => {
     try {
       const saved = localStorage.getItem("logoclear-saved");
       if (saved) setSavedLogos(JSON.parse(saved));
     } catch { /* ignore */ }
+
+    // Restore the in-progress canvas — defer slightly so the canvas element mounts first
+    const active = localStorage.getItem("logoclear-active");
+    if (active) {
+      setTimeout(() => loadImageToCanvas(active), 50);
+    }
   }, []);
 
   function saveLogo() {
