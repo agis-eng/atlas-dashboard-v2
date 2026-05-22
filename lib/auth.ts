@@ -78,6 +78,27 @@ export function toPublicUser(user: User): PublicUser {
   return pub;
 }
 
+// Allow local scripts to bypass the session cookie by sending
+//   X-Service-Key: <value of BLOB_READ_WRITE_TOKEN env var>
+// Returns a synthetic user when the key matches; otherwise falls through
+// to the normal session lookup. Used by scripts/batch-upload.mjs.
+export async function getServiceOrSessionUser(
+  request: Request
+): Promise<PublicUser | null> {
+  const serviceKey = request.headers.get("x-service-key");
+  const expected = process.env.BLOB_READ_WRITE_TOKEN;
+  if (serviceKey && expected && serviceKey === expected) {
+    return {
+      id: "service:batch-upload",
+      email: "service@atlas",
+      name: "Batch Upload Service",
+      profile: "erik",
+      createdAt: 0,
+    };
+  }
+  return getSessionUserFromRequest(request);
+}
+
 // Get session user from request headers (for use in API routes)
 export async function getSessionUserFromRequest(
   request: Request

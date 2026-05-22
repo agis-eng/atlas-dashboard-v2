@@ -5,8 +5,8 @@ import type { ListingDraft } from "@/lib/redis";
 // GET — fetch all listing drafts
 export async function GET(request: NextRequest) {
   try {
-    const { getSessionUserFromRequest } = await import("@/lib/auth");
-    const user = await getSessionUserFromRequest(request);
+    const { getServiceOrSessionUser } = await import("@/lib/auth");
+    const user = await getServiceOrSessionUser(request);
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
 // POST — create or update a listing draft
 export async function POST(request: NextRequest) {
   try {
-    const { getSessionUserFromRequest } = await import("@/lib/auth");
-    const user = await getSessionUserFromRequest(request);
+    const { getServiceOrSessionUser } = await import("@/lib/auth");
+    const user = await getServiceOrSessionUser(request);
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
 // DELETE — remove a listing draft
 export async function DELETE(request: NextRequest) {
   try {
-    const { getSessionUserFromRequest } = await import("@/lib/auth");
-    const user = await getSessionUserFromRequest(request);
+    const { getServiceOrSessionUser } = await import("@/lib/auth");
+    const user = await getServiceOrSessionUser(request);
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }

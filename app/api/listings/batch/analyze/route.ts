@@ -37,10 +37,17 @@ interface Draft {
   status: "ready" | "needs_review";
 }
 
-async function callAnalyze(blobUrls: string[], baseUrl: string, cookieHeader: string): Promise<any> {
+async function callAnalyze(
+  blobUrls: string[],
+  baseUrl: string,
+  cookieHeader: string,
+  serviceKey: string
+): Promise<any> {
+  const headers: Record<string, string> = { "Content-Type": "application/json", Cookie: cookieHeader };
+  if (serviceKey) headers["X-Service-Key"] = serviceKey;
   const res = await fetch(`${baseUrl}/api/listings/analyze`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookieHeader },
+    headers,
     body: JSON.stringify({ photos: blobUrls }),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
@@ -72,8 +79,8 @@ async function callShippability(input: {
 
 export async function POST(request: NextRequest) {
   try {
-    const { getSessionUserFromRequest } = await import("@/lib/auth");
-    const user = await getSessionUserFromRequest(request);
+    const { getServiceOrSessionUser } = await import("@/lib/auth");
+    const user = await getServiceOrSessionUser(request);
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     const { groups } = await request.json() as { groups: IncomingGroup[] };
@@ -83,11 +90,12 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = new URL(request.url).origin;
     const cookieHeader = request.headers.get("cookie") || "";
+    const serviceKey = request.headers.get("x-service-key") || "";
 
     const drafts: Draft[] = [];
     for (const group of groups) {
       try {
-        const analyzed = await callAnalyze(group.blobUrls, baseUrl, cookieHeader);
+        const analyzed = await callAnalyze(group.blobUrls, baseUrl, cookieHeader, serviceKey);
 
         const ai = analyzed?.analysis || {};
         const value = Number(ai.suggestedPrice) || 0;
