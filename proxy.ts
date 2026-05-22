@@ -26,6 +26,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Service-key bypass: local scripts / server-to-server callers can send
+  // X-Service-Key matching BLOB_READ_WRITE_TOKEN to skip cookie auth.
+  // The downstream route still validates with getServiceOrSessionUser.
+  const serviceKey = request.headers.get("x-service-key");
+  const expectedServiceKey = process.env.BLOB_READ_WRITE_TOKEN;
+  if (serviceKey && expectedServiceKey && serviceKey === expectedServiceKey) {
+    return NextResponse.next();
+  }
+
   // All other routes require authentication
   const cookieValue = request.cookies.get("atlas_session")?.value;
   const session = await decryptSessionFromCookie(cookieValue);
