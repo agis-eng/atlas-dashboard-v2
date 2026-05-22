@@ -28,6 +28,21 @@ interface ScrapedFacebookListing {
   listingUrl: string | null;
 }
 
+// Persisted tracking for FB listings that aren't in the Redis listings store
+// (listed directly on FB or listed before this system existed).
+interface FbTrackingRecord {
+  firstSeenAt: string;
+  firstSeenClicks: number;
+  originalPrice: number;
+  lastSeenAt: string;
+  lastSeenClicks: number;
+  currentPrice: number;
+  listedDate: string | null;
+  lastPriceChangeAt?: string;
+  lastRenewedAt?: string;
+  clicksAtRenewal?: number;
+}
+
 async function getMacServerUrl(): Promise<string | null> {
   const redis = getRedis();
   const raw = await redis.get(REDIS_KEYS.mercariServerUrl);
@@ -73,6 +88,50 @@ async function updateFacebookPrice(listingUrl: string, newPrice: number) {
     throw new Error(data.error || `update-price failed: HTTP ${res.status}`);
   }
   return data;
+}
+
+async function updateFacebookPriceByTitle(title: string, newPrice: number) {
+  const macUrl = await getMacServerUrl();
+  if (!macUrl) throw new Error("Mac server URL not in Redis");
+  const secret = process.env.MERCARI_SERVER_SECRET;
+  const res = await fetch(`${macUrl}/facebook/update-price-by-title`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(secret ? { "X-Mercari-Secret": secret } : {}),
+    },
+    body: JSON.stringify({ title, newPrice }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || `update-price-by-title failed: HTTP ${res.status}`);
+  }
+  return data;
+}
+
+function slugifyTitle(t: string): string {
+  return (t || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "unknown";
+}
+
+// Parse "M/D" format from FB scrape (e.g. "3/13", "5/22") into ISO date string.
+// Uses current year; if the resulting date is in the future, uses previous year.
+function parseFbListedDate(listedDate: string | null, now: Date): string | null {
+  if (!listedDate) return null;
+  const m = listedDate.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const month = parseInt(m[1], 10);
+  const day = parseInt(m[2], 10);
+  const year = now.getFullYear();
+  const candidate = new Date(year, month - 1, day);
+  if (candidate > now) {
+    // e.g., "12/15" seen in May — that listing is from last December
+    return new Date(year - 1, month - 1, day).toISOString().slice(0, 10);
+  }
+  return candidate.toISOString().slice(0, 10);
 }
 
 function normalizeTitle(t: string): string {
@@ -152,6 +211,10 @@ async function handle(request: NextRequest) {
   const now = new Date();
   let listings = all;
 
+  // --- Part 1: Redis-known listings (have facebookListingUrl) ---
+  // Track which scraped listings got matched to a Redis draft
+  const matchedScannedTitles = new Set<string>();
+
   for (const draft of eligible) {
     const match = matchScanToDraft(draft, scanned);
     if (!match) {
@@ -162,6 +225,8 @@ async function handle(request: NextRequest) {
       });
       continue;
     }
+    matchedScannedTitles.add(normalizeTitle(match.title));
+
     if (match.status === "sold") {
       results.push({
         title: draft.title,
@@ -219,8 +284,6 @@ async function handle(request: NextRequest) {
     }
 
     // 2. Listing is stale (>=14 days). Decide between renewal and price drop.
-    // The user's rule: give renewal a chance FIRST. Only drop if a previous
-    // renewal didn't generate enough new clicks.
     const RENEWAL_VIEWS_THRESHOLD = 3;
     const newClicksSinceRenewal =
       lastRenewedAt && clicksAtRenewal != null
@@ -245,7 +308,7 @@ async function handle(request: NextRequest) {
       decision.shouldDrop && (neverRenewed || renewalWasEffective);
     const shouldDrop =
       decision.shouldDrop && !shouldRenewFirst &&
-      !renewalWasEffective; // explicit: only drop if renewal didn't work
+      !renewalWasEffective;
 
     if (shouldRenewFirst) {
       if (dryRun) {
@@ -360,7 +423,6 @@ async function handle(request: NextRequest) {
           ...({
             lastPriceChangeAt: now.toISOString(),
             originalPrice: evalInput.originalPrice,
-            // Reset renewal tracking so the cycle restarts cleanly.
             lastRenewedAt: undefined,
             clicksAtRenewal: undefined,
           } as any),
@@ -389,11 +451,241 @@ async function handle(request: NextRequest) {
     await redis.set(REDIS_KEYS.listings, listings);
   }
 
+  // --- Part 2: FB-only listings (active on FB but not in Redis listings store) ---
+  // These are listings created directly on Facebook or predating the dashboard.
+  // We track their click history in fb:tracking:<slug> and apply the same
+  // renewal-first, then drop strategy — but navigate by title instead of URL.
+  const orphans = scanned.filter(
+    (s) =>
+      (s.status === "active" || s.status === "unknown") &&
+      s.price != null &&
+      !matchedScannedTitles.has(normalizeTitle(s.title))
+  );
+
+  const trackingResults: any[] = [];
+
+  for (const s of orphans) {
+    const slug = slugifyTitle(s.title);
+    const key = REDIS_KEYS.fbTracking(slug);
+
+    // Load or create the tracking record
+    const existing = (await redis.get(key)) as FbTrackingRecord | null;
+    const isNew = !existing;
+    const rec: FbTrackingRecord = isNew
+      ? {
+          firstSeenAt: now.toISOString(),
+          firstSeenClicks: s.clicks,
+          originalPrice: s.price!,
+          lastSeenAt: now.toISOString(),
+          lastSeenClicks: s.clicks,
+          currentPrice: s.price!,
+          listedDate: s.listedDate,
+        }
+      : {
+          ...existing!,
+          lastSeenAt: now.toISOString(),
+          lastSeenClicks: s.clicks,
+          currentPrice: s.price!,
+        };
+
+    if (!dryRun) {
+      await redis.set(key, rec);
+    }
+
+    if (isNew) {
+      // First time we see this listing — just record it, take no action yet
+      trackingResults.push({
+        title: s.title,
+        action: "tracking-started",
+        clicks: s.clicks,
+        price: s.price,
+        listedDate: s.listedDate,
+      });
+      continue;
+    }
+
+    // Use FB listedDate to derive createdAt for the price rule engine.
+    // If unavailable, fall back to firstSeenAt (conservative).
+    const createdAt =
+      parseFbListedDate(s.listedDate, now) ??
+      rec.firstSeenAt.slice(0, 10);
+
+    const evalInput = {
+      createdAt,
+      currentPrice: rec.currentPrice,
+      originalPrice: rec.originalPrice,
+      clicks: s.clicks,
+      lastPriceChangeAt: rec.lastPriceChangeAt,
+    };
+    const decision = evaluatePriceDrop(evalInput, now);
+
+    const lastTouchIso = [rec.lastRenewedAt, rec.lastPriceChangeAt]
+      .filter(Boolean)
+      .sort()
+      .pop() as string | undefined;
+    const daysSinceTouch = lastTouchIso
+      ? Math.floor((now.getTime() - new Date(lastTouchIso).getTime()) / MS_PER_DAY)
+      : Infinity;
+    const inCoolOff = daysSinceTouch < 7;
+
+    if (!decision.shouldDrop && decision.ageDays < 14) {
+      trackingResults.push({
+        title: s.title,
+        action: "no-drop",
+        reason: decision.reason,
+        ageDays: decision.ageDays,
+        clicks: s.clicks,
+      });
+      continue;
+    }
+
+    if (inCoolOff) {
+      trackingResults.push({
+        title: s.title,
+        action: "no-action",
+        reason: `Touched ${daysSinceTouch}d ago — 7-day cool-off`,
+        ageDays: decision.ageDays,
+        clicks: s.clicks,
+      });
+      continue;
+    }
+
+    const RENEWAL_VIEWS_THRESHOLD = 3;
+    const newClicksSinceRenewal =
+      rec.lastRenewedAt && rec.clicksAtRenewal != null
+        ? Math.max(0, s.clicks - rec.clicksAtRenewal)
+        : null;
+    const renewalWasEffective =
+      newClicksSinceRenewal != null && newClicksSinceRenewal >= RENEWAL_VIEWS_THRESHOLD;
+
+    const neverRenewed = !rec.lastRenewedAt;
+    const shouldRenewFirst = decision.shouldDrop && (neverRenewed || renewalWasEffective);
+    const shouldDrop = decision.shouldDrop && !shouldRenewFirst && !renewalWasEffective;
+
+    if (shouldRenewFirst) {
+      if (dryRun) {
+        trackingResults.push({
+          title: s.title,
+          action: "would-renew (before drop)",
+          reason: neverRenewed ? "Never renewed" : `Renewal generated ${newClicksSinceRenewal} clicks — renew again`,
+          ageDays: decision.ageDays,
+          clicks: s.clicks,
+        });
+        continue;
+      }
+      try {
+        await updateFacebookPriceByTitle(s.title, rec.currentPrice);
+        const updated: FbTrackingRecord = {
+          ...rec,
+          lastRenewedAt: now.toISOString(),
+          clicksAtRenewal: s.clicks,
+        };
+        await redis.set(key, updated);
+        trackingResults.push({
+          title: s.title,
+          action: "renewed (before drop)",
+          price: rec.currentPrice,
+          ageDays: decision.ageDays,
+          clicks: s.clicks,
+        });
+      } catch (err) {
+        trackingResults.push({
+          title: s.title,
+          action: "renew-failed",
+          error: (err as Error).message,
+        });
+      }
+      continue;
+    }
+
+    if (!decision.shouldDrop) {
+      // Stale but high enough clicks — renew to bump visibility
+      if (dryRun) {
+        trackingResults.push({
+          title: s.title,
+          action: "would-renew",
+          reason: decision.reason,
+          ageDays: decision.ageDays,
+          clicks: s.clicks,
+        });
+        continue;
+      }
+      try {
+        await updateFacebookPriceByTitle(s.title, rec.currentPrice);
+        const updated: FbTrackingRecord = {
+          ...rec,
+          lastRenewedAt: now.toISOString(),
+          clicksAtRenewal: s.clicks,
+        };
+        await redis.set(key, updated);
+        trackingResults.push({
+          title: s.title,
+          action: "renewed",
+          price: rec.currentPrice,
+          ageDays: decision.ageDays,
+          clicks: s.clicks,
+        });
+      } catch (err) {
+        trackingResults.push({
+          title: s.title,
+          action: "renew-failed",
+          error: (err as Error).message,
+        });
+      }
+      continue;
+    }
+
+    // Drop the price
+    if (dryRun) {
+      trackingResults.push({
+        title: s.title,
+        action: "would-drop",
+        from: rec.currentPrice,
+        to: decision.newPrice,
+        reason: `${decision.reason}; renewal was ${
+          renewalWasEffective ? "effective" : "ineffective"
+        } (${newClicksSinceRenewal ?? "n/a"} new clicks since)`,
+        clicks: s.clicks,
+      });
+      continue;
+    }
+
+    try {
+      await updateFacebookPriceByTitle(s.title, decision.newPrice!);
+      // Destructure out renewal fields to reset the cycle cleanly
+      const { lastRenewedAt: _lr, clicksAtRenewal: _car, ...recBase } = rec;
+      const updated: FbTrackingRecord = {
+        ...recBase,
+        currentPrice: decision.newPrice!,
+        lastPriceChangeAt: now.toISOString(),
+      };
+      await redis.set(key, updated);
+      trackingResults.push({
+        title: s.title,
+        action: "dropped",
+        from: rec.currentPrice,
+        to: decision.newPrice,
+        reason: decision.reason,
+        clicks: s.clicks,
+      });
+    } catch (err) {
+      trackingResults.push({
+        title: s.title,
+        action: "drop-failed",
+        from: rec.currentPrice,
+        to: decision.newPrice,
+        error: (err as Error).message,
+      });
+    }
+  }
+
   return Response.json({
     ran: now.toISOString(),
     dryRun,
     eligibleCount: eligible.length,
     scannedCount: scanned.length,
+    orphanCount: orphans.length,
     results,
+    trackingResults,
   });
 }

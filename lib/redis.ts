@@ -66,6 +66,9 @@ export const REDIS_KEYS = {
 
   // eBay OAuth
   ebayToken: "ebay:oauth:token",
+
+  // Facebook click-history tracking (covers listings not in Redis listings:all)
+  fbTracking: (slug: string) => `fb:tracking:${slug}`,
 } as const;
 
 // Types
