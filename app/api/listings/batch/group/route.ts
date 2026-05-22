@@ -8,7 +8,7 @@ const anthropic = new Anthropic();
 
 export const maxDuration = 120;
 
-const DEFAULT_GAP_SECONDS = Number(process.env.BATCH_GROUP_GAP_SECONDS) || 90;
+const DEFAULT_GAP_SECONDS = Number(process.env.BATCH_GROUP_GAP_SECONDS) || 25;
 
 interface VisionVerdict {
   verdict: "yes" | "split" | "merge_previous";
@@ -86,14 +86,10 @@ export async function POST(request: NextRequest) {
     // Pass 1: EXIF clustering (pure)
     const groups = groupByExifGap(photos, gapSeconds);
 
-    // Pass 2: vision sanity check per group
+    // Pass 2: vision sanity check per group (including no-EXIF chunks now
+    // that they are capped at maxGroupSize rather than one giant blob).
     const refined: PhotoGroup[] = [];
     for (const group of groups) {
-      if (group.lowConfidence) {
-        // Skip vision for the no-EXIF tail group; it's already flagged
-        refined.push(group);
-        continue;
-      }
       const verdict = await visionVerdictForGroup(group);
       if (!verdict) {
         refined.push({ ...group, lowConfidence: true, confidenceReason: "Vision check failed" });

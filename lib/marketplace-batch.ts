@@ -19,12 +19,15 @@ export interface PhotoGroup {
 
 /**
  * Cluster photos by EXIF timestamp. Photos within `gapSeconds` of each other
- * stay in the same group; gaps larger than that start a new group.
+ * stay in the same group up to `maxGroupSize` photos; a larger gap OR reaching
+ * maxGroupSize starts a new group. Capping at maxGroupSize ensures the vision
+ * pass sees all photos (not just the first 6 of a massive cluster).
  * Photos with `exifTimestampMs === null` go into their own low-confidence tail group.
  */
 export function groupByExifGap(
   photos: PhotoRecord[],
-  gapSeconds: number = 90
+  gapSeconds: number = 90,
+  maxGroupSize: number = 6
 ): PhotoGroup[] {
   const withTime = photos.filter(p => p.exifTimestampMs !== null)
     .sort((a, b) => (a.exifTimestampMs! - b.exifTimestampMs!));
@@ -36,8 +39,10 @@ export function groupByExifGap(
 
   for (const photo of withTime) {
     const last = groups[groups.length - 1];
+    const withinGap = last && lastTime !== null && (photo.exifTimestampMs! - lastTime) <= gapMs;
+    const groupNotFull = last && last.photoIds.length < maxGroupSize;
 
-    if (last && lastTime !== null && (photo.exifTimestampMs! - lastTime) <= gapMs) {
+    if (withinGap && groupNotFull) {
       last.photoIds.push(photo.photoId);
       last.blobUrls.push(photo.blobUrl);
     } else {
@@ -51,13 +56,16 @@ export function groupByExifGap(
     lastTime = photo.exifTimestampMs;
   }
 
-  if (withoutTime.length > 0) {
+  // Chunk no-EXIF photos into groups of maxGroupSize as well so they also
+  // get vision-checked rather than landing in one giant low-confidence blob.
+  for (let i = 0; i < withoutTime.length; i += maxGroupSize) {
+    const chunk = withoutTime.slice(i, i + maxGroupSize);
     groups.push({
       productId: randomUUID(),
-      photoIds: withoutTime.map(p => p.photoId),
-      blobUrls: withoutTime.map(p => p.blobUrl),
+      photoIds: chunk.map(p => p.photoId),
+      blobUrls: chunk.map(p => p.blobUrl),
       lowConfidence: true,
-      confidenceReason: "No EXIF timestamps; grouped together as fallback",
+      confidenceReason: "No EXIF timestamps",
     });
   }
 
