@@ -28,6 +28,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ListingsTableView } from "@/components/listings-table-view";
+import { LayoutList, LayoutGrid } from "lucide-react";
 
 interface ListingDraft {
   id: string;
@@ -117,6 +119,7 @@ export default function ListingsPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1244,10 +1247,34 @@ export default function ListingsPage() {
         </Card>
       ) : (
         <Tabs defaultValue="drafts">
-          <TabsList>
-            <TabsTrigger value="drafts">Drafts ({drafts.length})</TabsTrigger>
-            <TabsTrigger value="listed">Listed ({listed.length})</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="drafts">Drafts ({drafts.length})</TabsTrigger>
+              <TabsTrigger value="listed">Listed ({listed.length})</TabsTrigger>
+            </TabsList>
+            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+              <button
+                onClick={() => setViewMode("table")}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  viewMode === "table" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Spreadsheet view"
+              >
+                <LayoutList className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Card view"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
 
           <TabsContent value="drafts" className="mt-4 space-y-4">
             {drafts.length === 0 ? (
@@ -1257,6 +1284,18 @@ export default function ListingsPage() {
                   <p className="text-sm text-muted-foreground">No drafts. Upload photos to start a new listing.</p>
                 </CardContent>
               </Card>
+            ) : viewMode === "table" ? (
+              <ListingsTableView
+                listings={drafts}
+                onUpdate={async (id, patch) => { await updateListing(id, patch as any); }}
+                onDelete={async (id) => { await deleteListing(id); }}
+                onPublish={(ids) => {
+                  drafts
+                    .filter(d => ids.includes(d.id))
+                    .forEach(listing => publishToAllSelected(listing));
+                }}
+                publishProgress={publishProgress}
+              />
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">

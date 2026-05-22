@@ -1,0 +1,373 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  ShoppingBag,
+  Store,
+  Facebook,
+  Trash2,
+  ExternalLink,
+  Save,
+  Loader2,
+  Image as ImageIcon,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface ListingDraft {
+  id: string;
+  photos: string[];
+  title: string;
+  price: number | null;
+  quantity: number;
+  condition: string;
+  platforms: ("ebay" | "mercari" | "facebook")[];
+  status: string;
+  facebookListingUrl?: string;
+  mercariListingUrl?: string;
+  ebayListingId?: string;
+  facebookLocalOnly?: boolean;
+  createdAt: string;
+}
+
+interface Props {
+  listings: ListingDraft[];
+  onUpdate: (id: string, patch: Partial<ListingDraft>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onPublish: (ids: string[]) => void;
+  publishProgress: Record<string, string>;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  draft:     "bg-gray-500/10 text-gray-400",
+  ready:     "bg-green-500/10 text-green-400",
+  listing:   "bg-yellow-500/10 text-yellow-400",
+  listed:    "bg-blue-500/10 text-blue-400",
+  error:     "bg-red-500/10 text-red-400",
+  analyzing: "bg-purple-500/10 text-purple-400",
+};
+
+function PlatformCell({
+  listing,
+  onUpdate,
+  saving,
+}: {
+  listing: ListingDraft;
+  onUpdate: (patch: Partial<ListingDraft>) => void;
+  saving: boolean;
+}) {
+  const platforms = listing.platforms ?? [];
+  function toggle(p: "ebay" | "mercari" | "facebook") {
+    const next = platforms.includes(p)
+      ? platforms.filter(x => x !== p)
+      : [...platforms, p];
+    onUpdate({ platforms: next as ListingDraft["platforms"] });
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {(["ebay", "mercari", "facebook"] as const).map(p => {
+        const icons = { ebay: ShoppingBag, mercari: Store, facebook: Facebook };
+        const Icon = icons[p];
+        const active = platforms.includes(p);
+        return (
+          <button
+            key={p}
+            onClick={() => toggle(p)}
+            disabled={saving}
+            title={p}
+            className={cn(
+              "p-1 rounded transition-colors",
+              active
+                ? "text-white bg-white/15 hover:bg-white/20"
+                : "text-white/20 hover:text-white/40"
+            )}
+          >
+            <Icon className="w-3.5 h-3.5" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function InlineNumber({
+  value,
+  onChange,
+  min = 1,
+  prefix,
+  className,
+}: {
+  value: number | null;
+  onChange: (v: number) => void;
+  min?: number;
+  prefix?: string;
+  className?: string;
+}) {
+  const [local, setLocal] = useState(value != null ? String(value) : "");
+  const [focused, setFocused] = useState(false);
+
+  // Sync when parent value changes externally
+  if (!focused && value != null && String(value) !== local) {
+    setLocal(String(value));
+  }
+
+  return (
+    <div className={cn("flex items-center gap-0.5", className)}>
+      {prefix && <span className="text-white/40 text-xs">{prefix}</span>}
+      <input
+        type="number"
+        min={min}
+        value={local}
+        onFocus={() => setFocused(true)}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={() => {
+          setFocused(false);
+          const n = parseFloat(local);
+          if (!isNaN(n) && n >= min) onChange(n);
+          else setLocal(value != null ? String(value) : "");
+        }}
+        onKeyDown={e => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setLocal(value != null ? String(value) : "");
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="w-16 bg-transparent border-b border-white/10 focus:border-white/40 outline-none text-sm text-right py-0.5 px-0 text-white/90"
+      />
+    </div>
+  );
+}
+
+function TitleCell({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [local, setLocal] = useState(value);
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  if (!editing && local !== value) setLocal(value);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={() => { setEditing(false); onChange(local); }}
+        onKeyDown={e => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") { setLocal(value); setEditing(false); }
+        }}
+        autoFocus
+        className="w-full bg-white/5 border border-white/20 rounded px-2 py-0.5 text-sm outline-none text-white"
+      />
+    );
+  }
+  return (
+    <span
+      onClick={() => setEditing(true)}
+      className="cursor-text text-sm text-white/90 hover:text-white line-clamp-2 leading-snug"
+      title="Click to edit"
+    >
+      {value || <span className="italic text-white/30">Untitled</span>}
+    </span>
+  );
+}
+
+export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, publishProgress }: Props) {
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  async function save(id: string, patch: Partial<ListingDraft>) {
+    setSaving(s => ({ ...s, [id]: true }));
+    try { await onUpdate(id, patch); } finally {
+      setSaving(s => ({ ...s, [id]: false }));
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
+    if (selected.size === publishable.length) setSelected(new Set());
+    else setSelected(new Set(publishable.map(l => l.id)));
+  }
+
+  const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
+  const allSelected = publishable.length > 0 && selected.size === publishable.length;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs text-white/40">{listings.length} listings</span>
+        {selected.size > 0 && (
+          <Button
+            size="sm"
+            onClick={() => { onPublish([...selected]); setSelected(new Set()); }}
+            className="h-7 text-xs"
+          >
+            Publish {selected.size} selected
+          </Button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto rounded-lg border border-white/10">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-white/10 bg-white/5">
+              <th className="w-8 py-2 px-2">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  className="border-white/30"
+                />
+              </th>
+              <th className="w-12 py-2 px-2" />
+              <th className="py-2 px-3 text-left text-xs font-medium text-white/50 uppercase tracking-wide">Title</th>
+              <th className="w-16 py-2 px-2 text-right text-xs font-medium text-white/50 uppercase tracking-wide">Price</th>
+              <th className="w-12 py-2 px-2 text-right text-xs font-medium text-white/50 uppercase tracking-wide">Qty</th>
+              <th className="w-28 py-2 px-3 text-center text-xs font-medium text-white/50 uppercase tracking-wide">Platforms</th>
+              <th className="w-20 py-2 px-2 text-center text-xs font-medium text-white/50 uppercase tracking-wide">Status</th>
+              <th className="w-16 py-2 px-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {listings.map((l, i) => {
+              const isSaving = !!saving[l.id];
+              const progress = publishProgress[l.id];
+              const isPublishable = l.status === "ready" || l.status === "draft";
+              return (
+                <tr
+                  key={l.id}
+                  className={cn(
+                    "border-b border-white/5 transition-colors",
+                    i % 2 === 0 ? "bg-white/[0.02]" : "",
+                    selected.has(l.id) ? "bg-purple-500/5" : "hover:bg-white/5"
+                  )}
+                >
+                  {/* Select */}
+                  <td className="py-2 px-2 text-center">
+                    {isPublishable && (
+                      <Checkbox
+                        checked={selected.has(l.id)}
+                        onCheckedChange={() => toggleSelect(l.id)}
+                        className="border-white/30"
+                      />
+                    )}
+                  </td>
+
+                  {/* Thumbnail */}
+                  <td className="py-1.5 px-2">
+                    {l.photos?.[0] ? (
+                      <img
+                        src={l.photos[0]}
+                        alt=""
+                        className="w-10 h-10 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-white/5 rounded flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4 text-white/20" />
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Title */}
+                  <td className="py-2 px-3 max-w-xs">
+                    <TitleCell
+                      value={l.title}
+                      onChange={title => save(l.id, { title })}
+                    />
+                  </td>
+
+                  {/* Price */}
+                  <td className="py-2 px-2 text-right">
+                    <InlineNumber
+                      value={l.price}
+                      prefix="$"
+                      onChange={price => save(l.id, { price })}
+                      className="justify-end"
+                    />
+                  </td>
+
+                  {/* Qty */}
+                  <td className="py-2 px-2 text-right">
+                    <InlineNumber
+                      value={l.quantity ?? 1}
+                      onChange={quantity => save(l.id, { quantity })}
+                      className="justify-end"
+                    />
+                  </td>
+
+                  {/* Platforms */}
+                  <td className="py-2 px-3">
+                    <PlatformCell
+                      listing={l}
+                      onUpdate={patch => save(l.id, patch)}
+                      saving={isSaving}
+                    />
+                  </td>
+
+                  {/* Status */}
+                  <td className="py-2 px-2 text-center">
+                    {progress ? (
+                      <span className="text-xs text-white/50 whitespace-nowrap">{progress}</span>
+                    ) : (
+                      <Badge className={cn("text-xs capitalize border-0 px-1.5", STATUS_STYLES[l.status] || STATUS_STYLES.draft)}>
+                        {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : l.status}
+                      </Badge>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td className="py-2 px-2">
+                    <div className="flex items-center gap-1 justify-end">
+                      {(l.facebookListingUrl || l.mercariListingUrl) && (
+                        <a
+                          href={l.facebookListingUrl ?? l.mercariListingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-white/30 hover:text-white/70 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => onDelete(l.id)}
+                        className="p-1 text-white/20 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {listings.length === 0 && (
+          <div className="py-16 text-center text-white/30 text-sm">
+            No listings yet
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
