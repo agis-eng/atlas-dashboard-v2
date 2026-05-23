@@ -14,6 +14,7 @@ import {
   Save,
   Loader2,
   Image as ImageIcon,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -188,6 +189,31 @@ function TitleCell({
 
 export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, publishProgress }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [researching, setResearching] = useState<Record<string, boolean>>({});
+  const [priceHints, setPriceHints] = useState<Record<string, string>>({});
+
+  async function researchPrice(id: string) {
+    setResearching(r => ({ ...r, [id]: true }));
+    setPriceHints(h => ({ ...h, [id]: "" }));
+    try {
+      const res = await fetch("/api/listings/research-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: id }),
+      });
+      const data = await res.json();
+      if (data.suggestedPrice) {
+        await onUpdate(id, { price: data.suggestedPrice });
+        setPriceHints(h => ({ ...h, [id]: data.message }));
+      } else {
+        setPriceHints(h => ({ ...h, [id]: data.message || data.error || "No results" }));
+      }
+    } catch {
+      setPriceHints(h => ({ ...h, [id]: "Research failed" }));
+    } finally {
+      setResearching(r => ({ ...r, [id]: false }));
+    }
+  }
 
   async function save(id: string, patch: Partial<ListingDraft>) {
     setSaving(s => ({ ...s, [id]: true }));
@@ -292,13 +318,32 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
 
                   {/* Price */}
                   <td className="py-2 px-2 text-right">
-                    <InlineNumber
-                      value={l.price}
-                      prefix="$"
-                      step={1}
-                      onChange={price => save(l.id, { price })}
-                      className="justify-end"
-                    />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => researchPrice(l.id)}
+                          disabled={researching[l.id]}
+                          title="Research eBay sold prices"
+                          className="text-white/20 hover:text-blue-400 transition-colors disabled:opacity-40"
+                        >
+                          {researching[l.id]
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Search className="w-3 h-3" />}
+                        </button>
+                        <InlineNumber
+                          value={l.price}
+                          prefix="$"
+                          step={1}
+                          onChange={price => save(l.id, { price })}
+                          className="justify-end"
+                        />
+                      </div>
+                      {priceHints[l.id] && (
+                        <span className="text-[10px] text-blue-400/70 max-w-[140px] text-right leading-tight">
+                          {priceHints[l.id]}
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Qty */}
