@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { applyRouting, ShippabilityRecommendation } from "@/lib/marketplace-batch";
 import { buildShippabilityPrompt, ShippabilityOutput } from "@/lib/marketplace-prompts";
+import { getEbayPriceSuggestion } from "@/lib/ebay-price";
 
 const anthropic = new Anthropic();
 
@@ -117,7 +118,14 @@ export async function POST(request: NextRequest) {
         const recommendation: ShippabilityRecommendation = shippability?.recommendation || "local_only";
         const routing = applyRouting(recommendation);
 
-        const hasTitleAndPrice = !!ai.suggestedTitle && Number(ai.suggestedPrice) > 0;
+        // Try eBay price research — use it if found, fall back to AI estimate
+        let finalPrice = value;
+        if (ai.suggestedTitle) {
+          const ebay = await getEbayPriceSuggestion(ai.suggestedTitle).catch(() => null);
+          if (ebay?.suggestedPrice) finalPrice = ebay.suggestedPrice;
+        }
+
+        const hasTitleAndPrice = !!ai.suggestedTitle && finalPrice > 0;
         const status: Draft["status"] = (group.lowConfidence || !hasTitleAndPrice) ? "needs_review" : "ready";
 
         drafts.push({
@@ -127,7 +135,7 @@ export async function POST(request: NextRequest) {
           title: ai.suggestedTitle || "",
           description: ai.suggestedDescription || "",
           condition: ai.suggestedCondition || "New",
-          price: value,
+          price: finalPrice,
           weight_lbs: weight,
           dims_in: dims,
           category: ai.suggestedCategory || "",

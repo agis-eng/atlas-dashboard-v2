@@ -225,10 +225,21 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
   const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
   const queued = publishable.filter(l => l.publishQueued);
   const allQueued = publishable.length > 0 && queued.length === publishable.length;
+  const [researchAllProgress, setResearchAllProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function toggleAll() {
     const next = !allQueued;
     await Promise.all(publishable.map(l => save(l.id, { publishQueued: next })));
+  }
+
+  async function researchAllPrices() {
+    const targets = publishable.filter(l => l.title && l.title !== "Untitled");
+    setResearchAllProgress({ done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      await researchPrice(targets[i].id);
+      setResearchAllProgress({ done: i + 1, total: targets.length });
+    }
+    setResearchAllProgress(null);
   }
 
   return (
@@ -236,15 +247,28 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
       {/* Toolbar */}
       <div className="flex items-center justify-between px-1">
         <span className="text-xs text-white/40">{listings.length} listings</span>
-        {queued.length > 0 && (
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
-            onClick={() => onPublish(queued.map(l => l.id))}
+            variant="outline"
+            onClick={researchAllPrices}
+            disabled={!!researchAllProgress}
             className="h-7 text-xs"
           >
-            Publish {queued.length} queued
+            {researchAllProgress
+              ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />{researchAllProgress.done}/{researchAllProgress.total} pricing…</>
+              : <><Search className="w-3 h-3 mr-1" />Research all prices</>}
           </Button>
-        )}
+          {queued.length > 0 && (
+            <Button
+              size="sm"
+              onClick={() => onPublish(queued.map(l => l.id))}
+              className="h-7 text-xs"
+            >
+              Publish {queued.length} queued
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
