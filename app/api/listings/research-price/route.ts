@@ -3,24 +3,37 @@ import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
 
 export const maxDuration = 30;
 
-const EBAY_APP_ID = "AndreaLa-openclaw-PRD-3f61be8bd-dbf814a3";
-
-function median(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
-
-// Strip platform-specific noise from titles to get cleaner search terms
 function cleanTitle(title: string): string {
   return title
     .replace(/\b(new with tags?|nwt|new in box|nib|new in package|nip)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80);
+}
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+async function getEbayAppToken(): Promise<string> {
+  const clientId = process.env.EBAY_CLIENT_ID;
+  const clientSecret = process.env.EBAY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set");
+  const creds = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${creds}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error("Failed to get eBay token");
+  return data.access_token;
 }
 
 export async function POST(request: NextRequest) {
@@ -43,56 +56,47 @@ export async function POST(request: NextRequest) {
     const keywords = cleanTitle(listing.title);
     if (!keywords) return Response.json({ error: "No title to search" }, { status: 400 });
 
+    const token = await getEbayAppToken();
+
     const params = new URLSearchParams({
-      "OPERATION-NAME": "findCompletedItems",
-      "SERVICE-VERSION": "1.0.0",
-      "SECURITY-APPNAME": EBAY_APP_ID,
-      "RESPONSE-DATA-FORMAT": "JSON",
-      "keywords": keywords,
-      "itemFilter(0).name": "SoldItemsOnly",
-      "itemFilter(0).value": "true",
-      "sortOrder": "EndTimeSoonest",
-      "paginationInput.entriesPerPage": "25",
+      q: keywords,
+      limit: "25",
+      filter: "buyingOptions:{FIXED_PRICE}",
     });
 
     const res = await fetch(
-      `https://svcs.ebay.com/services/search/FindingService/v1?${params}`,
-      { headers: { "Content-Type": "application/json" } }
+      `https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`,
+      { headers: { "Authorization": `Bearer ${token}` } }
     );
 
     if (!res.ok) {
-      return Response.json({ error: `eBay API error: ${res.status}` }, { status: 502 });
+      const err = await res.text();
+      return Response.json({ error: `eBay API error: ${res.status}`, details: err.slice(0, 200) }, { status: 502 });
     }
 
     const data = await res.json();
-    const items =
-      data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item ?? [];
-
-    const prices: number[] = items
-      .map((item: any) => {
-        const raw = item?.sellingStatus?.[0]?.currentPrice?.[0]?.["__value__"];
-        return raw ? parseFloat(raw) : null;
-      })
-      .filter((p: number | null): p is number => p !== null && p > 0);
+    const prices: number[] = (data.itemSummaries || [])
+      .map((item: any) => parseFloat(item?.price?.value))
+      .filter((p: number) => !isNaN(p) && p > 0);
 
     if (prices.length === 0) {
       return Response.json({
         suggestedPrice: null,
-        medianSoldPrice: null,
         sampleSize: 0,
-        message: "No sold listings found — try adjusting the title",
+        message: "No active listings found on eBay — try adjusting the title",
       });
     }
 
     const med = median(prices);
-    const suggested = Math.round(med * 0.85);
+    // Active listing prices (not sold) — suggest 10% under median to be competitive
+    const suggested = Math.round(med * 0.90);
 
     return Response.json({
       suggestedPrice: suggested,
-      medianSoldPrice: Math.round(med * 100) / 100,
+      medianListPrice: Math.round(med * 100) / 100,
       sampleSize: prices.length,
       priceRange: { low: Math.min(...prices), high: Math.max(...prices) },
-      message: `Based on ${prices.length} recent eBay sales. Median $${med.toFixed(2)} → suggested $${suggested} (15% under).`,
+      message: `Based on ${prices.length} active eBay listings. Median $${med.toFixed(2)} → suggested $${suggested} (10% under).`,
     });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
