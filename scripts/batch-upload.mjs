@@ -32,6 +32,7 @@ if (!DASHBOARD) die("DASHBOARD_URL env var required");
 if (!FOLDER) die("Usage: node scripts/batch-upload.mjs <folder>");
 
 const ALLOWED = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const LISTED_SUBFOLDER = "Listed";
 
 function die(msg) {
   console.error(`ERROR: ${msg}`);
@@ -43,8 +44,14 @@ async function listPhotos(dir) {
   const out = [];
   for (const name of entries) {
     if (name.startsWith(".")) continue;
+    // Skip the Listed/ subfolder — it's where we move photos once a
+    // listing succeeds, so a re-run won't reprocess old items.
+    if (name === LISTED_SUBFOLDER) continue;
     const ext = path.extname(name).toLowerCase();
     if (!ALLOWED.has(ext)) {
+      const full = path.join(dir, name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (stat?.isDirectory()) continue; // ignore other subdirs silently
       console.warn(`  skip (unsupported ext): ${name}`);
       continue;
     }
@@ -54,6 +61,34 @@ async function listPhotos(dir) {
     out.push({ name, fullPath: full, size: stat.size, ext });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function slugify(s) {
+  return String(s || "untitled")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50) || "untitled";
+}
+
+async function movePhotosToListed(sourceDir, photoNames, listingTitle) {
+  if (!photoNames.length) return { moved: 0, dest: null };
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const folder = `${slugify(listingTitle)}-${dateStr}`;
+  const dest = path.join(sourceDir, LISTED_SUBFOLDER, folder);
+  await fs.mkdir(dest, { recursive: true });
+  let moved = 0;
+  for (const name of photoNames) {
+    const from = path.join(sourceDir, name);
+    const to = path.join(dest, name);
+    try {
+      await fs.rename(from, to);
+      moved++;
+    } catch (err) {
+      console.warn(`     could not move ${name}: ${err.message}`);
+    }
+  }
+  return { moved, dest };
 }
 
 async function uploadOne(batchId, idx, photo) {
@@ -83,6 +118,9 @@ async function uploadOne(batchId, idx, photo) {
     exifTimestampMs,
     sizeBytes: photo.size,
     originalName: photo.name,
+    // Keep the local file path so we can move it to Listed/ after publish.
+    localPath: photo.fullPath,
+    localName: photo.name,
   };
 }
 
@@ -143,12 +181,27 @@ async function callDashboard(pathname, body) {
   console.log(`   Produced ${groups.length} product groups`);
 
   console.log(`\n4. Analyzing ${groups.length} products (title, price, shippability)...`);
-  const { drafts } = await callDashboard("/api/listings/batch/analyze", { groups });
-  console.log(`   Got ${drafts.length} analyzed drafts`);
+  // Analyze in chunks of 10 to avoid serverless 300s timeout on large batches.
+  const ANALYZE_CHUNK = 10;
+  const drafts = [];
+  for (let i = 0; i < groups.length; i += ANALYZE_CHUNK) {
+    const chunk = groups.slice(i, i + ANALYZE_CHUNK);
+    const end = Math.min(i + ANALYZE_CHUNK, groups.length);
+    process.stdout.write(`   analyzing ${i + 1}–${end} of ${groups.length}...`);
+    const result = await callDashboard("/api/listings/batch/analyze", { groups: chunk });
+    drafts.push(...(result.drafts || []));
+    process.stdout.write(` ${result.drafts?.length ?? 0} drafts\n`);
+  }
+  console.log(`   Got ${drafts.length} analyzed drafts total`);
 
   console.log(`\n5. Creating per-item ListingDraft records...`);
   const now = new Date().toISOString();
   let created = 0;
+  // Track which local source files belong to which created listing so we
+  // can move them to Listed/<slug-date>/ after the listing is saved.
+  // Map blobUrl -> { localPath, localName } from the uploaded set:
+  const byBlobUrl = new Map(uploaded.map(u => [u.blobUrl, { localPath: u.localPath, localName: u.localName }]));
+
   for (const d of drafts) {
     const platforms = ["ebay", "mercari", "facebook"].filter(p => d.platforms?.[p]);
     // Omit `id` — POST /api/listings treats body.id as "update existing"
@@ -160,7 +213,9 @@ async function callDashboard(pathname, body) {
       description: d.description || "",
       price: d.price || null,
       quantity: d.quantity || 1,
-      condition: d.condition || "USED_GOOD",
+      // User rule: default condition to "new" — only flip to used if the
+      // user explicitly says so for a specific item in the dashboard later.
+      condition: "NEW",
       category: d.category || "",
       brand: d.brand || undefined,
       platforms,
@@ -177,12 +232,25 @@ async function callDashboard(pathname, body) {
       await callDashboard("/api/listings", record);
       created++;
       console.log(`   [${created}/${drafts.length}] ${record.title} ($${record.price ?? "?"}, ${platforms.join("+")})`);
+
+      // Move this product's source photos to Listed/<slug>-<date>/.
+      const photoLocalNames = (d.blobUrls || [])
+        .map(url => byBlobUrl.get(url)?.localName)
+        .filter(Boolean);
+      if (photoLocalNames.length > 0) {
+        const { moved, dest } = await movePhotosToListed(FOLDER, photoLocalNames, record.title);
+        if (moved > 0) {
+          const relDest = dest ? path.relative(FOLDER, dest) : "";
+          console.log(`         moved ${moved} photo(s) -> ${relDest}/`);
+        }
+      }
     } catch (err) {
       console.error(`   FAILED to create '${record.title}': ${err.message}`);
     }
   }
 
   console.log(`\n✅ Done. Created ${created} of ${drafts.length} listings.`);
+  console.log(`   Source photos moved to ${path.join(FOLDER, LISTED_SUBFOLDER)}/`);
   console.log(`   Open: ${DASHBOARD}/listings`);
 })().catch(err => {
   console.error("\nFATAL:", err);

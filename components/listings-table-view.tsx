@@ -98,12 +98,14 @@ function InlineNumber({
   value,
   onChange,
   min = 1,
+  step = 1,
   prefix,
   className,
 }: {
   value: number | null;
   onChange: (v: number) => void;
   min?: number;
+  step?: number;
   prefix?: string;
   className?: string;
 }) {
@@ -121,6 +123,7 @@ function InlineNumber({
       <input
         type="number"
         min={min}
+        step={step}
         value={local}
         onFocus={() => setFocused(true)}
         onChange={e => setLocal(e.target.value)}
@@ -292,6 +295,7 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
                     <InlineNumber
                       value={l.price}
                       prefix="$"
+                      step={1}
                       onChange={price => save(l.id, { price })}
                       className="justify-end"
                     />
