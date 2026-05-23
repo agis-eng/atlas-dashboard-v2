@@ -30,6 +30,7 @@ interface ListingDraft {
   mercariListingUrl?: string;
   ebayListingId?: string;
   facebookLocalOnly?: boolean;
+  publishQueued?: boolean;
   createdAt: string;
 }
 
@@ -184,7 +185,6 @@ function TitleCell({
 
 export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, publishProgress }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function save(id: string, patch: Partial<ListingDraft>) {
     setSaving(s => ({ ...s, [id]: true }));
@@ -193,36 +193,27 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
     }
   }
 
-  function toggleSelect(id: string) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
-    if (selected.size === publishable.length) setSelected(new Set());
-    else setSelected(new Set(publishable.map(l => l.id)));
-  }
-
   const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
-  const allSelected = publishable.length > 0 && selected.size === publishable.length;
+  const queued = publishable.filter(l => l.publishQueued);
+  const allQueued = publishable.length > 0 && queued.length === publishable.length;
+
+  async function toggleAll() {
+    const next = !allQueued;
+    await Promise.all(publishable.map(l => save(l.id, { publishQueued: next })));
+  }
 
   return (
     <div className="flex flex-col gap-3">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-1">
         <span className="text-xs text-white/40">{listings.length} listings</span>
-        {selected.size > 0 && (
+        {queued.length > 0 && (
           <Button
             size="sm"
-            onClick={() => { onPublish([...selected]); setSelected(new Set()); }}
+            onClick={() => onPublish(queued.map(l => l.id))}
             className="h-7 text-xs"
           >
-            Publish {selected.size} selected
+            Publish {queued.length} queued
           </Button>
         )}
       </div>
@@ -234,7 +225,7 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
             <tr className="border-b border-white/10 bg-white/5">
               <th className="w-8 py-2 px-2">
                 <Checkbox
-                  checked={allSelected}
+                  checked={allQueued}
                   onCheckedChange={toggleAll}
                   className="border-white/30"
                 />
@@ -259,15 +250,15 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
                   className={cn(
                     "border-b border-white/5 transition-colors",
                     i % 2 === 0 ? "bg-white/[0.02]" : "",
-                    selected.has(l.id) ? "bg-purple-500/5" : "hover:bg-white/5"
+                    l.publishQueued ? "bg-purple-500/5" : "hover:bg-white/5"
                   )}
                 >
                   {/* Select */}
                   <td className="py-2 px-2 text-center">
                     {isPublishable && (
                       <Checkbox
-                        checked={selected.has(l.id)}
-                        onCheckedChange={() => toggleSelect(l.id)}
+                        checked={!!l.publishQueued}
+                        onCheckedChange={() => save(l.id, { publishQueued: !l.publishQueued })}
                         className="border-white/30"
                       />
                     )}

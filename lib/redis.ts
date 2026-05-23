@@ -205,6 +205,7 @@ export interface ListingDraft {
   // that should be local pickup only.
   facebookLocalOnly?: boolean;
   facebookError?: string;
+  publishQueued?: boolean;
   error?: string;
   createdAt: string;
   updatedAt: string;

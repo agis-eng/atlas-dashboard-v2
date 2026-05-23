@@ -68,6 +68,7 @@ interface ListingDraft {
   widthIn?: number;
   heightIn?: number;
   facebookLocalOnly?: boolean;
+  publishQueued?: boolean;
   mercariError?: string;
   error?: string;
   createdAt: string;
@@ -1292,7 +1293,10 @@ export default function ListingsPage() {
                 onPublish={(ids) => {
                   drafts
                     .filter(d => ids.includes(d.id))
-                    .forEach(listing => publishToAllSelected(listing));
+                    .forEach(listing => {
+                      updateListing(listing.id, { publishQueued: false });
+                      publishToAllSelected(listing);
+                    });
                 }}
                 publishProgress={publishProgress}
               />
