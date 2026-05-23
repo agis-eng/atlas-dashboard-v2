@@ -8,14 +8,14 @@ import JSZip from 'jszip';
 import { get, set } from 'idb-keyval';
 import { Slide, AIResponse, BrandAsset, Project } from '@/lib/slideboost/types';
 import { APP_THEME } from '@/lib/slideboost/constants';
-import { analyzeAndReviseSlide, removeWatermark, removeNotebookLMLogo, replaceLogo, editSlideImage, upscaleSlideImage } from '@/lib/slideboost/geminiClient';
+import { analyzeAndReviseSlide, removeWatermark, removeNotebookLMLogo, replaceLogo, editSlideImage, upscaleSlideImage, fixTextOnSlide } from '@/lib/slideboost/geminiClient';
 import { 
   ChevronLeft, ChevronRight, Sparkles, FileText, Edit3, CheckCircle, 
   Loader2, Upload, Share2, Plus, Trash2, FileImage, FileIcon, 
   Image as ImageIcon, X, Wand2, Save, Folder, Layers,
   Pencil, Check, Undo2, Zap, ArrowUp, ArrowDown, GripVertical, Download, FileDown,
   RefreshCcw, MonitorUp, Package, CheckSquare, Presentation, Layout, Paperclip,
-  ScanEye, Ban, Maximize2, Eraser
+  ScanEye, Ban, Maximize2, Eraser, SpellCheck
 } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.6.205/build/pdf.worker.min.mjs`;
@@ -857,6 +857,30 @@ export default function SlideBoostApp() {
     finally { setIsCleaning(false); }
   };
 
+  const handleFixText = async () => {
+    const current = slides[currentIndex];
+    if (!current || !instruction || isCleaning || isRemovingNotebookLM) return;
+
+    await ensureApiKey();
+
+    setIsCleaning(true);
+    try {
+      const compressedBase64 = await compressImageForExport(current.base64Data!, 1280, 720);
+      const modified = await fixTextOnSlide(compressedBase64, "image/jpeg", instruction);
+      setSlides(prev => {
+        const next = [...prev];
+        const newHistory = addToHistory(next[currentIndex]);
+        next[currentIndex] = { ...next[currentIndex], base64Data: modified, imageUrl: modified, history: newHistory };
+        return next;
+      });
+    } catch (e) {
+      console.error("Fix text error:", e);
+      alert("Text fix failed: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   const handleUpscale = async () => {
     const current = slides[currentIndex];
     if (!current || isUpscaling || isCleaning || isRemovingNotebookLM) return;
@@ -1427,6 +1451,10 @@ export default function SlideBoostApp() {
                         Apply Visual Edit
                       </button>
                     </div>
+                    <button onClick={handleFixText} disabled={isCleaning || !currentSlide || !instruction} className="w-full py-4 bg-emerald-500 text-white rounded-[24px] font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 disabled:opacity-40">
+                      {isCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <SpellCheck className="w-4 h-4" />}
+                      Fix Typo / Text Correction
+                    </button>
                   </div>
                 </div>
 

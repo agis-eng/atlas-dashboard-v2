@@ -79,6 +79,18 @@ export async function removeWatermark(
   return image;
 }
 
+export async function fixTextOnSlide(
+  slideBase64: string,
+  slideMime: string,
+  instruction: string,
+): Promise<string> {
+  const { image } = await postJSON<{ image: string }>(
+    "/api/slideboost/fix-text",
+    { slideBase64, slideMime, instruction },
+  );
+  return image;
+}
+
 export async function analyzeAndReviseSlide(
   base64WithPrefix: string,
   mimeType: string,

@@ -225,6 +225,41 @@ export async function removeWatermark(base64WithPrefix: string, mimeType: string
   return out;
 }
 
+export async function fixTextOnSlide(
+  slideBase64: string,
+  slideMime: string,
+  instruction: string,
+) {
+  const ai = client();
+
+  const parts = [
+    { inlineData: { data: stripPrefix(slideBase64), mimeType: slideMime } },
+    {
+      text: `SURGICAL TEXT CORRECTION — READ THIS CAREFULLY BEFORE ACTING.
+
+You are a text editor operating on a slide image. Your ONLY job is to find and fix the specific text error described below. Do NOT redesign, restyle, or reimagine anything.
+
+USER INSTRUCTION: "${instruction}"
+
+ABSOLUTE RULES:
+1. FIND the exact text/word described in the instruction.
+2. CORRECT it in place — same font, same size, same weight, same color, same position on the slide.
+3. DO NOT change any other text on the slide.
+4. DO NOT change colors, layout, background, images, shapes, logos, or branding.
+5. The corrected characters must be visually indistinguishable from the surrounding text except that the spelling/content is now correct.
+6. Output at the same resolution as the input.
+
+If the instruction says "fix X" or "replace X with Y" or "X should be Y", locate X precisely and fix only those characters. Nothing else changes.`,
+    },
+  ];
+
+  const { response } = await generateImageWithFallback(ai, parts);
+
+  const out = firstInlineImage(response);
+  if (!out) throw new Error("Text fix failed.");
+  return out;
+}
+
 export async function analyzeAndReviseSlide(
   base64WithPrefix: string,
   mimeType: string,
