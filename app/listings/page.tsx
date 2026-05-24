@@ -251,7 +251,7 @@ export default function ListingsPage() {
           title: existingTitle || data.analysis.suggestedTitle || "",
           description: data.analysis.suggestedDescription || "",
           price: data.analysis.suggestedPrice || null,
-          condition: data.analysis.suggestedCondition || "",
+          condition: data.analysis.suggestedCondition || "New",
           category: data.analysis.suggestedCategory || "",
           brand: data.analysis.suggestedBrand || "",
           aiAnalysis: data.analysis,
@@ -1631,11 +1631,11 @@ function ListingCard({
                     <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
                       type="number"
-                      step="0.01"
+                      step="1"
                       min="0"
                       value={editPrice}
                       onChange={(e) => setEditPrice(e.target.value)}
-                      placeholder="0.00"
+                      placeholder="0"
                       className="pl-7 text-sm"
                     />
                   </div>
