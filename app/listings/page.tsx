@@ -1340,15 +1340,30 @@ export default function ListingsPage() {
                     {drafts.every((d) => selectedIds.has(d.id)) ? "Deselect all" : "Select all"}
                   </Button>
                   {selectedIds.size > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs border-red-300 text-red-600 hover:bg-red-50"
-                      onClick={deleteSelected}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete selected ({selectedIds.size})
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={() => {
+                          drafts
+                            .filter(d => selectedIds.has(d.id))
+                            .forEach(listing => publishToAllSelected(listing, ["facebook"]));
+                          setSelectedIds(new Set());
+                        }}
+                      >
+                        <Facebook className="h-3 w-3 mr-1" />
+                        Post to Facebook ({selectedIds.size})
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs border-red-300 text-red-600 hover:bg-red-50"
+                        onClick={deleteSelected}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Delete selected ({selectedIds.size})
+                      </Button>
+                    </>
                   )}
                 </div>
                 {drafts.map((listing) => (
