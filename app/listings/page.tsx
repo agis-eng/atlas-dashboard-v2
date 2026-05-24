@@ -1314,6 +1314,14 @@ export default function ListingsPage() {
                       publishToAllSelected(listing);
                     });
                 }}
+                onPublishFacebook={(ids) => {
+                  drafts
+                    .filter(d => ids.includes(d.id))
+                    .forEach(listing => {
+                      updateListing(listing.id, { publishQueued: false });
+                      publishToAllSelected(listing, ["facebook"]);
+                    });
+                }}
                 publishProgress={publishProgress}
               />
             ) : (

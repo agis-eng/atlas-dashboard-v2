@@ -40,6 +40,7 @@ interface Props {
   onUpdate: (id: string, patch: Partial<ListingDraft>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPublish: (ids: string[]) => void;
+  onPublishFacebook: (ids: string[]) => void;
   publishProgress: Record<string, string>;
 }
 
@@ -113,7 +114,6 @@ function InlineNumber({
   const [local, setLocal] = useState(value != null ? String(value) : "");
   const [focused, setFocused] = useState(false);
 
-  // Sync when parent value changes externally
   if (!focused && value != null && String(value) !== local) {
     setLocal(String(value));
   }
@@ -187,21 +187,17 @@ function TitleCell({
   );
 }
 
-export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, publishProgress }: Props) {
+export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onPublishFacebook, publishProgress }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [researching, setResearching] = useState<Record<string, boolean>>({});
   const [priceHints, setPriceHints] = useState<Record<string, string>>({});
 
   // Optimistic local queue state — updates immediately on click so the checkbox
   // feels responsive even though the API round-trip takes ~300ms.
-  // Without this, Radix UI's controlled Checkbox component doesn't visually
-  // respond until setListings() fires after the API returns, making users
-  // think their click didn't register.
   const [localQueued, setLocalQueued] = useState<Set<string>>(
     () => new Set(listings.filter(l => l.publishQueued).map(l => l.id))
   );
 
-  // Keep local state in sync when listings prop changes (e.g. after page reload)
   useEffect(() => {
     setLocalQueued(new Set(listings.filter(l => l.publishQueued).map(l => l.id)));
   }, [listings]);
@@ -237,17 +233,13 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
   }
 
   const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
-  // Drive counts from localQueued so the "Publish N queued" button updates instantly
   const localQueuedPublishable = publishable.filter(l => localQueued.has(l.id));
   const allQueued = publishable.length > 0 && localQueuedPublishable.length === publishable.length;
   const [researchAllProgress, setResearchAllProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function toggleAll() {
     const next = !allQueued;
-    // Optimistic update first so UI responds immediately
     setLocalQueued(next ? new Set(publishable.map(l => l.id)) : new Set());
-    // Sequential saves — parallel calls all read the same Redis snapshot and
-    // overwrite each other, causing only the last write to survive.
     for (const l of publishable) {
       await save(l.id, { publishQueued: next });
     }
@@ -255,7 +247,6 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
 
   async function toggleOne(id: string) {
     const next = !localQueued.has(id);
-    // Optimistic update — checkbox responds instantly
     setLocalQueued(prev => {
       const s = new Set(prev);
       if (next) s.add(id); else s.delete(id);
@@ -274,6 +265,8 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
     setResearchAllProgress(null);
   }
 
+  const queuedIds = localQueuedPublishable.map(l => l.id);
+
   return (
     <div className="flex flex-col gap-3">
       {/* Toolbar */}
@@ -291,14 +284,25 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
               ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />{researchAllProgress.done}/{researchAllProgress.total} pricing…</>
               : <><Search className="w-3 h-3 mr-1" />Research all prices</>}
           </Button>
-          {localQueuedPublishable.length > 0 && (
-            <Button
-              size="sm"
-              onClick={() => onPublish(localQueuedPublishable.map(l => l.id))}
-              className="h-7 text-xs"
-            >
-              Publish {localQueuedPublishable.length} queued
-            </Button>
+          {queuedIds.length > 0 && (
+            <>
+              <Button
+                size="sm"
+                onClick={() => onPublishFacebook(queuedIds)}
+                className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Facebook className="w-3 h-3 mr-1" />
+                Post to Facebook ({queuedIds.length})
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onPublish(queuedIds)}
+                className="h-7 text-xs"
+              >
+                Publish all platforms ({queuedIds.length})
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -336,7 +340,7 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, pub
                   className={cn(
                     "border-b border-white/5 transition-colors",
                     i % 2 === 0 ? "bg-white/[0.02]" : "",
-                    isQueued ? "bg-purple-500/5" : "hover:bg-white/5"
+                    isQueued ? "bg-blue-500/5" : "hover:bg-white/5"
                   )}
                 >
                   {/* Select */}
