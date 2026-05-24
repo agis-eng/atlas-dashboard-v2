@@ -225,7 +225,7 @@ export default function ListingsPage() {
     }
   }
 
-  async function analyzePhotos(listingId: string, photos: string[]) {
+  async function analyzePhotos(listingId: string, photos: string[], existingTitle?: string) {
     setAnalyzing(listingId);
 
     // Update status to analyzing
@@ -239,7 +239,7 @@ export default function ListingsPage() {
       const res = await fetch("/api/listings/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photos }),
+        body: JSON.stringify({ photos, existingTitle }),
       });
 
       const data = await res.json();
@@ -247,7 +247,8 @@ export default function ListingsPage() {
       if (res.ok && data.analysis) {
         const update: any = {
           id: listingId,
-          title: data.analysis.suggestedTitle || "",
+          // Preserve user-edited title when reanalyzing; only use AI title on first analyze
+          title: existingTitle || data.analysis.suggestedTitle || "",
           description: data.analysis.suggestedDescription || "",
           price: data.analysis.suggestedPrice || null,
           condition: data.analysis.suggestedCondition || "",
@@ -1357,7 +1358,7 @@ export default function ListingsPage() {
                     onPublishMercari={() => publishToMercari(listing)}
                     onPublishFacebook={() => publishToFacebook(listing)}
                     onPublishAll={(platforms, overrides) => publishToAllSelected(listing, platforms, overrides)}
-                    onReanalyze={() => analyzePhotos(listing.id, listing.photos)}
+                    onReanalyze={(title) => analyzePhotos(listing.id, listing.photos, title)}
                     marketplaceStatus={marketplaceStatus}
                     publishProgress={publishProgress[listing.id]}
                   />
@@ -1439,7 +1440,7 @@ function ListingCard({
   onPublishMercari: () => void;
   onPublishFacebook: () => void;
   onPublishAll: (platforms?: string[], overrides?: Partial<ListingDraft>) => void;
-  onReanalyze: () => void;
+  onReanalyze: (title?: string) => void;
   marketplaceStatus: MarketplaceStatus;
   publishProgress?: string;
 }) {
@@ -1834,7 +1835,7 @@ function ListingCard({
                   size="sm"
                   variant="outline"
                   className="text-xs"
-                  onClick={onReanalyze}
+                  onClick={() => onReanalyze(editTitle || undefined)}
                   disabled={analyzing}
                 >
                   {analyzing ? (

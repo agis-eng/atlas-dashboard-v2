@@ -218,28 +218,42 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
 
                 <div className="flex gap-2 flex-wrap min-h-[4rem]">
                   {listing.photos.map((url, i) => (
-                    <img
-                      key={`${url}-${i}`}
-                      src={url}
-                      alt=""
-                      draggable
-                      onDragStart={e => {
-                        e.stopPropagation();
-                        dragRef.current = { fromId: listing.id, url };
-                        dragImgRef.current = e.currentTarget as HTMLImageElement;
-                        (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
-                      }}
-                      onDragEnd={e => {
-                        (e.currentTarget as HTMLImageElement).style.opacity = "";
-                        dragRef.current = null;
-                        dragImgRef.current = null;
-                        // Clear any leftover drop highlights
-                        document.querySelectorAll("[data-listingid]").forEach(el => {
-                          (el as HTMLElement).style.boxShadow = "";
-                        });
-                      }}
-                      className="w-16 h-16 object-cover rounded-md border border-white/10 hover:border-white/30 cursor-grab active:cursor-grabbing"
-                    />
+                    <div key={`${url}-${i}`} className="relative group">
+                      <img
+                        src={url}
+                        alt=""
+                        draggable
+                        onDragStart={e => {
+                          e.stopPropagation();
+                          dragRef.current = { fromId: listing.id, url };
+                          dragImgRef.current = e.currentTarget as HTMLImageElement;
+                          (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
+                        }}
+                        onDragEnd={e => {
+                          (e.currentTarget as HTMLImageElement).style.opacity = "";
+                          dragRef.current = null;
+                          dragImgRef.current = null;
+                          document.querySelectorAll("[data-listingid]").forEach(el => {
+                            (el as HTMLElement).style.boxShadow = "";
+                          });
+                        }}
+                        className="w-16 h-16 object-cover rounded-md border border-white/10 hover:border-white/30 cursor-grab active:cursor-grabbing"
+                      />
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setLocal(prev => prev.map(l =>
+                            l.id === listing.id
+                              ? { ...l, photos: l.photos.filter(p => p !== url) }
+                              : l
+                          ));
+                        }}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 rounded-full text-white hidden group-hover:flex items-center justify-center leading-none"
+                        title="Delete photo"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
                   ))}
                   {listing.photos.length === 0 && (
                     <div className="w-16 h-16 rounded-md border border-dashed border-white/15 flex items-center justify-center text-white/20 text-[10px]">

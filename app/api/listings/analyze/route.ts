@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { photos } = await request.json();
+    const { photos, existingTitle } = await request.json();
 
     if (!photos || photos.length === 0) {
       return Response.json({ error: "No photos provided" }, { status: 400 });
@@ -42,11 +42,11 @@ export async function POST(request: NextRequest) {
             {
               type: "text",
               text: `You are an expert at creating product listings for online marketplaces (eBay, Mercari, Facebook Marketplace).
-
+${existingTitle ? `\nIMPORTANT: The seller has already identified this item as: "${existingTitle}". Accept this as correct — do NOT suggest a different title. Use this exact product identity when writing the description and selecting category.\n` : ""}
 Analyze these product photos and generate listing details. Return ONLY valid JSON with this structure:
 
 {
-  "suggestedTitle": "concise, keyword-rich title under 80 chars for search visibility",
+  "suggestedTitle": ${existingTitle ? `"${existingTitle}"` : '"concise, keyword-rich title under 80 chars for search visibility"'},
   "suggestedDescription": "3-5 sentence description highlighting key features, condition, dimensions/specs if visible. Include relevant keywords buyers search for.",
   "suggestedPrice": 25,
   "suggestedCategory": "most specific category like 'Electronics > Video Games > Controllers'",
