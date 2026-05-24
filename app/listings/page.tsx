@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ListingsTableView } from "@/components/listings-table-view";
+import { PhotoManager } from "@/components/photo-manager";
 import { LayoutList, LayoutGrid } from "lucide-react";
 
 interface ListingDraft {
@@ -121,6 +122,7 @@ export default function ListingsPage() {
   const [publishProgress, setPublishProgress] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "table">("table");
+  const [showPhotoManager, setShowPhotoManager] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1253,27 +1255,40 @@ export default function ListingsPage() {
               <TabsTrigger value="drafts">Drafts ({drafts.length})</TabsTrigger>
               <TabsTrigger value="listed">Listed ({listed.length})</TabsTrigger>
             </TabsList>
-            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              <button
-                onClick={() => setViewMode("table")}
-                className={cn(
-                  "p-1.5 rounded transition-colors",
-                  viewMode === "table" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-                title="Spreadsheet view"
-              >
-                <LayoutList className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("grid")}
-                className={cn(
-                  "p-1.5 rounded transition-colors",
-                  viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-                title="Card view"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
+            <div className="flex items-center gap-2">
+              {drafts.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setShowPhotoManager(true)}
+                >
+                  <ImageIcon className="h-3 w-3 mr-1" />
+                  Fix Photos
+                </Button>
+              )}
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                <button
+                  onClick={() => setViewMode("table")}
+                  className={cn(
+                    "p-1.5 rounded transition-colors",
+                    viewMode === "table" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Spreadsheet view"
+                >
+                  <LayoutList className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={cn(
+                    "p-1.5 rounded transition-colors",
+                    viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Card view"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1381,6 +1396,15 @@ export default function ListingsPage() {
             )}
           </TabsContent>
         </Tabs>
+      )}
+
+      {showPhotoManager && (
+        <PhotoManager
+          listings={drafts.map(l => ({ id: l.id, photos: l.photos, title: l.title }))}
+          onUpdate={async (id, patch) => { await updateListing(id, patch as any); }}
+          onDelete={async (id) => { await deleteListing(id); }}
+          onClose={() => { setShowPhotoManager(false); loadListings(); }}
+        />
       )}
     </div>
   );
