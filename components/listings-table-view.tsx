@@ -15,6 +15,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Search,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -429,6 +430,21 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
                   <td className="py-2 px-2 text-center">
                     {progress ? (
                       <span className="text-xs text-white/50 whitespace-nowrap">{progress}</span>
+                    ) : (l.status === "listing" || l.status === "error") ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge className={cn("text-xs capitalize border-0 px-1.5", STATUS_STYLES[l.status])}>
+                          {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : l.status}
+                        </Badge>
+                        <button
+                          onClick={() => save(l.id, { status: "ready", error: undefined } as any)}
+                          disabled={isSaving}
+                          title="Reset to Ready"
+                          className="flex items-center gap-0.5 text-[10px] text-white/30 hover:text-white/60 transition-colors disabled:opacity-30"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          Reset
+                        </button>
+                      </div>
                     ) : (
                       <Badge className={cn("text-xs capitalize border-0 px-1.5", STATUS_STYLES[l.status] || STATUS_STYLES.draft)}>
                         {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : l.status}
