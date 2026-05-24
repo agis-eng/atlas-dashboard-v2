@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Search,
   RotateCcw,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -443,6 +444,21 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
                         >
                           <RotateCcw className="w-2.5 h-2.5" />
                           Reset
+                        </button>
+                      </div>
+                    ) : (l.status === "ready" || l.status === "draft") ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge className={cn("text-xs capitalize border-0 px-1.5", STATUS_STYLES[l.status])}>
+                          {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : l.status}
+                        </Badge>
+                        <button
+                          onClick={() => save(l.id, { status: "listed", facebookListingUrl: l.facebookListingUrl || "https://www.facebook.com/marketplace/you/selling" } as any)}
+                          disabled={isSaving}
+                          title="Mark as Listed"
+                          className="flex items-center gap-0.5 text-[10px] text-white/30 hover:text-green-400 transition-colors disabled:opacity-30"
+                        >
+                          <Check className="w-2.5 h-2.5" />
+                          Listed
                         </button>
                       </div>
                     ) : (
