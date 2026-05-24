@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useState, useRef } from "react";
+import { X, Loader2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import crypto from "crypto";
 
 interface Listing {
   id: string;
   photos: string[];
   title: string;
+  isNew?: boolean;
 }
 
 interface Props {
@@ -21,10 +23,12 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
   const [local, setLocal] = useState<Listing[]>(() =>
     listings.map(l => ({ ...l, photos: [...l.photos] }))
   );
-  const [dragging, setDragging] = useState<{ fromId: string; url: string } | null>(null);
-  const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [mergeSource, setMergeSource] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Drag state in refs — avoids React re-renders on every dragover event
+  const dragRef = useRef<{ fromId: string; url: string } | null>(null);
+  const dragImgRef = useRef<HTMLImageElement | null>(null);
 
   function movePhoto(fromId: string, toId: string, url: string) {
     if (fromId === toId) return;
@@ -48,10 +52,35 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
     setMergeSource(null);
   }
 
+  function addNewListing() {
+    const tempId = `new-${crypto.randomUUID()}`;
+    setLocal(prev => [...prev, { id: tempId, photos: [], title: "New listing", isNew: true }]);
+  }
+
   async function save() {
     setSaving(true);
     try {
       for (const l of local) {
+        if (l.isNew) {
+          // Create new listing via API (no id = creates new record)
+          if (l.photos.length > 0) {
+            await fetch("/api/listings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                photos: l.photos,
+                title: "New listing",
+                status: "draft",
+                platforms: ["facebook"],
+                condition: "New",
+                quantity: 1,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }),
+            });
+          }
+          continue;
+        }
         const original = listings.find(o => o.id === l.id);
         if (!original) continue;
         if (JSON.stringify(original.photos) !== JSON.stringify(l.photos)) {
@@ -78,10 +107,17 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
           <div>
             <h2 className="font-semibold text-white text-sm">Photo Manager</h2>
             <p className="text-xs text-white/40 mt-0.5">
-              Drag photos between listings · Use "Merge →" to combine two listings
+              Drag photos between listings · Merge → to combine · + New Listing for orphaned photos
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={addNewListing}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-white text-xs rounded-lg font-medium flex items-center gap-1 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              New Listing
+            </button>
             <button
               onClick={save}
               disabled={saving}
@@ -100,60 +136,78 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {local.map(listing => {
             const isSource = mergeSource === listing.id;
-            const isDropTarget = dragTarget === listing.id && dragging?.fromId !== listing.id;
-            const isMergeTarget = mergeSource && mergeSource !== listing.id;
+            const isMergeTarget = !!mergeSource && mergeSource !== listing.id;
 
             return (
               <div
                 key={listing.id}
+                data-listingid={listing.id}
                 className={cn(
-                  "rounded-lg border p-3 transition-all",
+                  "rounded-lg border p-3 transition-colors",
                   isSource
                     ? "border-purple-500/60 bg-purple-500/10"
-                    : isDropTarget
-                    ? "border-blue-400/60 bg-blue-400/10"
                     : isMergeTarget
                     ? "border-purple-400/30 bg-purple-400/5 cursor-pointer hover:border-purple-400/60 hover:bg-purple-400/10"
+                    : listing.isNew
+                    ? "border-dashed border-white/20 bg-white/[0.01]"
                     : "border-white/10 bg-white/[0.02]"
                 )}
-                onDragOver={e => {
+                onDragOver={e => e.preventDefault()}
+                onDragEnter={e => {
                   e.preventDefault();
-                  setDragTarget(listing.id);
+                  if (dragRef.current && dragRef.current.fromId !== listing.id) {
+                    (e.currentTarget as HTMLElement).style.boxShadow = "inset 0 0 0 2px rgba(96,165,250,0.6)";
+                  }
                 }}
-                onDragLeave={() => setDragTarget(null)}
+                onDragLeave={e => {
+                  // Only clear if leaving the listing card itself (not a child)
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    (e.currentTarget as HTMLElement).style.boxShadow = "";
+                  }
+                }}
                 onDrop={e => {
                   e.preventDefault();
-                  setDragTarget(null);
-                  if (dragging) {
-                    movePhoto(dragging.fromId, listing.id, dragging.url);
-                    setDragging(null);
+                  (e.currentTarget as HTMLElement).style.boxShadow = "";
+                  if (dragRef.current) {
+                    movePhoto(dragRef.current.fromId, listing.id, dragRef.current.url);
+                    dragRef.current = null;
+                    // Remove opacity from the dragged image
+                    if (dragImgRef.current) {
+                      dragImgRef.current.style.opacity = "";
+                      dragImgRef.current = null;
+                    }
                   }
                 }}
                 onClick={() => {
-                  if (isMergeTarget && mergeSource) {
-                    mergeInto(mergeSource, listing.id);
-                  }
+                  if (isMergeTarget && mergeSource) mergeInto(mergeSource, listing.id);
                 }}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs text-white/70 truncate flex-1 leading-tight">
-                    {listing.title || <span className="italic text-white/30">Untitled</span>}
+                    {listing.isNew
+                      ? <span className="italic text-white/40">New listing — drag photos here</span>
+                      : listing.title || <span className="italic text-white/30">Untitled</span>
+                    }
                   </span>
-                  <span className="text-xs text-white/25 shrink-0">{listing.photos.length} photo{listing.photos.length !== 1 ? "s" : ""}</span>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      setMergeSource(isSource ? null : listing.id);
-                    }}
-                    className={cn(
-                      "text-xs px-2 py-0.5 rounded shrink-0 transition-colors",
-                      isSource
-                        ? "bg-purple-500/30 text-purple-300 hover:bg-purple-500/40"
-                        : "text-white/30 hover:text-white/60 hover:bg-white/10"
-                    )}
-                  >
-                    {isSource ? "Cancel" : "Merge →"}
-                  </button>
+                  <span className="text-xs text-white/25 shrink-0">
+                    {listing.photos.length} photo{listing.photos.length !== 1 ? "s" : ""}
+                  </span>
+                  {!listing.isNew && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setMergeSource(isSource ? null : listing.id);
+                      }}
+                      className={cn(
+                        "text-xs px-2 py-0.5 rounded shrink-0 transition-colors",
+                        isSource
+                          ? "bg-purple-500/30 text-purple-300 hover:bg-purple-500/40"
+                          : "text-white/30 hover:text-white/60 hover:bg-white/10"
+                      )}
+                    >
+                      {isSource ? "Cancel" : "Merge →"}
+                    </button>
+                  )}
                 </div>
 
                 {isMergeTarget && (
@@ -171,23 +225,25 @@ export function PhotoManager({ listings, onUpdate, onDelete, onClose }: Props) {
                       draggable
                       onDragStart={e => {
                         e.stopPropagation();
-                        setDragging({ fromId: listing.id, url });
+                        dragRef.current = { fromId: listing.id, url };
+                        dragImgRef.current = e.currentTarget as HTMLImageElement;
+                        (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
                       }}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setDragTarget(null);
+                      onDragEnd={e => {
+                        (e.currentTarget as HTMLImageElement).style.opacity = "";
+                        dragRef.current = null;
+                        dragImgRef.current = null;
+                        // Clear any leftover drop highlights
+                        document.querySelectorAll("[data-listingid]").forEach(el => {
+                          (el as HTMLElement).style.boxShadow = "";
+                        });
                       }}
-                      className={cn(
-                        "w-16 h-16 object-cover rounded-md border cursor-grab active:cursor-grabbing transition-opacity",
-                        dragging?.url === url && dragging?.fromId === listing.id
-                          ? "opacity-40 border-white/30"
-                          : "border-white/10 hover:border-white/30"
-                      )}
+                      className="w-16 h-16 object-cover rounded-md border border-white/10 hover:border-white/30 cursor-grab active:cursor-grabbing"
                     />
                   ))}
                   {listing.photos.length === 0 && (
                     <div className="w-16 h-16 rounded-md border border-dashed border-white/15 flex items-center justify-center text-white/20 text-[10px]">
-                      empty
+                      drop here
                     </div>
                   )}
                 </div>
