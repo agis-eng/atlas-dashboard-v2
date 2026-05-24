@@ -898,6 +898,15 @@ export default function ListingsPage() {
     }
   }
 
+  async function bulkPublishFacebook(ids: string[]) {
+    const targets = listings.filter(l => ids.includes(l.id) && l.status !== "listed");
+    setSelectedIds(new Set());
+    for (const listing of targets) {
+      await publishToAllSelected(listing, ["facebook"]);
+    }
+    await loadListings();
+  }
+
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -1314,14 +1323,7 @@ export default function ListingsPage() {
                       publishToAllSelected(listing);
                     });
                 }}
-                onPublishFacebook={(ids) => {
-                  drafts
-                    .filter(d => ids.includes(d.id))
-                    .forEach(listing => {
-                      updateListing(listing.id, { publishQueued: false });
-                      publishToAllSelected(listing, ["facebook"]);
-                    });
-                }}
+                onPublishFacebook={(ids) => { bulkPublishFacebook(ids); }}
                 publishProgress={publishProgress}
               />
             ) : (
@@ -1344,12 +1346,7 @@ export default function ListingsPage() {
                       <Button
                         size="sm"
                         className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => {
-                          drafts
-                            .filter(d => selectedIds.has(d.id))
-                            .forEach(listing => publishToAllSelected(listing, ["facebook"]));
-                          setSelectedIds(new Set());
-                        }}
+                        onClick={() => bulkPublishFacebook(Array.from(selectedIds))}
                       >
                         <Facebook className="h-3 w-3 mr-1" />
                         Post to Facebook ({selectedIds.size})
@@ -1437,12 +1434,7 @@ export default function ListingsPage() {
           <Button
             size="sm"
             className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4"
-            onClick={() => {
-              drafts
-                .filter(d => selectedIds.has(d.id))
-                .forEach(listing => publishToAllSelected(listing, ["facebook"]));
-              setSelectedIds(new Set());
-            }}
+            onClick={() => bulkPublishFacebook(Array.from(selectedIds))}
           >
             <Facebook className="h-3 w-3 mr-1" />
             Post to Facebook
