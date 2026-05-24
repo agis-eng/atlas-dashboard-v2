@@ -799,11 +799,11 @@ export default function ListingsPage() {
     }
     if (actual.length === 0) return;
 
-    const tasks: Array<{ platform: string; promise: Promise<any> }> = [];
-    if (actual.includes("ebay")) tasks.push({ platform: "ebay", promise: publishToEbay(merged) });
-    if (actual.includes("mercari")) tasks.push({ platform: "mercari", promise: publishToMercari(merged) });
-    if (actual.includes("facebook")) tasks.push({ platform: "facebook", promise: publishToFacebook(merged) });
-    const results = await Promise.allSettled(tasks.map((t) => t.promise));
+    // Run platforms sequentially — Mac Mini can only handle one browser session at a time.
+    // Concurrent sessions cause race conditions and Redis overwrites.
+    if (actual.includes("ebay")) await publishToEbay(merged);
+    if (actual.includes("mercari")) await publishToMercari(merged);
+    if (actual.includes("facebook")) await publishToFacebook(merged);
 
     // Reconcile final status from server state so one platform's success
     // doesn't mislabel the overall listing.
@@ -854,7 +854,7 @@ export default function ListingsPage() {
         body: JSON.stringify({ listingId: listing.id, step: "start" }),
       });
       const startData = await startRes.json();
-      if (!startRes.ok) throw new Error(startData.details || startData.error || "Failed to open Facebook");
+      if (!startRes.ok) throw new Error(String(startData.details || startData.error || "Failed to open Facebook"));
       sessionId = startData.sessionId || "";
 
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Uploading photos & filling details..." }));
@@ -864,7 +864,7 @@ export default function ListingsPage() {
         body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill" }),
       });
       const fillData = await fillRes.json();
-      if (!fillRes.ok) throw new Error(fillData.details || fillData.error || "Failed to fill fields");
+      if (!fillRes.ok) throw new Error(String(fillData.details || fillData.error || "Failed to fill fields"));
 
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
       const submitRes = await fetch("/api/listings/publish/facebook", {
@@ -873,9 +873,9 @@ export default function ListingsPage() {
         body: JSON.stringify({ listingId: listing.id, sessionId, step: "submit" }),
       });
       const submitData = await submitRes.json();
-      if (!submitRes.ok) throw new Error(submitData.details || submitData.error || "Failed to publish");
+      if (!submitRes.ok) throw new Error(String(submitData.details || submitData.error || "Failed to publish"));
       if (submitData.success === false) {
-        throw new Error(submitData.details || submitData.error || "Publish did not complete — check the browser window");
+        throw new Error(String(submitData.details || submitData.error || "Publish did not complete — check the browser window"));
       }
 
       await updateListing(listing.id, {
