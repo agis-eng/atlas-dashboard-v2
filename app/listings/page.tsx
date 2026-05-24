@@ -1430,6 +1430,40 @@ export default function ListingsPage() {
           onClose={() => { setShowPhotoManager(false); loadListings(); }}
         />
       )}
+
+      {viewMode === "grid" && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-2xl border border-white/10 bg-[#1a1a1a]/90 backdrop-blur-md">
+          <span className="text-xs text-white/50 pr-1">{selectedIds.size} selected</span>
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4"
+            onClick={() => {
+              drafts
+                .filter(d => selectedIds.has(d.id))
+                .forEach(listing => publishToAllSelected(listing, ["facebook"]));
+              setSelectedIds(new Set());
+            }}
+          >
+            <Facebook className="h-3 w-3 mr-1" />
+            Post to Facebook
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs border-red-400/50 text-red-400 hover:bg-red-500/10 rounded-full px-4"
+            onClick={deleteSelected}
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Delete
+          </Button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-1 text-white/30 hover:text-white/70 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
