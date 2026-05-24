@@ -1573,12 +1573,23 @@ function ListingCard({
         {/* Photo strip */}
         <div className="flex gap-1 p-2 overflow-x-auto bg-muted/30">
           {listing.photos.map((photo, i) => (
-            <img
-              key={i}
-              src={photo}
-              alt={`Photo ${i + 1}`}
-              className="h-20 w-20 sm:h-24 sm:w-24 object-cover rounded-lg shrink-0"
-            />
+            <div key={i} className="relative group shrink-0">
+              <img
+                src={photo}
+                alt={`Photo ${i + 1}`}
+                className="h-20 w-20 sm:h-24 sm:w-24 object-cover rounded-lg"
+              />
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  onUpdate({ photos: listing.photos.filter((_, idx) => idx !== i) });
+                }}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-white hidden group-hover:flex items-center justify-center shadow-md"
+                title="Remove photo"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           ))}
         </div>
 
