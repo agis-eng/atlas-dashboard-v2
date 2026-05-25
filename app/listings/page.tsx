@@ -123,6 +123,8 @@ export default function ListingsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const [showPhotoManager, setShowPhotoManager] = useState(false);
+  const [queueRunning, setQueueRunning] = useState(false);
+  const batchModeRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -715,7 +717,7 @@ export default function ListingsPage() {
         status: "error",
         error: `Mercari: ${err.message}`,
       });
-      alert(`Mercari publish failed:\n${err.message}`);
+      if (!batchModeRef.current) alert(`Mercari publish failed:\n${err.message}`);
     } finally {
       setPublishProgress((prev) => {
         const next = { ...prev };
@@ -819,9 +821,9 @@ export default function ListingsPage() {
           if (actual.includes("mercari")) (current.mercariListingUrl ? posted : failed).push("Mercari");
           if (actual.includes("facebook")) (current.facebookListingUrl ? posted : failed).push("Facebook");
           if (failed.length === 0) {
-            alert(`Listed to ${posted.join(", ")}`);
+            if (!batchModeRef.current) alert(`Listed to ${posted.join(", ")}`);
           } else {
-            alert(
+            if (!batchModeRef.current) alert(
               `Listed: ${posted.join(", ") || "none"}\nFailed: ${failed.join(", ")}\nFix and retry the failed ones.`
             );
             // Ensure status isn't "listed" if some platforms didn't post
@@ -888,7 +890,7 @@ export default function ListingsPage() {
         status: "error",
         error: `Facebook: ${err.message}`,
       });
-      alert(`Facebook publish failed:\n${err.message}`);
+      if (!batchModeRef.current) alert(`Facebook publish failed:\n${err.message}`);
     } finally {
       setPublishProgress((prev) => {
         const next = { ...prev };
@@ -905,6 +907,36 @@ export default function ListingsPage() {
       await publishToAllSelected(listing, ["facebook"]);
     }
     await loadListings();
+  }
+
+  async function bulkPublishAll(ids: string[]) {
+    const targets = listings.filter(l => ids.includes(l.id) && l.status !== "listed");
+    if (!targets.length) return;
+    setQueueRunning(true);
+    batchModeRef.current = true;
+    setSelectedIds(new Set());
+    let succeeded = 0, failed = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const listing = targets[i];
+      setPublishProgress(prev => ({ ...prev, [listing.id]: `Queue ${i + 1}/${targets.length}` }));
+      await updateListing(listing.id, { publishQueued: false });
+      await publishToAllSelected(listing);
+      // Check result from server
+      try {
+        const res = await fetch("/api/listings");
+        if (res.ok) {
+          const data = await res.json();
+          const current = (data.listings || []).find((l: any) => l.id === listing.id);
+          if (current?.status === "listed") succeeded++;
+          else failed++;
+        }
+      } catch { failed++; }
+      setPublishProgress(prev => { const n = { ...prev }; delete n[listing.id]; return n; });
+    }
+    batchModeRef.current = false;
+    setQueueRunning(false);
+    await loadListings();
+    alert(`Queue done: ${succeeded} listed, ${failed} failed`);
   }
 
   function toggleExpand(id: string) {
@@ -1315,15 +1347,9 @@ export default function ListingsPage() {
                 listings={drafts}
                 onUpdate={async (id, patch) => { await updateListing(id, patch as any); }}
                 onDelete={async (id) => { await deleteListing(id); }}
-                onPublish={(ids) => {
-                  drafts
-                    .filter(d => ids.includes(d.id))
-                    .forEach(listing => {
-                      updateListing(listing.id, { publishQueued: false });
-                      publishToAllSelected(listing);
-                    });
-                }}
+                onPublish={(ids) => { bulkPublishAll(ids); }}
                 onPublishFacebook={(ids) => { bulkPublishFacebook(ids); }}
+                queueRunning={queueRunning}
                 publishProgress={publishProgress}
               />
             ) : (
@@ -1433,11 +1459,21 @@ export default function ListingsPage() {
           <span className="text-xs text-white/50 pr-1">{selectedIds.size} selected</span>
           <Button
             size="sm"
+            className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white rounded-full px-4"
+            disabled={queueRunning}
+            onClick={() => bulkPublishAll(Array.from(selectedIds))}
+          >
+            {queueRunning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ShoppingBag className="h-3 w-3 mr-1" />}
+            {queueRunning ? "Running..." : "Publish All"}
+          </Button>
+          <Button
+            size="sm"
             className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4"
+            disabled={queueRunning}
             onClick={() => bulkPublishFacebook(Array.from(selectedIds))}
           >
             <Facebook className="h-3 w-3 mr-1" />
-            Post to Facebook
+            Facebook only
           </Button>
           <Button
             size="sm"

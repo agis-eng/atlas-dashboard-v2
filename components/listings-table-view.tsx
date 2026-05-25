@@ -43,6 +43,7 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
   onPublish: (ids: string[]) => void;
   onPublishFacebook: (ids: string[]) => void;
+  queueRunning?: boolean;
   publishProgress: Record<string, string>;
 }
 
@@ -189,7 +190,7 @@ function TitleCell({
   );
 }
 
-export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onPublishFacebook, publishProgress }: Props) {
+export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onPublishFacebook, queueRunning, publishProgress }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [researching, setResearching] = useState<Record<string, boolean>>({});
   const [priceHints, setPriceHints] = useState<Record<string, string>>({});
@@ -300,9 +301,12 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
                 size="sm"
                 variant="outline"
                 onClick={() => onPublish(queuedIds)}
+                disabled={queueRunning}
                 className="h-7 text-xs"
               >
-                Publish all platforms ({queuedIds.length})
+                {queueRunning
+                  ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Running queue...</>
+                  : `Publish all platforms (${queuedIds.length})`}
               </Button>
             </>
           )}
