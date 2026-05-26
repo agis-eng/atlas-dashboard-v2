@@ -26,6 +26,7 @@ import {
   Store,
   Facebook,
   RotateCcw,
+  TrendingDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildAspects } from "@/lib/ebay-aspects";
@@ -1568,6 +1569,33 @@ function ListingCard({
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
     new Set(listing.platforms)
   );
+  const [priceResearch, setPriceResearch] = useState<{
+    suggestedPrice: number | null;
+    medianListPrice: number | null;
+    sampleSize: number;
+    source?: "sold" | "listed";
+    message: string;
+  } | null>(null);
+  const [researchingPrice, setResearchingPrice] = useState(false);
+
+  async function researchPrice() {
+    setResearchingPrice(true);
+    try {
+      const res = await fetch("/api/listings/research-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Research failed");
+      setPriceResearch(data);
+      if (data.suggestedPrice !== null) setEditPrice(data.suggestedPrice.toString());
+    } catch (e: any) {
+      setPriceResearch({ suggestedPrice: null, medianListPrice: null, sampleSize: 0, message: e.message });
+    } finally {
+      setResearchingPrice(false);
+    }
+  }
 
   // Sync local state when listing updates (e.g., after AI analysis)
   useEffect(() => {
@@ -1742,9 +1770,24 @@ function ListingCard({
               {/* Price + Condition row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">
-                    Price
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Price
+                    </label>
+                    <button
+                      type="button"
+                      onClick={researchPrice}
+                      disabled={researchingPrice}
+                      className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 disabled:opacity-50"
+                    >
+                      {researchingPrice ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3" />
+                      )}
+                      {researchingPrice ? "Researching…" : "Research"}
+                    </button>
+                  </div>
                   <div className="relative">
                     <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
@@ -1757,6 +1800,30 @@ function ListingCard({
                       className="pl-7 text-sm"
                     />
                   </div>
+                  {priceResearch && (
+                    <div className="mt-1.5 rounded-md bg-muted/50 px-2.5 py-2 text-xs space-y-0.5">
+                      {priceResearch.medianListPrice !== null ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              eBay {priceResearch.source === "sold" ? "sold" : "listed"} median
+                            </span>
+                            <span className="font-medium">${priceResearch.medianListPrice.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Suggested ({priceResearch.sampleSize} items)
+                            </span>
+                            <span className="font-medium text-green-600">
+                              {priceResearch.suggestedPrice !== null ? `$${priceResearch.suggestedPrice}` : "—"}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-muted-foreground">{priceResearch.message}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1">

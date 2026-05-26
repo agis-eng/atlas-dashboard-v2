@@ -11,8 +11,30 @@ async function getTokenFromRedis(): Promise<string> {
     const raw = await redis.get(REDIS_KEYS.ebayToken);
     if (!raw) return "";
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (data.expires_at && new Date(data.expires_at) < new Date()) return "";
-    return data.access_token || "";
+    const expired = data.expires_at && new Date(data.expires_at) < new Date();
+    if (!expired) return data.access_token || "";
+    // Token expired — refresh it using the stored refresh_token.
+    if (data.refresh_token && process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET) {
+      const creds = Buffer.from(`${process.env.EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString("base64");
+      const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+        method: "POST",
+        headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: data.refresh_token }).toString(),
+      });
+      if (res.ok) {
+        const refreshed = await res.json();
+        if (refreshed.access_token) {
+          const newData = {
+            access_token: refreshed.access_token,
+            refresh_token: refreshed.refresh_token || data.refresh_token,
+            expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+          };
+          await redis.set(REDIS_KEYS.ebayToken, JSON.stringify(newData));
+          return newData.access_token;
+        }
+      }
+    }
+    return "";
   } catch {
     return "";
   }
@@ -134,6 +156,28 @@ export async function GET(request: NextRequest) {
         );
         const data = await res.json();
         return Response.json(data, { status: res.status });
+      }
+
+      case "category-aspects": {
+        const categoryId = searchParams.get("categoryId") || "";
+        if (!categoryId) return Response.json({ error: "categoryId required" }, { status: 400 });
+        const res = await fetch(
+          `${baseUrl}/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`,
+          { headers: ebayHeaders(token) }
+        );
+        const data = await res.json();
+        // Return only the required aspects with their allowed values + mode
+        const required = (data.aspects || [])
+          .filter((a: any) => a.aspectConstraint?.aspectRequired)
+          .map((a: any) => ({
+            localizedAspectName: a.localizedAspectName,
+            aspectConstraint: {
+              aspectRequired: true,
+              aspectMode: a.aspectConstraint?.aspectMode,
+            },
+            aspectValues: a.aspectValues,
+          }));
+        return Response.json({ aspects: required }, { status: res.status });
       }
 
       default:
