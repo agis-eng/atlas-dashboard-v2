@@ -28,6 +28,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildAspects } from "@/lib/ebay-aspects";
 import { ListingsTableView } from "@/components/listings-table-view";
 import { PhotoManager } from "@/components/photo-manager";
 import { LayoutList, LayoutGrid } from "lucide-react";
@@ -352,50 +353,16 @@ export default function ListingsPage() {
     await updateListing(listing.id, { status: "listing" });
 
     try {
-      // Token is handled server-side (env var or Redis). Pass from localStorage if available.
       const savedSettings = localStorage.getItem("ebay-settings");
       const settings = savedSettings ? JSON.parse(savedSettings) : {};
-      const token = settings.token || ""; // may be empty — server will use Redis/env fallback
+      const token = settings.token || ""; // may be empty — server uses Redis/env fallback
       const env = settings.environment || "production";
 
       const sku = `LISTING-${listing.id.slice(0, 8)}`;
-
-      // Build image URLs — need full public URL for eBay
       const baseUrl = window.location.origin;
       const imageUrls = listing.photos.map((p) => p.startsWith("http") ? p : `${baseUrl}${p}`);
 
-      // Step 1: Create inventory item
-      const invRes = await fetch("/api/ebay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create-inventory-item",
-          token,
-          env,
-          sku,
-          product: {
-            title: listing.title,
-            description: listing.description,
-            imageUrls,
-            aspects: {
-              Brand: [listing.brand || "Unbranded"],
-              "Size Type": [listing.sizeType || "Regular"],
-              ...(listing.size ? { Size: [listing.size] } : {}),
-            },
-          },
-          condition: EBAY_CONDITION_MAP[listing.condition] || "USED_GOOD",
-          availability: {
-            shipToLocationAvailability: { quantity: listing.quantity || 1 },
-          },
-        }),
-      });
-
-      if (!invRes.ok) {
-        const errData = await invRes.json();
-        throw new Error(errData.errors?.[0]?.message || errData.error || "Failed to create inventory item");
-      }
-
-      // Look up eBay category ID from listing title
+      // Step 1: Look up category FIRST (required aspects depend on it)
       let categoryId = "";
       try {
         const catRes = await fetch(`/api/ebay?action=categories&q=${encodeURIComponent(listing.title)}&env=${env}`);
@@ -405,7 +372,40 @@ export default function ListingsPage() {
         }
       } catch {}
 
-      // Fetch eBay policies
+      // Step 2: Fetch the category's REQUIRED item specifics and fill them
+      let requiredAspects: any[] = [];
+      if (categoryId) {
+        try {
+          const aspRes = await fetch(`/api/ebay?action=category-aspects&categoryId=${categoryId}&env=${env}`);
+          if (aspRes.ok) {
+            const aspData = await aspRes.json();
+            requiredAspects = aspData.aspects || [];
+          }
+        } catch {}
+      }
+      const aspects = buildAspects(
+        { title: listing.title, description: listing.description, category: listing.category, brand: listing.brand, size: listing.size, sizeType: listing.sizeType },
+        requiredAspects
+      );
+
+      // Step 3: Create inventory item with the full aspect set
+      const invRes = await fetch("/api/ebay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create-inventory-item",
+          token, env, sku,
+          product: { title: listing.title.slice(0, 80), description: listing.description, imageUrls, aspects },
+          condition: EBAY_CONDITION_MAP[listing.condition] || "USED_GOOD",
+          availability: { shipToLocationAvailability: { quantity: listing.quantity || 1 } },
+        }),
+      });
+      if (!invRes.ok) {
+        const errData = await invRes.json();
+        throw new Error(errData.errors?.[0]?.message || errData.error || "Failed to create inventory item");
+      }
+
+      // Fetch eBay business policies
       let policies = { fulfillmentPolicyId: "", returnPolicyId: "", paymentPolicyId: "" };
       try {
         const polRes = await fetch("/api/ebay/policies");
@@ -415,54 +415,51 @@ export default function ListingsPage() {
         }
       } catch {}
 
-      // Step 2: Create offer
+      const offerPayload = {
+        sku, marketplaceId: "EBAY_US", format: "FIXED_PRICE",
+        listingDescription: listing.description,
+        pricingSummary: { price: { value: String(listing.price), currency: "USD" } },
+        availableQuantity: listing.quantity || 1,
+        listingPolicies: {
+          fulfillmentPolicyId: policies.fulfillmentPolicyId,
+          returnPolicyId: policies.returnPolicyId,
+          paymentPolicyId: policies.paymentPolicyId,
+        },
+        countryCode: "US", merchantLocationKey: "default", categoryId,
+      };
+
+      // Step 4: Create offer (reuse + update if one already exists for this SKU)
+      let offerId = "";
       const offerRes = await fetch("/api/ebay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create-offer",
-          token,
-          env,
-          sku,
-          marketplaceId: "EBAY_US",
-          format: "FIXED_PRICE",
-          listingDescription: listing.description,
-          pricingSummary: {
-            price: { value: String(listing.price), currency: "USD" },
-          },
-          availableQuantity: listing.quantity || 1,
-          listingPolicies: {
-            fulfillmentPolicyId: policies.fulfillmentPolicyId,
-            returnPolicyId: policies.returnPolicyId,
-            paymentPolicyId: policies.paymentPolicyId,
-          },
-          countryCode: "US",
-          merchantLocationKey: "default",
-          categoryId,
-        }),
+        body: JSON.stringify({ action: "create-offer", token, env, ...offerPayload }),
       });
-
       const offerData = await offerRes.json();
       if (!offerRes.ok) {
-        throw new Error(offerData.errors?.[0]?.message || offerData.error || "Failed to create offer");
+        const isDup = (offerData.errors || []).some((e: any) => /already exists/i.test(e.message || ""));
+        if (isDup) {
+          offerId = offerData.errors[0].parameters?.find((p: any) => p.name === "offerId")?.value || "";
+          // Update the existing offer with current data
+          await fetch("/api/ebay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "update-offer", token, env, offerId, ...offerPayload }),
+          });
+        } else {
+          throw new Error(offerData.errors?.[0]?.message || offerData.error || "Failed to create offer");
+        }
+      } else {
+        offerId = offerData.offerId;
       }
 
-      const offerId = offerData.offerId;
-
-      // Step 3: Publish offer
+      // Step 5: Publish offer
       const pubRes = await fetch("/api/ebay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "publish-offer",
-          token,
-          env,
-          offerId,
-        }),
+        body: JSON.stringify({ action: "publish-offer", token, env, offerId }),
       });
-
       const pubData = await pubRes.json();
-
       if (pubRes.ok) {
         await updateListing(listing.id, {
           status: computeListingStatus(listing, { ebay: true }),
@@ -479,6 +476,7 @@ export default function ListingsPage() {
         status: "error",
         error: `eBay: ${err.message}`,
       });
+      if (!batchModeRef.current) alert(`eBay publish failed:\n${err.message}`);
     }
   }
 
@@ -867,6 +865,30 @@ export default function ListingsPage() {
       });
       const fillData = await fillRes.json();
       if (!fillRes.ok) throw new Error(String(fillData.details || fillData.error || "Failed to fill fields"));
+
+      // Poll fill-status until the background fill completes (avoids long-running
+      // fetch that iOS Safari would kill after ~60s).
+      if (fillData.status === "pending") {
+        let dots = 0;
+        for (let attempt = 0; attempt < 75; attempt++) {
+          await new Promise((r) => setTimeout(r, 4000));
+          dots = (dots % 3) + 1;
+          setPublishProgress((prev) => ({
+            ...prev,
+            [listing.id]: `Filling details${"·".repeat(dots)}`,
+          }));
+          const statusRes = await fetch("/api/listings/publish/facebook", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill-status" }),
+          });
+          const statusData = await statusRes.json();
+          if (!statusRes.ok) throw new Error(String(statusData.details || statusData.error || "Fill status check failed"));
+          if (statusData.status === "done") break;
+          if (statusData.status === "error") throw new Error(String(statusData.details || statusData.error || "Fill failed"));
+          if (attempt === 74) throw new Error("Fill timed out after 5 minutes");
+        }
+      }
 
       setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing listing..." }));
       const submitRes = await fetch("/api/listings/publish/facebook", {

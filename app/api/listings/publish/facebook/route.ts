@@ -122,11 +122,9 @@ export async function POST(request: NextRequest) {
 
       case "fill": {
         if (!existingSessionId) {
-          return Response.json(
-            { error: "sessionId required" },
-            { status: 400 }
-          );
+          return Response.json({ error: "sessionId required" }, { status: 400 });
         }
+        // Mac server starts fill in background and returns immediately.
         const { ok, status, data } = await callMacServer(
           serverUrl,
           "/facebook/fill",
@@ -136,31 +134,61 @@ export async function POST(request: NextRequest) {
         if (!ok) {
           await updateListingField(redis, listings, listingId, {
             facebookStatus: "error",
-            facebookError:
-              "Fill failed: " + String(data?.error || "").substring(0, 300),
+            facebookError: "Fill failed: " + String(data?.error || "").substring(0, 300),
           });
           return Response.json(
-            {
-              error: "Fill failed",
-              details:
-                typeof data?.error === "string"
-                  ? data.error
-                  : JSON.stringify(data).substring(0, 500),
-            },
+            { error: "Fill failed", details: typeof data?.error === "string" ? data.error : JSON.stringify(data).substring(0, 500) },
             { status: status || 500 }
           );
         }
-        const fieldStatus = data.fieldStatus || {};
+        return Response.json({
+          success: true,
+          status: "pending",
+          jobId: data.jobId || existingSessionId,
+          sessionId: existingSessionId,
+          step: "fill",
+          next: "fill-status",
+        });
+      }
+
+      case "fill-status": {
+        if (!existingSessionId) {
+          return Response.json({ error: "sessionId required" }, { status: 400 });
+        }
+        const { ok, status, data } = await callMacServer(
+          serverUrl,
+          "/facebook/fill-status",
+          { jobId: existingSessionId },
+          secret
+        );
+        if (!ok) {
+          return Response.json(
+            { error: "Fill status check failed", details: String(data?.error || "").substring(0, 300) },
+            { status: status || 500 }
+          );
+        }
+        if (data.status === "pending") {
+          return Response.json({ success: true, status: "pending", sessionId: existingSessionId });
+        }
+        if (data.status === "error") {
+          await updateListingField(redis, listings, listingId, {
+            facebookStatus: "error",
+            facebookError: "Fill failed: " + String(data.error || "").substring(0, 300),
+          });
+          return Response.json({ error: "Fill failed", details: data.error }, { status: 500 });
+        }
+        // done
+        const fieldStatus = data.result?.fieldStatus || {};
         await updateListingField(redis, listings, listingId, {
           facebookFieldStatus: JSON.stringify(fieldStatus).substring(0, 500),
         });
         return Response.json({
           success: true,
+          status: "done",
           sessionId: existingSessionId,
-          step: "fill",
+          step: "fill-status",
           next: "submit",
           fieldStatus,
-          message: "Fields filled. Review on the Mac, then click Submit.",
         });
       }
 
