@@ -13,14 +13,10 @@ export async function getGooglePriceSuggestion(title: string): Promise<GooglePri
 
   const prompt = `Search Google for current prices of: "${title.slice(0, 100)}"
 
-Find the average new/retail price (Amazon, Walmart, Best Buy) and average used/resale price (Facebook Marketplace, OfferUp, Craigslist).
+Find the typical new/retail price and used/resale price. Reply with ONLY this JSON object, nothing else:
+{"retail":RETAIL_PRICE_OR_NULL,"resale":RESALE_PRICE_OR_NULL,"sources":"SITE_NAMES"}
 
-Respond with this exact format on separate lines:
-RETAIL: $[number]
-RESALE: $[number]
-SOURCES: [site names]
-
-Use N/A if no price found for that category.`;
+Replace the placeholders with numbers (e.g. 29.99) or null. No markdown, no explanation.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -29,22 +25,41 @@ Use N/A if no price found for that category.`;
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text ?? "";
+    const raw = response.text ?? "";
+    console.log("[google-price] raw response:", raw.slice(0, 300));
 
-    const retailMatch = text.match(/RETAIL:\s*\$?([\d,]+(?:\.\d+)?)/i);
-    const resaleMatch = text.match(/RESALE:\s*\$?([\d,]+(?:\.\d+)?)/i);
-    const sourcesMatch = text.match(/SOURCES:\s*(.+)/i);
+    // Extract JSON from anywhere in the response (grounding adds citation text around it)
+    const jsonMatch = raw.match(/\{[^{}]*"retail"[^{}]*\}/s) ?? raw.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
+      return {
+        avgRetailPrice: toNum(parsed.retail),
+        avgResalePrice: toNum(parsed.resale),
+        sources: typeof parsed.sources === "string" ? parsed.sources.slice(0, 120) : "",
+      };
+    }
 
-    const parsePrice = (m: RegExpMatchArray | null) => {
-      if (!m) return null;
-      const n = parseFloat(m[1].replace(/,/g, ""));
-      return isNaN(n) || n <= 0 ? null : Math.round(n * 100) / 100;
+    // Fallback: extract dollar amounts near retail/resale context words
+    const findPrice = (contextWords: string[]) => {
+      for (const kw of contextWords) {
+        const fwd = new RegExp(`${kw}[^.\\n]{0,150}\\$(\\d[\\d,]*(?:\\.\\d{1,2})?)`, "gi");
+        const bwd = new RegExp(`\\$(\\d[\\d,]*(?:\\.\\d{1,2})?)[^.\\n]{0,150}${kw}`, "gi");
+        for (const re of [fwd, bwd]) {
+          const m = re.exec(raw);
+          if (m) {
+            const n = parseFloat((m[1] ?? m[2] ?? "0").replace(/,/g, ""));
+            if (n > 0) return Math.round(n * 100) / 100;
+          }
+        }
+      }
+      return null;
     };
 
     return {
-      avgRetailPrice: parsePrice(retailMatch),
-      avgResalePrice: parsePrice(resaleMatch),
-      sources: sourcesMatch ? sourcesMatch[1].trim().slice(0, 120) : "",
+      avgRetailPrice: findPrice(["retail", "new", "amazon", "walmart", "msrp", "original"]),
+      avgResalePrice: findPrice(["resale", "used", "secondhand", "marketplace", "offerup", "craigslist"]),
+      sources: "",
     };
   } catch (e: any) {
     console.error("[google-price] error:", e?.message);
@@ -57,6 +72,18 @@ function median(nums: number[]): number {
   const sorted = [...nums].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+// Remove outliers using Tukey fences (Q1 - 1.5*IQR, Q3 + 1.5*IQR)
+function removeOutliers(nums: number[]): number[] {
+  if (nums.length < 5) return nums;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  const lo = q1 - 1.5 * iqr;
+  const hi = q3 + 1.5 * iqr;
+  return sorted.filter((n) => n >= lo && n <= hi);
 }
 
 export function cleanTitleForSearch(title: string): string {
@@ -140,10 +167,10 @@ export async function getEbayPriceSuggestion(title: string): Promise<EbayPriceRe
 
   // Try sold prices first
   try {
-    const soldPrices = await getSoldPrices(keywords);
+    const rawPrices = await getSoldPrices(keywords);
+    const soldPrices = removeOutliers(rawPrices);
     if (soldPrices.length >= 3) {
       const med = median(soldPrices);
-      // 5% under sold median — sold prices are already the floor, so a small discount beats the competition
       const suggested = Math.round(med * 0.95);
       return {
         suggestedPrice: suggested,
@@ -159,12 +186,12 @@ export async function getEbayPriceSuggestion(title: string): Promise<EbayPriceRe
 
   // Fall back to active listings
   try {
-    const listedPrices = await getListedPrices(keywords);
+    const rawPrices = await getListedPrices(keywords);
+    const listedPrices = removeOutliers(rawPrices);
     if (listedPrices.length === 0) {
       return { suggestedPrice: null, medianListPrice: null, sampleSize: 0, message: "No eBay results found" };
     }
     const med = median(listedPrices);
-    // 20% under listed prices to approximate a competitive sold price
     const suggested = Math.round(med * 0.80);
     return {
       suggestedPrice: suggested,
