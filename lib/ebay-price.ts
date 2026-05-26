@@ -2,6 +2,7 @@ export interface GooglePriceResult {
   avgRetailPrice: number | null;
   avgResalePrice: number | null;
   sources: string;
+  _debug?: string;
 }
 
 export async function getGooglePriceSuggestion(title: string): Promise<GooglePriceResult> {
@@ -26,18 +27,18 @@ Replace the placeholders with numbers (e.g. 29.99) or null. No markdown, no expl
     });
 
     const raw = response.text ?? "";
-    console.log("[google-price] raw response:", raw.slice(0, 300));
 
     // Extract JSON from anywhere in the response (grounding adds citation text around it)
     const jsonMatch = raw.match(/\{[^{}]*"retail"[^{}]*\}/s) ?? raw.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
-      return {
-        avgRetailPrice: toNum(parsed.retail),
-        avgResalePrice: toNum(parsed.resale),
-        sources: typeof parsed.sources === "string" ? parsed.sources.slice(0, 120) : "",
-      };
+      const retail = toNum(parsed.retail);
+      const resale = toNum(parsed.resale);
+      const src = Array.isArray(parsed.sources)
+        ? (parsed.sources as string[]).join(", ").slice(0, 120)
+        : typeof parsed.sources === "string" ? parsed.sources.slice(0, 120) : "";
+      return { avgRetailPrice: retail, avgResalePrice: resale, sources: src, _debug: raw.slice(0, 200) };
     }
 
     // Fallback: extract dollar amounts near retail/resale context words
@@ -56,14 +57,11 @@ Replace the placeholders with numbers (e.g. 29.99) or null. No markdown, no expl
       return null;
     };
 
-    return {
-      avgRetailPrice: findPrice(["retail", "new", "amazon", "walmart", "msrp", "original"]),
-      avgResalePrice: findPrice(["resale", "used", "secondhand", "marketplace", "offerup", "craigslist"]),
-      sources: "",
-    };
+    const retail = findPrice(["retail", "new", "amazon", "walmart", "msrp", "original"]);
+    const resale = findPrice(["resale", "used", "secondhand", "marketplace", "offerup", "craigslist"]);
+    return { avgRetailPrice: retail, avgResalePrice: resale, sources: "", _debug: `no-json:${raw.slice(0, 150)}` };
   } catch (e: any) {
-    console.error("[google-price] error:", e?.message);
-    return { avgRetailPrice: null, avgResalePrice: null, sources: "" };
+    return { avgRetailPrice: null, avgResalePrice: null, sources: "", _debug: `error:${e?.message}` };
   }
 }
 
