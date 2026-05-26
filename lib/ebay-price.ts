@@ -11,30 +11,43 @@ export async function getGooglePriceSuggestion(title: string): Promise<GooglePri
   const { GoogleGenAI } = await import("@google/genai");
   const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `Search Google for the current price of: "${title.slice(0, 100)}"
+  const prompt = `Search Google for current prices of: "${title.slice(0, 100)}"
 
-Find:
-1. Average new/retail price (Amazon, Walmart, Best Buy, Target, etc.)
-2. Average used/resale price (Facebook Marketplace, OfferUp, Craigslist, etc.)
+Find the average new/retail price (Amazon, Walmart, Best Buy) and average used/resale price (Facebook Marketplace, OfferUp, Craigslist).
 
-Reply with ONLY valid JSON — no markdown, no explanation:
-{"retailPrice": <number or null>, "resalePrice": <number or null>, "sources": "<site names>"}`;
+Respond with this exact format on separate lines:
+RETAIL: $[number]
+RESALE: $[number]
+SOURCES: [site names]
+
+Use N/A if no price found for that category.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-    const parsed = JSON.parse(text);
-    return {
-      avgRetailPrice: typeof parsed.retailPrice === "number" ? Math.round(parsed.retailPrice * 100) / 100 : null,
-      avgResalePrice: typeof parsed.resalePrice === "number" ? Math.round(parsed.resalePrice * 100) / 100 : null,
-      sources: typeof parsed.sources === "string" ? parsed.sources.slice(0, 100) : "",
+    const text = response.text ?? "";
+
+    const retailMatch = text.match(/RETAIL:\s*\$?([\d,]+(?:\.\d+)?)/i);
+    const resaleMatch = text.match(/RESALE:\s*\$?([\d,]+(?:\.\d+)?)/i);
+    const sourcesMatch = text.match(/SOURCES:\s*(.+)/i);
+
+    const parsePrice = (m: RegExpMatchArray | null) => {
+      if (!m) return null;
+      const n = parseFloat(m[1].replace(/,/g, ""));
+      return isNaN(n) || n <= 0 ? null : Math.round(n * 100) / 100;
     };
-  } catch {
+
+    return {
+      avgRetailPrice: parsePrice(retailMatch),
+      avgResalePrice: parsePrice(resaleMatch),
+      sources: sourcesMatch ? sourcesMatch[1].trim().slice(0, 120) : "",
+    };
+  } catch (e: any) {
+    console.error("[google-price] error:", e?.message);
     return { avgRetailPrice: null, avgResalePrice: null, sources: "" };
   }
 }
