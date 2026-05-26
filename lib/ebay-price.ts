@@ -1,3 +1,44 @@
+export interface GooglePriceResult {
+  avgRetailPrice: number | null;
+  avgResalePrice: number | null;
+  sources: string;
+}
+
+export async function getGooglePriceSuggestion(title: string): Promise<GooglePriceResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { avgRetailPrice: null, avgResalePrice: null, sources: "" };
+
+  const { GoogleGenAI } = await import("@google/genai");
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `Search Google for the current price of: "${title.slice(0, 100)}"
+
+Find:
+1. Average new/retail price (Amazon, Walmart, Best Buy, Target, etc.)
+2. Average used/resale price (Facebook Marketplace, OfferUp, Craigslist, etc.)
+
+Reply with ONLY valid JSON — no markdown, no explanation:
+{"retailPrice": <number or null>, "resalePrice": <number or null>, "sources": "<site names>"}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+
+    const text = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(text);
+    return {
+      avgRetailPrice: typeof parsed.retailPrice === "number" ? Math.round(parsed.retailPrice * 100) / 100 : null,
+      avgResalePrice: typeof parsed.resalePrice === "number" ? Math.round(parsed.resalePrice * 100) / 100 : null,
+      sources: typeof parsed.sources === "string" ? parsed.sources.slice(0, 100) : "",
+    };
+  } catch {
+    return { avgRetailPrice: null, avgResalePrice: null, sources: "" };
+  }
+}
+
 function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const sorted = [...nums].sort((a, b) => a - b);

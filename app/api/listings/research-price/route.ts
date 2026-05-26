@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
-import { getEbayPriceSuggestion } from "@/lib/ebay-price";
+import { getEbayPriceSuggestion, getGooglePriceSuggestion } from "@/lib/ebay-price";
 
-export const maxDuration = 30;
+export const maxDuration = 45;
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,16 +21,19 @@ export async function POST(request: NextRequest) {
     const listing = listings.find(l => l.id === listingId);
     if (!listing) return Response.json({ error: "Listing not found" }, { status: 404 });
 
-    const result = await getEbayPriceSuggestion(listing.title);
+    const [ebay, google] = await Promise.all([
+      getEbayPriceSuggestion(listing.title),
+      getGooglePriceSuggestion(listing.title),
+    ]);
 
-    if (result.suggestedPrice !== null) {
+    if (ebay.suggestedPrice !== null) {
       const updated = listings.map(l =>
-        l.id === listingId ? { ...l, price: result.suggestedPrice, updatedAt: new Date().toISOString() } : l
+        l.id === listingId ? { ...l, price: ebay.suggestedPrice, updatedAt: new Date().toISOString() } : l
       );
       await redis.set(REDIS_KEYS.listings, JSON.stringify(updated));
     }
 
-    return Response.json(result);
+    return Response.json({ ...ebay, google });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
