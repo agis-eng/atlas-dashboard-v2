@@ -215,11 +215,15 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
         body: JSON.stringify({ listingId: id }),
       });
       const data = await res.json();
+      const aiParts: string[] = [];
+      if (data.ai?.avgRetailPrice != null) aiParts.push(`retail ~$${data.ai.avgRetailPrice}`);
+      if (data.ai?.avgResalePrice != null) aiParts.push(`resale ~$${data.ai.avgResalePrice}`);
+      const aiSuffix = aiParts.length ? ` · AI est: ${aiParts.join(", ")}` : "";
       if (data.suggestedPrice) {
         await onUpdate(id, { price: data.suggestedPrice });
-        setPriceHints(h => ({ ...h, [id]: data.message }));
+        setPriceHints(h => ({ ...h, [id]: (data.message || "") + aiSuffix }));
       } else {
-        setPriceHints(h => ({ ...h, [id]: data.message || data.error || "No results" }));
+        setPriceHints(h => ({ ...h, [id]: (data.message || data.error || "No eBay results") + aiSuffix }));
       }
     } catch {
       setPriceHints(h => ({ ...h, [id]: "Research failed" }));
