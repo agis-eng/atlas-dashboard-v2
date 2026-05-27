@@ -1,3 +1,5 @@
+import Anthropic from "@anthropic-ai/sdk";
+
 export interface AiPriceResult {
   avgRetailPrice: number | null;
   avgResalePrice: number | null;
@@ -7,7 +9,6 @@ export async function getAiPriceEstimate(title: string): Promise<AiPriceResult> 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { avgRetailPrice: null, avgResalePrice: null };
 
-  const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey });
 
   try {
