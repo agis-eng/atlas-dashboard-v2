@@ -1575,7 +1575,7 @@ function ListingCard({
     sampleSize: number;
     source?: "sold" | "listed";
     message: string;
-    google?: { avgRetailPrice: number | null; avgResalePrice: number | null; sources: string };
+    ai?: { avgRetailPrice: number | null; avgResalePrice: number | null };
   } | null>(null);
   const [researchingPrice, setResearchingPrice] = useState(false);
 
@@ -1823,19 +1823,19 @@ function ListingCard({
                       ) : (
                         <p className="text-muted-foreground">{priceResearch.message}</p>
                       )}
-                      {priceResearch.google && (priceResearch.google.avgRetailPrice !== null || priceResearch.google.avgResalePrice !== null) && (
+                      {priceResearch.ai && (priceResearch.ai.avgRetailPrice !== null || priceResearch.ai.avgResalePrice !== null) && (
                         <>
                           <div className="border-t border-border/50 my-1" />
-                          {priceResearch.google.avgRetailPrice !== null && (
+                          {priceResearch.ai.avgRetailPrice !== null && (
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">Google retail avg</span>
-                              <span className="font-medium">${priceResearch.google.avgRetailPrice.toFixed(2)}</span>
+                              <span className="text-muted-foreground">AI retail est.</span>
+                              <span className="font-medium">${priceResearch.ai.avgRetailPrice.toFixed(2)}</span>
                             </div>
                           )}
-                          {priceResearch.google.avgResalePrice !== null && (
+                          {priceResearch.ai.avgResalePrice !== null && (
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">Google resale avg</span>
-                              <span className="font-medium">${priceResearch.google.avgResalePrice.toFixed(2)}</span>
+                              <span className="text-muted-foreground">AI resale est.</span>
+                              <span className="font-medium">${priceResearch.ai.avgResalePrice.toFixed(2)}</span>
                             </div>
                           )}
                         </>

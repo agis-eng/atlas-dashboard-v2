@@ -1,67 +1,33 @@
-export interface GooglePriceResult {
+export interface AiPriceResult {
   avgRetailPrice: number | null;
   avgResalePrice: number | null;
-  sources: string;
-  _debug?: string;
 }
 
-export async function getGooglePriceSuggestion(title: string): Promise<GooglePriceResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { avgRetailPrice: null, avgResalePrice: null, sources: "" };
+export async function getAiPriceEstimate(title: string): Promise<AiPriceResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { avgRetailPrice: null, avgResalePrice: null };
 
-  const { GoogleGenAI } = await import("@google/genai");
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `Search Google for current prices of: "${title.slice(0, 100)}"
-
-Find the typical new/retail price and used/resale price. Reply with ONLY this JSON object, nothing else:
-{"retail":RETAIL_PRICE_OR_NULL,"resale":RESALE_PRICE_OR_NULL,"sources":"SITE_NAMES"}
-
-Replace the placeholders with numbers (e.g. 29.99) or null. No markdown, no explanation.`;
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  const client = new Anthropic({ apiKey });
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+    const msg = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 100,
+      messages: [{
+        role: "user",
+        content: `What is the typical retail price (new, from stores like Amazon/Walmart/Target) and typical resale price (used, from marketplaces like eBay/Facebook Marketplace) for: "${title.slice(0, 120)}"
+
+Reply with ONLY valid JSON, no other text: {"retail": <number or null>, "resale": <number or null>}`,
+      }],
     });
 
-    const raw = response.text ?? "";
-
-    // Extract JSON from anywhere in the response (grounding adds citation text around it)
-    const jsonMatch = raw.match(/\{[^{}]*"retail"[^{}]*\}/s) ?? raw.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
-      const retail = toNum(parsed.retail);
-      const resale = toNum(parsed.resale);
-      const src = Array.isArray(parsed.sources)
-        ? (parsed.sources as string[]).join(", ").slice(0, 120)
-        : typeof parsed.sources === "string" ? parsed.sources.slice(0, 120) : "";
-      return { avgRetailPrice: retail, avgResalePrice: resale, sources: src, _debug: raw.slice(0, 200) };
-    }
-
-    // Fallback: extract dollar amounts near retail/resale context words
-    const findPrice = (contextWords: string[]) => {
-      for (const kw of contextWords) {
-        const fwd = new RegExp(`${kw}[^.\\n]{0,150}\\$(\\d[\\d,]*(?:\\.\\d{1,2})?)`, "gi");
-        const bwd = new RegExp(`\\$(\\d[\\d,]*(?:\\.\\d{1,2})?)[^.\\n]{0,150}${kw}`, "gi");
-        for (const re of [fwd, bwd]) {
-          const m = re.exec(raw);
-          if (m) {
-            const n = parseFloat((m[1] ?? m[2] ?? "0").replace(/,/g, ""));
-            if (n > 0) return Math.round(n * 100) / 100;
-          }
-        }
-      }
-      return null;
-    };
-
-    const retail = findPrice(["retail", "new", "amazon", "walmart", "msrp", "original"]);
-    const resale = findPrice(["resale", "used", "secondhand", "marketplace", "offerup", "craigslist"]);
-    return { avgRetailPrice: retail, avgResalePrice: resale, sources: "", _debug: `no-json:${raw.slice(0, 150)}` };
-  } catch (e: any) {
-    return { avgRetailPrice: null, avgResalePrice: null, sources: "", _debug: `error:${e?.message}` };
+    const text = msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+    const parsed = JSON.parse(text);
+    const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
+    return { avgRetailPrice: toNum(parsed.retail), avgResalePrice: toNum(parsed.resale) };
+  } catch {
+    return { avgRetailPrice: null, avgResalePrice: null };
   }
 }
 
