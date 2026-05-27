@@ -22,7 +22,8 @@ Reply with ONLY valid JSON, no other text: {"retail": <number or null>, "resale"
       }],
     });
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+    const raw = msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+    const text = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     const parsed = JSON.parse(text);
     const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
     return { avgRetailPrice: toNum(parsed.retail), avgResalePrice: toNum(parsed.resale) };
