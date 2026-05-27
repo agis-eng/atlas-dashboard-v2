@@ -17,9 +17,14 @@ export async function getAiPriceEstimate(title: string): Promise<AiPriceResult> 
       max_tokens: 100,
       messages: [{
         role: "user",
-        content: `What is the typical retail price (new, from stores like Amazon/Walmart/Target) and typical resale price (used, from marketplaces like eBay/Facebook Marketplace) for: "${title.slice(0, 120)}"
+        content: `Estimate prices for this item: "${title.slice(0, 120)}"
 
-Reply with ONLY valid JSON, no other text: {"retail": <number or null>, "resale": <number or null>}`,
+Give your best estimate for:
+- retail: typical NEW price at stores (Amazon/Walmart/Target). If you don't know the exact product, estimate from the brand and product category.
+- resale: typical USED price on marketplaces (eBay/Facebook Marketplace), usually 30-60% of retail.
+
+Always provide a numeric best-guess based on the category — only use null if the title is unintelligible. Do NOT explain.
+Reply with ONLY valid JSON: {"retail": <number>, "resale": <number>}`,
       }],
     });
 
