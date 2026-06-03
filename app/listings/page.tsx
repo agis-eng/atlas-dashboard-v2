@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { buildAspects } from "@/lib/ebay-aspects";
 import { ListingsTableView } from "@/components/listings-table-view";
 import { PhotoManager } from "@/components/photo-manager";
-import { LayoutList, LayoutGrid } from "lucide-react";
+import { LayoutList, LayoutGrid, MapPin } from "lucide-react";
 
 interface ListingDraft {
   id: string;
@@ -46,13 +46,15 @@ interface ListingDraft {
   brand?: string;
   size?: string;
   sizeType?: string;
-  platforms: ("ebay" | "mercari" | "facebook")[];
+  platforms: ("ebay" | "mercari" | "facebook" | "craigslist")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
   ebayOfferId?: string;
   ebaySku?: string;
   mercariListingUrl?: string;
   facebookListingUrl?: string;
+  craigslistListingUrl?: string;
+  craigslistStatus?: string;
   aiAnalysis?: {
     suggestedTitle: string;
     suggestedDescription: string;
@@ -98,6 +100,7 @@ const PLATFORM_INFO = {
   ebay: { label: "eBay", icon: ShoppingBag, color: "text-blue-600 bg-blue-600/10", fee: "~13.25%" },
   mercari: { label: "Mercari", icon: Store, color: "text-red-500 bg-red-500/10", fee: "12.9%" },
   facebook: { label: "Facebook", icon: Facebook, color: "text-blue-500 bg-blue-500/10", fee: "Free" },
+  craigslist: { label: "Craigslist", icon: MapPin, color: "text-purple-500 bg-purple-500/10", fee: "Free" },
 };
 
 interface MarketplaceConnection {
@@ -111,6 +114,7 @@ interface MarketplaceConnection {
 interface MarketplaceStatus {
   mercari: MarketplaceConnection | null;
   facebook: MarketplaceConnection | null;
+  craigslist: MarketplaceConnection | null;
 }
 
 export default function ListingsPage() {
@@ -119,7 +123,7 @@ export default function ListingsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
-  const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatus>({ mercari: null, facebook: null });
+  const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatus>({ mercari: null, facebook: null, craigslist: null });
   const [connecting, setConnecting] = useState<string | null>(null);
   const [publishProgress, setPublishProgress] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -732,7 +736,7 @@ export default function ListingsPage() {
   // before the other selected markets are done).
   function computeListingStatus(
     listing: ListingDraft,
-    justListed: Partial<Record<"ebay" | "mercari" | "facebook", boolean>>
+    justListed: Partial<Record<"ebay" | "mercari" | "facebook" | "craigslist", boolean>>
   ): "listed" | "ready" {
     const selected = listing.platforms || [];
     if (selected.length === 0) return "listed";
@@ -740,6 +744,7 @@ export default function ListingsPage() {
       if (p === "ebay") return justListed.ebay ?? !!listing.ebayListingId;
       if (p === "mercari") return justListed.mercari ?? !!listing.mercariListingUrl;
       if (p === "facebook") return justListed.facebook ?? !!listing.facebookListingUrl;
+      if (p === "craigslist") return justListed.craigslist ?? !!listing.craigslistListingUrl;
       return true;
     });
     return allDone ? "listed" : "ready";
@@ -778,6 +783,7 @@ export default function ListingsPage() {
     if (platforms.includes("ebay") && merged.ebayListingId) alreadyListed.push("eBay");
     if (platforms.includes("mercari") && merged.mercariListingUrl) alreadyListed.push("Mercari");
     if (platforms.includes("facebook") && merged.facebookListingUrl) alreadyListed.push("Facebook");
+    if (platforms.includes("craigslist") && merged.craigslistListingUrl) alreadyListed.push("Craigslist");
     if (platforms.includes("mercari") && !marketplaceStatus.mercari?.connected) {
       skipped.push("Mercari (not connected)");
     }
@@ -788,6 +794,7 @@ export default function ListingsPage() {
       if (p === "ebay" && merged.ebayListingId) return false;
       if (p === "mercari" && merged.mercariListingUrl) return false;
       if (p === "facebook" && merged.facebookListingUrl) return false;
+      if (p === "craigslist" && merged.craigslistListingUrl) return false;
       if (p === "mercari" && !marketplaceStatus.mercari?.connected) return false;
       if (p === "facebook" && !marketplaceStatus.facebook?.connected) return false;
       return true;
@@ -805,6 +812,7 @@ export default function ListingsPage() {
     if (actual.includes("ebay")) await publishToEbay(merged);
     if (actual.includes("mercari")) await publishToMercari(merged);
     if (actual.includes("facebook")) await publishToFacebook(merged);
+    if (actual.includes("craigslist")) await publishToCraigslist(merged);
 
     // Reconcile final status from server state so one platform's success
     // doesn't mislabel the overall listing.
@@ -819,6 +827,7 @@ export default function ListingsPage() {
           if (actual.includes("ebay")) (current.ebayListingId ? posted : failed).push("eBay");
           if (actual.includes("mercari")) (current.mercariListingUrl ? posted : failed).push("Mercari");
           if (actual.includes("facebook")) (current.facebookListingUrl ? posted : failed).push("Facebook");
+          if (actual.includes("craigslist")) (current.craigslistListingUrl ? posted : failed).push("Craigslist");
           if (failed.length === 0) {
             if (!batchModeRef.current) alert(`Listed to ${posted.join(", ")}`);
           } else {
@@ -920,6 +929,67 @@ export default function ListingsPage() {
         delete next[listing.id];
         return next;
       });
+    }
+  }
+
+  async function publishToCraigslist(listing: ListingDraft) {
+    await updateListing(listing.id, { status: "listing" });
+    let sessionId = "";
+    try {
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Opening Craigslist..." }));
+      const startRes = await fetch("/api/listings/publish/craigslist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, step: "start" }),
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(String(startData.details || startData.error || "Failed to open Craigslist"));
+      sessionId = startData.sessionId || "";
+
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Filling Craigslist form..." }));
+      const fillRes = await fetch("/api/listings/publish/craigslist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill" }),
+      });
+      const fillData = await fillRes.json();
+      if (!fillRes.ok) throw new Error(String(fillData.details || fillData.error || "Failed to fill fields"));
+
+      if (fillData.status === "pending") {
+        let dots = 0;
+        for (let attempt = 0; attempt < 75; attempt++) {
+          await new Promise((r) => setTimeout(r, 4000));
+          dots = (dots % 3) + 1;
+          setPublishProgress((prev) => ({ ...prev, [listing.id]: `Filling Craigslist${"·".repeat(dots)}` }));
+          const statusRes = await fetch("/api/listings/publish/craigslist", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ listingId: listing.id, sessionId, step: "fill-status" }),
+          });
+          const statusData = await statusRes.json();
+          if (!statusRes.ok) throw new Error(String(statusData.details || statusData.error || "Fill status check failed"));
+          if (statusData.status === "done") break;
+          if (statusData.status === "error") throw new Error(String(statusData.details || statusData.error || "Fill failed"));
+          if (attempt === 74) throw new Error("Fill timed out after 5 minutes");
+        }
+      }
+
+      setPublishProgress((prev) => ({ ...prev, [listing.id]: "Publishing to Craigslist..." }));
+      const submitRes = await fetch("/api/listings/publish/craigslist", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, sessionId, step: "submit" }),
+      });
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) throw new Error(String(submitData.details || submitData.error || "Failed to publish"));
+      if (submitData.success === false) throw new Error(String(submitData.details || "Publish did not complete"));
+
+      await updateListing(listing.id, {
+        status: computeListingStatus(listing, { craigslist: true }),
+        craigslistListingUrl: submitData.listingUrl,
+      });
+    } catch (err: any) {
+      console.error("Craigslist publish error:", err);
+      await updateListing(listing.id, { status: "error", error: `Craigslist: ${err.message}` });
+      if (!batchModeRef.current) alert(`Craigslist publish failed:\n${err.message}`);
+    } finally {
+      setPublishProgress((prev) => { const next = { ...prev }; delete next[listing.id]; return next; });
     }
   }
 

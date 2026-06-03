@@ -17,6 +17,7 @@ import {
   Search,
   RotateCcw,
   Check,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,11 +28,12 @@ interface ListingDraft {
   price: number | null;
   quantity: number;
   condition: string;
-  platforms: ("ebay" | "mercari" | "facebook")[];
+  platforms: ("ebay" | "mercari" | "facebook" | "craigslist")[];
   status: string;
   facebookListingUrl?: string;
   mercariListingUrl?: string;
   ebayListingId?: string;
+  craigslistListingUrl?: string;
   facebookLocalOnly?: boolean;
   publishQueued?: boolean;
   createdAt: string;
@@ -66,7 +68,7 @@ function PlatformCell({
   saving: boolean;
 }) {
   const platforms = listing.platforms ?? [];
-  function toggle(p: "ebay" | "mercari" | "facebook") {
+  function toggle(p: "ebay" | "mercari" | "facebook" | "craigslist") {
     const next = platforms.includes(p)
       ? platforms.filter(x => x !== p)
       : [...platforms, p];
@@ -74,8 +76,8 @@ function PlatformCell({
   }
   return (
     <div className="flex items-center gap-2">
-      {(["ebay", "mercari", "facebook"] as const).map(p => {
-        const icons = { ebay: ShoppingBag, mercari: Store, facebook: Facebook };
+      {(["ebay", "mercari", "facebook", "craigslist"] as const).map(p => {
+        const icons = { ebay: ShoppingBag, mercari: Store, facebook: Facebook, craigslist: MapPin };
         const Icon = icons[p];
         const active = platforms.includes(p);
         return (

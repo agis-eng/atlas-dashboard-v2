@@ -170,13 +170,16 @@ export interface ListingDraft {
   brand?: string;
   size?: string;
   sizeType?: string;
-  platforms: ("ebay" | "mercari" | "facebook")[];
+  platforms: ("ebay" | "mercari" | "facebook" | "craigslist")[];
   status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
   ebayListingId?: string;
   ebayOfferId?: string;
   ebaySku?: string;
   mercariListingUrl?: string;
   facebookListingUrl?: string;
+  craigslistListingUrl?: string;
+  craigslistStatus?: "pending" | "publishing" | "listed" | "error";
+  craigslistError?: string;
   aiAnalysis?: {
     suggestedTitle: string;
     suggestedDescription: string;
