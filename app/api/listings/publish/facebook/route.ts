@@ -171,11 +171,24 @@ export async function POST(request: NextRequest) {
           return Response.json({ success: true, status: "pending", sessionId: existingSessionId });
         }
         if (data.status === "error") {
+          const loginRequired = !!data.loginRequired;
           await updateListingField(redis, listings, listingId, {
             facebookStatus: "error",
-            facebookError: "Fill failed: " + String(data.error || "").substring(0, 300),
+            facebookError:
+              (loginRequired ? "Facebook logged out — re-login on the Mac. " : "Fill failed: ") +
+              String(data.error || "").substring(0, 300),
           });
-          return Response.json({ error: "Fill failed", details: data.error }, { status: 500 });
+          return Response.json(
+            {
+              success: false,
+              status: loginRequired ? "login_required" : "error",
+              error: loginRequired
+                ? "Facebook is logged out on the Mac. Re-login (node marketplace-login.mjs facebook) or set up 1Password auto-login."
+                : "Fill failed",
+              details: data.error,
+            },
+            { status: loginRequired ? 200 : 500 }
+          );
         }
         // done — the Mac server now reports whether the form ACTUALLY filled.
         // If the critical fields never populated (almost always a logged-out
