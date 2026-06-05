@@ -177,11 +177,32 @@ export async function POST(request: NextRequest) {
           });
           return Response.json({ error: "Fill failed", details: data.error }, { status: 500 });
         }
-        // done
-        const fieldStatus = data.result?.fieldStatus || {};
+        // done — the Mac server now reports whether the form ACTUALLY filled.
+        // If the critical fields never populated (almost always a logged-out
+        // Facebook session), stop here instead of advancing to submit and
+        // falsely marking the item "listed".
+        const fillResult = data.result || {};
+        const fieldStatus = fillResult.fieldStatus || {};
         await updateListingField(redis, listings, listingId, {
           facebookFieldStatus: JSON.stringify(fieldStatus).substring(0, 500),
         });
+        if (fillResult.success === false) {
+          const loginRequired = !!fillResult.loginRequired;
+          await updateListingField(redis, listings, listingId, {
+            facebookStatus: "error",
+            facebookError: String(
+              fillResult.error || "Facebook form did not fill"
+            ).substring(0, 450),
+          });
+          return Response.json({
+            success: false,
+            status: loginRequired ? "login_required" : "error",
+            error: loginRequired
+              ? "Facebook is logged out on the Mac. Re-login the automation profile (node marketplace-login.mjs facebook), then retry."
+              : String(fillResult.error || "Facebook form did not fill"),
+            sessionId: existingSessionId,
+          });
+        }
         return Response.json({
           success: true,
           status: "done",
@@ -227,6 +248,8 @@ export async function POST(request: NextRequest) {
 
         const {
           success,
+          loginRequired,
+          reason,
           finalUrl,
           validationErrors,
           bodyText,
@@ -240,16 +263,25 @@ export async function POST(request: NextRequest) {
             fillStatus ? ` | Fill: ${fillStatus}` : ""
           }${
             validationErrors ? ` | Validation: ${validationErrors}` : ""
-          } | Body: ${(bodyText || "").replace(/\s+/g, " ")} | Buttons: ${buttonTexts || ""}`;
+          } | Reason: ${reason || ""} | Body: ${(bodyText || "").replace(/\s+/g, " ")} | Buttons: ${buttonTexts || ""}`;
+          // IMPORTANT: never set top-level status to "listed" here. Leave the
+          // item out of the Listed tab so a failed publish is visible as such.
           await updateListingField(redis, listings, listingId, {
             facebookStatus: "error",
-            facebookError: diag.substring(0, 500),
+            facebookError:
+              (loginRequired ? "Facebook logged out — re-login on the Mac. " : "") +
+              diag.substring(0, 450),
             status: "error",
-            error: `Facebook: Submit may have failed. ${diag.substring(0, 400)}`,
+            error: loginRequired
+              ? "Facebook is logged out on the Mac. Re-login (node marketplace-login.mjs facebook), then retry."
+              : `Facebook: not listed. ${(reason || diag).substring(0, 400)}`,
           });
           return Response.json({
             success: false,
-            error: "Submit may have failed",
+            status: loginRequired ? "login_required" : "error",
+            error: loginRequired
+              ? "Facebook login required"
+              : "Submit did not produce a listing",
             details: diag,
           });
         }
