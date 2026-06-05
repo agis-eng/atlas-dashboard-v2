@@ -26,14 +26,51 @@ export async function POST(request: NextRequest) {
       getAiPriceEstimate(listing.title),
     ]);
 
-    if (ebay.suggestedPrice !== null) {
+    const ebayPrice = ebay.suggestedPrice;
+    const retail = ai?.avgRetailPrice ?? null;
+    const resale = ai?.avgResalePrice ?? null;
+
+    // eBay matches by title keywords and frequently grabs the WRONG product
+    // (a bundle, multi-pack, or different SKU) — which shows up as a price far
+    // above the item's real retail. When eBay > 2x the AI retail estimate,
+    // treat it as a mismatch and fall back to the AI resale estimate instead of
+    // pricing the item off a wrong comp.
+    const ebayMismatch =
+      ebayPrice !== null && retail !== null && retail > 0 && ebayPrice > retail * 2;
+
+    let chosenPrice: number | null = null;
+    let priceSource = "";
+    if (ebayPrice !== null && !ebayMismatch) {
+      chosenPrice = ebayPrice;
+      priceSource = "ebay-comps";
+    } else if (resale !== null && resale > 0) {
+      chosenPrice = Math.round(resale);
+      priceSource = ebayMismatch ? "ai-resale (eBay flagged as mismatch)" : "ai-resale";
+    } else if (retail !== null && retail > 0) {
+      chosenPrice = Math.round(retail * 0.7);
+      priceSource = "ai-retail-x0.7";
+    }
+
+    if (chosenPrice !== null) {
       const updated = listings.map(l =>
-        l.id === listingId ? { ...l, price: ebay.suggestedPrice, updatedAt: new Date().toISOString() } : l
+        l.id === listingId ? { ...l, price: chosenPrice, updatedAt: new Date().toISOString() } : l
       );
       await redis.set(REDIS_KEYS.listings, JSON.stringify(updated));
     }
 
-    return Response.json({ ...ebay, ai });
+    return Response.json({
+      ...ebay,
+      ai,
+      chosenPrice,
+      priceSource,
+      ebayMismatch,
+      // Keep suggestedPrice reflecting what we actually chose so the UI shows it.
+      suggestedPrice: chosenPrice,
+      ebayRawSuggestedPrice: ebayPrice,
+      message: ebayMismatch
+        ? `eBay suggested $${ebayPrice} but that's >2x the ~$${retail} retail — likely a wrong-product match, so used the resale estimate $${chosenPrice} instead.`
+        : ebay.message,
+    });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
