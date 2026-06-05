@@ -5,15 +5,33 @@ function getBrainsKey(userId: string) {
   return `brains:${userId}`;
 }
 
+// Normalize stored brains so consumers never crash on missing fields.
+// Brains created via /quick-add and /api/research/ingest don't set
+// email_sources / schedule / icon, which crashed the /brain pages
+// (e.g. `brain.email_sources.length` on undefined). Coerce here once.
+function normalizeBrain(b: any) {
+  return {
+    ...b,
+    id: b?.id,
+    name: b?.name ?? "Untitled Brain",
+    icon: b?.icon ?? "🧠",
+    description: b?.description ?? "",
+    schedule: b?.schedule ?? "manual",
+    email_sources: Array.isArray(b?.email_sources) ? b.email_sources : [],
+    documents: Array.isArray(b?.documents) ? b.documents : [],
+    links: Array.isArray(b?.links) ? b.links : [],
+    notes: Array.isArray(b?.notes) ? b.notes : [],
+    created: b?.created ?? null,
+    lastUpdated: b?.lastUpdated ?? b?.created ?? null,
+  };
+}
+
 async function readBrains(userId: string) {
   const redis = getRedis();
-  const data = await redis.get(getBrainsKey(userId));
-  
-  if (!data || typeof data !== 'object') {
-    return { brains: [] };
-  }
-  
-  return data as { brains: any[] };
+  const data = (await redis.get(getBrainsKey(userId))) as { brains?: any[] } | null;
+
+  const raw = data && Array.isArray(data.brains) ? data.brains : [];
+  return { brains: raw.filter(Boolean).map(normalizeBrain) };
 }
 
 async function writeBrains(userId: string, data: any) {
