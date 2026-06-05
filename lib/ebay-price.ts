@@ -14,24 +14,44 @@ export async function getAiPriceEstimate(title: string): Promise<AiPriceResult> 
   try {
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 100,
+      max_tokens: 1200,
+      // Real web search — the model actually looks up current prices instead of
+      // guessing from training knowledge.
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 } as any],
       messages: [{
         role: "user",
-        content: `Estimate prices for this item: "${title.slice(0, 120)}"
+        content: `Find the REAL current price for this exact item by searching the web: "${title.slice(0, 140)}"
 
-Give your best estimate for:
-- retail: typical NEW price at stores (Amazon/Walmart/Target). If you don't know the exact product, estimate from the brand and product category.
-- resale: typical USED price on marketplaces (eBay/Facebook Marketplace), usually 30-60% of retail.
+Search Google Shopping, Amazon, Walmart, Target, and the manufacturer for:
+- retail: the typical NEW price right now at major retailers for THIS exact product/model.
+- resale: the typical USED price on eBay/Facebook Marketplace (usually 50-70% of retail for good condition).
 
-Always provide a numeric best-guess based on the category — only use null if the title is unintelligible. Do NOT explain.
-Reply with ONLY valid JSON: {"retail": <number>, "resale": <number>}`,
+Match the exact model/size. IGNORE bundles, multi-packs, or accessories that aren't this item.
+Be concise. The VERY LAST thing in your reply must be one line of valid JSON and nothing after it: {"retail": <number>, "resale": <number>}`,
       }],
     });
 
-    const raw = msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
-    const text = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    const parsed = JSON.parse(text);
+    // Web search produces many text blocks; scan them all for the JSON (use the
+    // last match), since the model may narrate before emitting it.
+    const allText = (msg.content as any[])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text as string)
+      .join("\n");
+    const matches = [...allText.matchAll(/\{[^{}]*"(?:retail|resale)"[^{}]*\}/g)];
+    const text = (matches.length ? matches[matches.length - 1][0] : allText)
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
     const toNum = (v: unknown) => typeof v === "number" && v > 0 ? Math.round(v * 100) / 100 : null;
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // Fallback: pull "retail"/"resale" numbers straight from the prose.
+      const r = allText.match(/retail[^0-9$]{0,20}\$?\s*(\d+(?:\.\d+)?)/i);
+      const s = allText.match(/resale[^0-9$]{0,20}\$?\s*(\d+(?:\.\d+)?)/i);
+      parsed = { retail: r ? Number(r[1]) : null, resale: s ? Number(s[1]) : null };
+    }
     return { avgRetailPrice: toNum(parsed.retail), avgResalePrice: toNum(parsed.resale) };
   } catch {
     return { avgRetailPrice: null, avgResalePrice: null };
