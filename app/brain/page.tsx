@@ -105,14 +105,14 @@ export default function BrainPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Mail className="h-3.5 w-3.5" />
-                    <span>{brain.email_sources.length} email sources</span>
+                    <span>{(brain.email_sources?.length ?? 0)} email sources</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span>Updates: {brain.schedule}</span>
+                    <span>Updates: {brain.schedule || "manual"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                    Last updated: {new Date(brain.lastUpdated).toLocaleDateString()}
+                    Last updated: {brain.lastUpdated ? new Date(brain.lastUpdated).toLocaleDateString() : "—"}
                   </div>
                 </div>
               </CardContent>
