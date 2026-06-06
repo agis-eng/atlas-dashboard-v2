@@ -124,6 +124,7 @@ export default function ListingsPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
   const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatus>({ mercari: null, facebook: null, craigslist: null });
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -184,6 +185,27 @@ export default function ListingsPage() {
       };
       img.src = URL.createObjectURL(file);
     });
+  }
+
+  async function ingestDesktopPhotos() {
+    if (ingesting) return;
+    setIngesting(true);
+    try {
+      const res = await fetch("/api/listings/ingest-desktop", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Couldn't pull photos from the Mac folder.");
+      } else if (!data.created) {
+        alert(data.note || "No new photos found in the listing-pics folder.");
+      } else {
+        alert(`Added ${data.created} draft(s) from ${data.photos} photo(s):\n\n` + (data.titles || []).join("\n"));
+        await loadListings();
+      }
+    } catch (e) {
+      alert("Photo ingest failed: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIngesting(false);
+    }
   }
 
   async function handlePhotoUpload(files: FileList | null) {
@@ -1162,6 +1184,23 @@ export default function ListingsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Pull photos from the Mac's "listing pics" desktop folder */}
+      <div className="flex items-center gap-2 -mt-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-8"
+          onClick={ingestDesktopPhotos}
+          disabled={ingesting}
+        >
+          <Upload className="h-3.5 w-3.5 mr-1.5" />
+          {ingesting ? "Pulling photos from Mac…" : "Photos ready — pull from Mac folder"}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          Reads ~/Desktop/listing pics, groups by item, and adds drafts.
+        </span>
+      </div>
 
       {/* Marketplace Connections */}
       <Card>
