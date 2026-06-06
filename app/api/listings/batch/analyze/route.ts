@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
           blobUrls: group.blobUrls,
           title: ai.suggestedTitle || "",
           description: ai.suggestedDescription || "",
-          condition: ai.suggestedCondition || "New",
+          condition: "New", // default every batch-listed item to New; user overrides per-item in the UI
           price: finalPrice,
           weight_lbs: weight,
           dims_in: dims,

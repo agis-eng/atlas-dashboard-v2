@@ -79,6 +79,9 @@ Return ONLY the JSON object, no markdown or explanation.`,
       // Handle potential markdown code blocks
       const jsonStr = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
       analysis = JSON.parse(jsonStr);
+      // Standing rule: every listed item defaults to "New". The seller
+      // overrides per-item in the UI if an item is genuinely used.
+      analysis.suggestedCondition = "New";
     } catch {
       console.error("Failed to parse AI response:", text);
       return Response.json(
