@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { buildAspects } from "@/lib/ebay-aspects";
 import { ListingsTableView } from "@/components/listings-table-view";
 import { PhotoManager } from "@/components/photo-manager";
-import { LayoutList, LayoutGrid, MapPin } from "lucide-react";
+import { LayoutList, LayoutGrid, MapPin, RotateCw } from "lucide-react";
 
 interface ListingDraft {
   id: string;
@@ -1724,6 +1724,57 @@ function ListingCard({
     error: "bg-red-500/10 text-red-500",
   };
 
+  const [rotatingIndex, setRotatingIndex] = useState<number | null>(null);
+
+  // Rotate a photo 90° clockwise in the browser (canvas), store the rotated
+  // bytes to blob, then swap the URL in the photos array (persists via onUpdate).
+  async function rotatePhoto(i: number) {
+    if (rotatingIndex !== null) return;
+    const src = listing.photos[i];
+    if (!src) return;
+    setRotatingIndex(i);
+    try {
+      // crossOrigin + cache-bust so the canvas isn't tainted (the thumbnail may
+      // already be cached without CORS headers).
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("image load failed"));
+        img.src = src + (src.includes("?") ? "&" : "?") + "cb=" + Date.now();
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalHeight; // swap dims for a 90° turn
+      canvas.height = img.naturalWidth;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no canvas context");
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      const blob: Blob = await new Promise((resolve, reject) =>
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+          "image/jpeg",
+          0.92
+        )
+      );
+      const fd = new FormData();
+      fd.append("photo", blob, "rotated.jpg");
+      fd.append("listingId", listing.id);
+      const res = await fetch("/api/listings/rotate-photo", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "rotate failed");
+      const next = [...listing.photos];
+      next[i] = data.url;
+      onUpdate({ photos: next });
+    } catch (e) {
+      console.error("rotatePhoto failed:", e);
+      alert("Couldn't rotate that photo — try again.");
+    } finally {
+      setRotatingIndex(null);
+    }
+  }
+
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
@@ -1746,6 +1797,22 @@ function ListingCard({
               >
                 <X className="w-3 h-3" />
               </button>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  rotatePhoto(i);
+                }}
+                disabled={rotatingIndex !== null}
+                className="absolute -bottom-1.5 -right-1.5 w-5 h-5 bg-blue-600 rounded-full text-white hidden group-hover:flex items-center justify-center shadow-md disabled:opacity-60"
+                title="Rotate 90°"
+              >
+                <RotateCw className="w-3 h-3" />
+              </button>
+              {rotatingIndex === i && (
+                <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
+                </div>
+              )}
             </div>
           ))}
         </div>
