@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
+import { withQuantityNote } from "@/lib/multi-quantity";
 
 export const maxDuration = 300;
 
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
 
       case "fill": {
         if (!existingSessionId) return Response.json({ error: "sessionId required" }, { status: 400 });
-        const { ok, status, data } = await callMacServer(serverUrl, "/craigslist/fill", { sessionId: existingSessionId, listing }, secret);
+        const { ok, status, data } = await callMacServer(serverUrl, "/craigslist/fill", { sessionId: existingSessionId, listing: withQuantityNote(listing) }, secret);
         if (!ok) {
           await updateListingField(redis, listings, listingId, { craigslistStatus: "error", craigslistError: String(data?.error || "").substring(0, 300) } as any);
           return Response.json({ error: "Fill failed", details: String(data?.error || "") }, { status: status || 500 });

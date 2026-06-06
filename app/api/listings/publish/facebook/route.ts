@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
+import { withQuantityNote } from "@/lib/multi-quantity";
 
 export const maxDuration = 300;
 
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
         const { ok, status, data } = await callMacServer(
           serverUrl,
           "/facebook/fill",
-          { sessionId: existingSessionId, listing },
+          { sessionId: existingSessionId, listing: withQuantityNote(listing) },
           secret
         );
         if (!ok) {
