@@ -2110,13 +2110,30 @@ function ListingCard({
                   className="text-xs"
                   onClick={() => onReanalyze(editTitle || undefined)}
                   disabled={analyzing}
+                  title="Keep the current title; re-read the photos to refresh description, price, category, etc."
                 >
                   {analyzing ? (
                     <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   ) : (
                     <Sparkles className="h-3 w-3 mr-1" />
                   )}
-                  {analyzing ? "Analyzing..." : "Re-analyze"}
+                  {analyzing ? "Analyzing..." : "Re-analyze (from title)"}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  onClick={() => onReanalyze(undefined)}
+                  disabled={analyzing || !listing.photos?.length}
+                  title="Ignore the current title; re-read the photos and regenerate the title and all fields from the images."
+                >
+                  {analyzing ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <ImageIcon className="h-3 w-3 mr-1" />
+                  )}
+                  {analyzing ? "Analyzing..." : "Re-analyze (from photos)"}
                 </Button>
 
                 {(listing.status === "error" || listing.status === "listing") && (
