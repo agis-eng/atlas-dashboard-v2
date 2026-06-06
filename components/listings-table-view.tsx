@@ -399,13 +399,17 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
                         type="button"
                         onClick={() => setPhotoModalId(l.id)}
                         title="View / rotate photos"
-                        className="block"
+                        className="relative block"
                       >
                         <img
                           src={l.photos[0]}
                           alt=""
                           className="w-10 h-10 object-cover rounded ring-1 ring-transparent hover:ring-2 hover:ring-blue-500 transition"
                         />
+                        {/* Always-visible badge so it's obvious the photo opens a rotate/view popup */}
+                        <span className="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow ring-1 ring-black/30">
+                          <RotateCw className="w-2.5 h-2.5" />
+                        </span>
                       </button>
                     ) : (
                       <div className="w-10 h-10 bg-white/5 rounded flex items-center justify-center">
