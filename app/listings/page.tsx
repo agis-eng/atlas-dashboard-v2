@@ -33,6 +33,7 @@ import { buildAspects } from "@/lib/ebay-aspects";
 import { ListingsTableView } from "@/components/listings-table-view";
 import { PhotoManager } from "@/components/photo-manager";
 import { LayoutList, LayoutGrid, MapPin, RotateCw } from "lucide-react";
+import { rotatePhoto90 } from "@/lib/rotate-photo";
 
 interface ListingDraft {
   id: string;
@@ -1734,38 +1735,9 @@ function ListingCard({
     if (!src) return;
     setRotatingIndex(i);
     try {
-      // crossOrigin + cache-bust so the canvas isn't tainted (the thumbnail may
-      // already be cached without CORS headers).
-      const img = new window.Image();
-      img.crossOrigin = "anonymous";
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("image load failed"));
-        img.src = src + (src.includes("?") ? "&" : "?") + "cb=" + Date.now();
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalHeight; // swap dims for a 90° turn
-      canvas.height = img.naturalWidth;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("no canvas context");
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      const blob: Blob = await new Promise((resolve, reject) =>
-        canvas.toBlob(
-          (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-          "image/jpeg",
-          0.92
-        )
-      );
-      const fd = new FormData();
-      fd.append("photo", blob, "rotated.jpg");
-      fd.append("listingId", listing.id);
-      const res = await fetch("/api/listings/rotate-photo", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || "rotate failed");
+      const url = await rotatePhoto90(src, listing.id);
       const next = [...listing.photos];
-      next[i] = data.url;
+      next[i] = url;
       onUpdate({ photos: next });
     } catch (e) {
       console.error("rotatePhoto failed:", e);

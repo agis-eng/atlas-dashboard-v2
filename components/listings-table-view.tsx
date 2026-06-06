@@ -16,10 +16,13 @@ import {
   Image as ImageIcon,
   Search,
   RotateCcw,
+  RotateCw,
   Check,
   MapPin,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { rotatePhoto90 } from "@/lib/rotate-photo";
 
 interface ListingDraft {
   id: string;
@@ -241,6 +244,29 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
     }
   }
 
+  // Photo viewer/rotate modal. `rotating` holds `${id}:${index}` while a single
+  // rotate is in flight.
+  const [photoModalId, setPhotoModalId] = useState<string | null>(null);
+  const [rotating, setRotating] = useState<string | null>(null);
+
+  async function doRotate(id: string, index: number) {
+    if (rotating) return;
+    const pl = listings.find(l => l.id === id);
+    if (!pl || !pl.photos?.[index]) return;
+    setRotating(`${id}:${index}`);
+    try {
+      const url = await rotatePhoto90(pl.photos[index], id);
+      const next = [...pl.photos];
+      next[index] = url;
+      await save(id, { photos: next });
+    } catch (e) {
+      console.error("rotate failed:", e);
+      alert("Couldn't rotate that photo — try again.");
+    } finally {
+      setRotating(null);
+    }
+  }
+
   const publishable = listings.filter(l => l.status === "ready" || l.status === "draft");
   const localQueuedPublishable = publishable.filter(l => localQueued.has(l.id));
   const allQueued = publishable.length > 0 && localQueuedPublishable.length === publishable.length;
@@ -369,11 +395,18 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
                   {/* Thumbnail */}
                   <td className="py-1.5 px-2">
                     {l.photos?.[0] ? (
-                      <img
-                        src={l.photos[0]}
-                        alt=""
-                        className="w-10 h-10 object-cover rounded"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setPhotoModalId(l.id)}
+                        title="View / rotate photos"
+                        className="block"
+                      >
+                        <img
+                          src={l.photos[0]}
+                          alt=""
+                          className="w-10 h-10 object-cover rounded ring-1 ring-transparent hover:ring-2 hover:ring-blue-500 transition"
+                        />
+                      </button>
                     ) : (
                       <div className="w-10 h-10 bg-white/5 rounded flex items-center justify-center">
                         <ImageIcon className="w-4 h-4 text-white/20" />
@@ -511,6 +544,54 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
           </div>
         )}
       </div>
+
+      {photoModalId && (() => {
+        const pl = listings.find(l => l.id === photoModalId);
+        if (!pl) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+            onClick={() => { if (!rotating) setPhotoModalId(null); }}
+          >
+            <div
+              className="bg-zinc-900 border border-white/10 rounded-lg p-4 w-full max-w-3xl max-h-[85vh] overflow-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-medium text-white/90 truncate">{pl.title || "Photos"}</h3>
+                <button
+                  onClick={() => { if (!rotating) setPhotoModalId(null); }}
+                  className="shrink-0 text-white/40 hover:text-white"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {pl.photos?.length ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {pl.photos.map((p, i) => (
+                    <div key={i} className="relative">
+                      <img src={p} alt="" className="w-full h-44 object-contain bg-black/40 rounded" />
+                      <button
+                        type="button"
+                        onClick={() => doRotate(pl.id, i)}
+                        disabled={!!rotating}
+                        title="Rotate 90° clockwise"
+                        className="absolute bottom-1.5 right-1.5 w-8 h-8 bg-blue-600 hover:bg-blue-500 rounded-full text-white flex items-center justify-center shadow-md disabled:opacity-60"
+                      >
+                        {rotating === `${pl.id}:${i}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center text-white/30 text-sm">No photos</div>
+              )}
+              <p className="mt-3 text-[11px] text-white/30">Rotate turns the photo 90° clockwise and saves it. Upside-down? Click twice.</p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
