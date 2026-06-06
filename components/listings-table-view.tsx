@@ -261,7 +261,8 @@ export function ListingsTableView({ listings, onUpdate, onDelete, onPublish, onP
       await save(id, { photos: next });
     } catch (e) {
       console.error("rotate failed:", e);
-      alert("Couldn't rotate that photo — try again.");
+      const why = e instanceof Error ? e.message : String(e);
+      alert(`Couldn't rotate that photo — ${why}`);
     } finally {
       setRotating(null);
     }

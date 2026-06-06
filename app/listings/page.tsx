@@ -1741,7 +1741,8 @@ function ListingCard({
       onUpdate({ photos: next });
     } catch (e) {
       console.error("rotatePhoto failed:", e);
-      alert("Couldn't rotate that photo — try again.");
+      const why = e instanceof Error ? e.message : String(e);
+      alert(`Couldn't rotate that photo — ${why}`);
     } finally {
       setRotatingIndex(null);
     }
