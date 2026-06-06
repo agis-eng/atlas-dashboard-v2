@@ -195,3 +195,51 @@ export async function getEbayPriceSuggestion(title: string): Promise<EbayPriceRe
     return { suggestedPrice: null, medianListPrice: null, sampleSize: 0, message: e.message };
   }
 }
+
+export interface ResolvedPrice {
+  price: number | null;
+  source: string;
+  ebay: EbayPriceResult;
+  ai: AiPriceResult;
+  ebayMismatch: boolean;
+}
+
+// Single source of truth for choosing a listing price from real market data.
+// Priority, best → worst:
+//   1. eBay SOLD comps (actual completed transactions — most reliable)
+//   2. AI web-search resale estimate (real Google Shopping/Amazon lookup —
+//      preferred over eBay *active* listings, which run high and overprice)
+//   3. eBay active listings (only when there's no AI resale signal)
+//   4. AI retail × 0.7 (≈30% under new, to read as a deal)
+// eBay comps that exceed 2× the AI retail estimate are treated as a wrong-product
+// match (bundle/multi-pack/different SKU) and skipped.
+export async function resolveListingPrice(title: string): Promise<ResolvedPrice> {
+  const [ebay, ai] = await Promise.all([
+    getEbayPriceSuggestion(title),
+    getAiPriceEstimate(title).catch(() => ({ avgRetailPrice: null, avgResalePrice: null })),
+  ]);
+
+  const ebayPrice = ebay.suggestedPrice;
+  const retail = ai?.avgRetailPrice ?? null;
+  const resale = ai?.avgResalePrice ?? null;
+  const ebayMismatch =
+    ebayPrice !== null && retail !== null && retail > 0 && ebayPrice > retail * 2;
+
+  let price: number | null = null;
+  let source = "";
+  if (ebay.source === "sold" && ebayPrice !== null && !ebayMismatch) {
+    price = ebayPrice;
+    source = "ebay-sold";
+  } else if (resale !== null && resale > 0) {
+    price = Math.round(resale);
+    source = "ai-resale-websearch";
+  } else if (ebayPrice !== null && !ebayMismatch) {
+    price = ebayPrice;
+    source = "ebay-active";
+  } else if (retail !== null && retail > 0) {
+    price = Math.round(retail * 0.7);
+    source = "ai-retail-x0.7";
+  }
+
+  return { price, source, ebay, ai, ebayMismatch };
+}

@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { applyRouting, ShippabilityRecommendation } from "@/lib/marketplace-batch";
 import { buildShippabilityPrompt, ShippabilityOutput } from "@/lib/marketplace-prompts";
-import { getEbayPriceSuggestion } from "@/lib/ebay-price";
+import { resolveListingPrice } from "@/lib/ebay-price";
 
 const anthropic = new Anthropic();
 
@@ -118,11 +118,13 @@ export async function POST(request: NextRequest) {
         const recommendation: ShippabilityRecommendation = shippability?.recommendation || "local_only";
         const routing = applyRouting(recommendation);
 
-        // Try eBay price research — use it if found, fall back to AI estimate
+        // Real price research: eBay sold comps + an AI web-search resale
+        // estimate, preferring grounded resale prices over inflated active
+        // listings. Falls back to the AI photo estimate only if both miss.
         let finalPrice = value;
         if (ai.suggestedTitle) {
-          const ebay = await getEbayPriceSuggestion(ai.suggestedTitle).catch(() => null);
-          if (ebay?.suggestedPrice) finalPrice = ebay.suggestedPrice;
+          const resolved = await resolveListingPrice(ai.suggestedTitle).catch(() => null);
+          if (resolved?.price) finalPrice = resolved.price;
         }
 
         const hasTitleAndPrice = !!ai.suggestedTitle && finalPrice > 0;

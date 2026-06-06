@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS, ListingDraft } from "@/lib/redis";
-import { getEbayPriceSuggestion, getAiPriceEstimate } from "@/lib/ebay-price";
+import { resolveListingPrice } from "@/lib/ebay-price";
 
 export const maxDuration = 45;
 
@@ -21,35 +21,14 @@ export async function POST(request: NextRequest) {
     const listing = listings.find(l => l.id === listingId);
     if (!listing) return Response.json({ error: "Listing not found" }, { status: 404 });
 
-    const [ebay, ai] = await Promise.all([
-      getEbayPriceSuggestion(listing.title),
-      getAiPriceEstimate(listing.title),
-    ]);
-
+    // Shared resolver: eBay sold comps → AI web-search resale → eBay active →
+    // retail×0.7, with wrong-comp (>2x retail) detection. Same logic the batch
+    // ingest uses, so the first-pass price already matches the research result.
+    const { price: chosenPrice, source: priceSource, ebay, ai, ebayMismatch } =
+      await resolveListingPrice(listing.title);
     const ebayPrice = ebay.suggestedPrice;
     const retail = ai?.avgRetailPrice ?? null;
     const resale = ai?.avgResalePrice ?? null;
-
-    // eBay matches by title keywords and frequently grabs the WRONG product
-    // (a bundle, multi-pack, or different SKU) — which shows up as a price far
-    // above the item's real retail. When eBay > 2x the AI retail estimate,
-    // treat it as a mismatch and fall back to the AI resale estimate instead of
-    // pricing the item off a wrong comp.
-    const ebayMismatch =
-      ebayPrice !== null && retail !== null && retail > 0 && ebayPrice > retail * 2;
-
-    let chosenPrice: number | null = null;
-    let priceSource = "";
-    if (ebayPrice !== null && !ebayMismatch) {
-      chosenPrice = ebayPrice;
-      priceSource = "ebay-comps";
-    } else if (resale !== null && resale > 0) {
-      chosenPrice = Math.round(resale);
-      priceSource = ebayMismatch ? "ai-resale (eBay flagged as mismatch)" : "ai-resale";
-    } else if (retail !== null && retail > 0) {
-      chosenPrice = Math.round(retail * 0.7);
-      priceSource = "ai-retail-x0.7";
-    }
 
     if (chosenPrice !== null) {
       const updated = listings.map(l =>
