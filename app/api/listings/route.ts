@@ -2,6 +2,23 @@ import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
 import type { ListingDraft } from "@/lib/redis";
 
+// The per-platform statuses (facebookStatus, craigslistStatus, …) are the
+// source of truth for whether an item went live. If every platform the seller
+// selected is "listed", the item is listed — even if a stale UI save wrote the
+// top-level status back to "ready"/"draft" after the publish completed. This
+// only ever promotes to "listed"; it never downgrades.
+function reconcileListedStatus(l: ListingDraft): ListingDraft {
+  const platforms = Array.isArray(l.platforms) ? l.platforms : [];
+  if (platforms.length === 0) return l;
+  const allListed = platforms.every(
+    (p) => (l as unknown as Record<string, unknown>)[`${p}Status`] === "listed"
+  );
+  if (allListed && l.status !== "listed") {
+    return { ...l, status: "listed" };
+  }
+  return l;
+}
+
 // GET — fetch all listing drafts
 export async function GET(request: NextRequest) {
   try {
@@ -12,9 +29,15 @@ export async function GET(request: NextRequest) {
     }
 
     const redis = getRedis();
-    const listings = (await redis.get(REDIS_KEYS.listings)) as ListingDraft[] | null;
+    const stored = ((await redis.get(REDIS_KEYS.listings)) as ListingDraft[] | null) || [];
+    const listings = stored.map(reconcileListedStatus);
+    // Persist once if any stored record drifted, so server-side consumers
+    // (cron, pricing) see the corrected status too.
+    if (listings.some((l, i) => l.status !== stored[i].status)) {
+      await redis.set(REDIS_KEYS.listings, listings);
+    }
 
-    return Response.json({ listings: listings || [] });
+    return Response.json({ listings });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
@@ -45,6 +68,9 @@ export async function POST(request: NextRequest) {
             delete (listings[idx] as any)[key];
           }
         }
+        // A stale UI save can carry status:"ready" back over a completed
+        // publish — re-derive "listed" from the platform statuses.
+        listings[idx] = reconcileListedStatus(listings[idx]);
       } else {
         return Response.json({ error: "Listing not found" }, { status: 404 });
       }
