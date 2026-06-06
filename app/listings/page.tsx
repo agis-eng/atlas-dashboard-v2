@@ -53,6 +53,7 @@ interface ListingDraft {
   ebayOfferId?: string;
   ebaySku?: string;
   mercariListingUrl?: string;
+  mercariStatus?: string;
   facebookListingUrl?: string;
   craigslistListingUrl?: string;
   craigslistStatus?: string;
@@ -1631,7 +1632,12 @@ function ListingCard({
   const [editCategory, setEditCategory] = useState(listing.category);
   const [editBrand, setEditBrand] = useState(listing.brand || "");
   const [editFbLocalOnly, setEditFbLocalOnly] = useState(!!listing.facebookLocalOnly);
-  const [editWeight, setEditWeight] = useState((listing.weightOz ?? "").toString());
+  const [editWeightLb, setEditWeightLb] = useState(
+    listing.weightOz != null ? Math.floor(listing.weightOz / 16).toString() : ""
+  );
+  const [editWeightOz, setEditWeightOz] = useState(
+    listing.weightOz != null ? (listing.weightOz % 16).toString() : ""
+  );
   const [editLength, setEditLength] = useState((listing.lengthIn ?? "").toString());
   const [editWidth, setEditWidth] = useState((listing.widthIn ?? "").toString());
   const [editHeight, setEditHeight] = useState((listing.heightIn ?? "").toString());
@@ -1679,7 +1685,8 @@ function ListingCard({
     setEditCategory(listing.category);
     setEditBrand(listing.brand || "");
     setEditFbLocalOnly(!!listing.facebookLocalOnly);
-    setEditWeight((listing.weightOz ?? "").toString());
+    setEditWeightLb(listing.weightOz != null ? Math.floor(listing.weightOz / 16).toString() : "");
+    setEditWeightOz(listing.weightOz != null ? (listing.weightOz % 16).toString() : "");
     setEditLength((listing.lengthIn ?? "").toString());
     setEditWidth((listing.widthIn ?? "").toString());
     setEditHeight((listing.heightIn ?? "").toString());
@@ -1700,7 +1707,10 @@ function ListingCard({
       sizeType: editSizeType || undefined,
       facebookLocalOnly: editFbLocalOnly,
       platforms: Array.from(selectedPlatforms) as any,
-      weightOz: editWeight ? parseFloat(editWeight) : undefined,
+      weightOz:
+        editWeightLb || editWeightOz
+          ? (parseFloat(editWeightLb || "0") || 0) * 16 + (parseFloat(editWeightOz || "0") || 0)
+          : undefined,
       lengthIn: editLength ? parseFloat(editLength) : undefined,
       widthIn: editWidth ? parseFloat(editWidth) : undefined,
       heightIn: editHeight ? parseFloat(editHeight) : undefined,
@@ -1997,7 +2007,7 @@ function ListingCard({
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground block mb-1">
-                  Brand (required on Mercari — use &quot;Unbranded&quot; if none)
+                  Brand (optional — leave empty for &quot;No brand&quot;)
                 </label>
                 <Input
                   value={editBrand}
@@ -2053,14 +2063,24 @@ function ListingCard({
               {/* Package size + weight (for Mercari shipping) */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground block mb-1">
-                  Package (AI estimate — used for Mercari shipping)
+                  Package weight &amp; size (needed for Mercari shipping — fill in if blank)
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-5 gap-2">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-0.5">Weight (lb)</label>
+                    <Input
+                      value={editWeightLb}
+                      onChange={(e) => setEditWeightLb(e.target.value)}
+                      placeholder="lb"
+                      className="text-xs"
+                      inputMode="decimal"
+                    />
+                  </div>
                   <div>
                     <label className="text-[10px] text-muted-foreground block mb-0.5">Weight (oz)</label>
                     <Input
-                      value={editWeight}
-                      onChange={(e) => setEditWeight(e.target.value)}
+                      value={editWeightOz}
+                      onChange={(e) => setEditWeightOz(e.target.value)}
                       placeholder="oz"
                       className="text-xs"
                       inputMode="decimal"
@@ -2212,7 +2232,10 @@ function ListingCard({
                         sizeType: editSizeType || undefined,
                         facebookLocalOnly: editFbLocalOnly,
                         platforms: Array.from(selectedPlatforms) as any,
-                        weightOz: editWeight ? parseFloat(editWeight) : undefined,
+                        weightOz:
+        editWeightLb || editWeightOz
+          ? (parseFloat(editWeightLb || "0") || 0) * 16 + (parseFloat(editWeightOz || "0") || 0)
+          : undefined,
                         lengthIn: editLength ? parseFloat(editLength) : undefined,
                         widthIn: editWidth ? parseFloat(editWidth) : undefined,
                         heightIn: editHeight ? parseFloat(editHeight) : undefined,
@@ -2395,10 +2418,21 @@ function ListingCard({
                       href={listing.mercariListingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center text-xs text-red-500 hover:underline"
+                      className={`inline-flex items-center text-xs hover:underline ${
+                        listing.mercariStatus === "draft"
+                          ? "text-amber-600 font-medium"
+                          : "text-red-500"
+                      }`}
+                      title={
+                        listing.mercariStatus === "draft"
+                          ? "Mercari saved a ready-to-list draft — open it and tap List to publish"
+                          : undefined
+                      }
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
-                      View on Mercari
+                      {listing.mercariStatus === "draft"
+                        ? "Mercari: draft — tap List"
+                        : "View on Mercari"}
                     </a>
                   )}
                   {listing.facebookListingUrl && (

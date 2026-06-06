@@ -2,18 +2,38 @@ import { NextRequest } from "next/server";
 import { getRedis, REDIS_KEYS } from "@/lib/redis";
 import type { ListingDraft } from "@/lib/redis";
 
-// The per-platform statuses (facebookStatus, craigslistStatus, …) are the
-// source of truth for whether an item went live. If every platform the seller
-// selected is "listed", the item is listed — even if a stale UI save wrote the
-// top-level status back to "ready"/"draft" after the publish completed. This
-// only ever promotes to "listed"; it never downgrades.
+// Whether a single platform is "done" for a listing. Each marketplace records
+// success differently, so we check the real signal per platform:
+//   - eBay      → ebayStatus "listed" OR a real ebayListingId
+//   - Mercari   → mercariStatus "listed" OR "draft" (a ready-to-list draft
+//                 counts as done; the seller taps List in Mercari to finish)
+//   - Facebook  → facebookStatus "listed" OR a facebookListingUrl
+//   - Craigslist→ craigslistStatus "listed" OR a craigslistListingUrl
+function platformDone(l: ListingDraft, p: string): boolean {
+  const rec = l as unknown as Record<string, unknown>;
+  switch (p) {
+    case "ebay":
+      return rec.ebayStatus === "listed" || !!rec.ebayListingId;
+    case "mercari":
+      return rec.mercariStatus === "listed" || rec.mercariStatus === "draft";
+    case "facebook":
+      return rec.facebookStatus === "listed" || !!rec.facebookListingUrl;
+    case "craigslist":
+      return rec.craigslistStatus === "listed" || !!rec.craigslistListingUrl;
+    default:
+      return rec[`${p}Status`] === "listed";
+  }
+}
+
+// The per-platform signals are the source of truth for whether an item went
+// live. If every platform the seller selected is done, the item is listed —
+// even if a stale UI save wrote the top-level status back to "ready"/"draft"
+// after the publish completed. This only promotes to "listed"; never downgrades.
 function reconcileListedStatus(l: ListingDraft): ListingDraft {
   const platforms = Array.isArray(l.platforms) ? l.platforms : [];
   if (platforms.length === 0) return l;
-  const allListed = platforms.every(
-    (p) => (l as unknown as Record<string, unknown>)[`${p}Status`] === "listed"
-  );
-  if (allListed && l.status !== "listed") {
+  const allDone = platforms.every((p) => platformDone(l, p));
+  if (allDone && l.status !== "listed") {
     return { ...l, status: "listed" };
   }
   return l;

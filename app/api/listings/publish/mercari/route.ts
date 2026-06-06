@@ -230,19 +230,25 @@ export async function POST(request: NextRequest) {
           });
         }
 
+        // Mercari blocks automated "List" clicks, so the Mac server saves a
+        // complete, ready-to-list draft instead. That counts as done (the
+        // top-level status is reconciled across platforms in /api/listings),
+        // but we record it honestly as "draft" so the UI can remind the seller
+        // to tap List in Mercari — rather than claiming it's live.
+        const savedDraft =
+          clicked === "save-draft" || /\/draft\//.test(finalUrl || "");
         await updateListingField(redis, listings, listingId, {
-          mercariStatus: "listed",
-          status: "listed",
+          mercariStatus: savedDraft ? "draft" : "listed",
           mercariListingUrl: finalUrl,
         });
         return Response.json({
           success: true,
           listingUrl: finalUrl,
           step: "submit",
-          message:
-            clicked === "save-draft"
-              ? "Draft saved to Mercari."
-              : "Listed on Mercari.",
+          mercariDraft: savedDraft,
+          message: savedDraft
+            ? "Draft saved to Mercari — tap List in Mercari to finish."
+            : "Listed on Mercari.",
         });
       }
 

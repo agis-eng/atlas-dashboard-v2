@@ -82,6 +82,9 @@ Return ONLY the JSON object, no markdown or explanation.`,
       // Standing rule: every listed item defaults to "New". The seller
       // overrides per-item in the UI if an item is genuinely used.
       analysis.suggestedCondition = "New";
+      // Standing rule: leave brand empty unless the seller fills it in.
+      // Empty brand maps to "No brand / Not sure" on Mercari.
+      analysis.suggestedBrand = "";
     } catch {
       console.error("Failed to parse AI response:", text);
       return Response.json(

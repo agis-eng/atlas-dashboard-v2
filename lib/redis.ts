@@ -198,7 +198,7 @@ export interface ListingDraft {
   lengthIn?: number;
   widthIn?: number;
   heightIn?: number;
-  mercariStatus?: "pending" | "publishing" | "listed" | "error";
+  mercariStatus?: "pending" | "publishing" | "listed" | "error" | "draft";
   facebookStatus?: "pending" | "publishing" | "listed" | "error";
   mercariError?: string;
   mercariFieldStatus?: string;

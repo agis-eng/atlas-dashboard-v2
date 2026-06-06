@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
           weight_lbs: weight,
           dims_in: dims,
           category: ai.suggestedCategory || "",
-          brand: ai.suggestedBrand || undefined,
+          brand: "", // leave brand empty unless the seller fills it in (→ "No brand / Not sure" on Mercari)
           quantity: 1,
           routing: recommendation,
           routingReason: shippability?.reason || "Shippability check failed; defaulted to local",
