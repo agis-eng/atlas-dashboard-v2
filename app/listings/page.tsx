@@ -48,7 +48,9 @@ interface ListingDraft {
   size?: string;
   sizeType?: string;
   platforms: ("ebay" | "mercari" | "facebook" | "craigslist")[];
-  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
+  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error" | "sold";
+  soldAt?: string;
+  soldVia?: string;
   ebayListingId?: string;
   ebayOfferId?: string;
   ebaySku?: string;
@@ -1076,8 +1078,9 @@ export default function ListingsPage() {
     e.stopPropagation();
   }, []);
 
-  const drafts = listings.filter((l) => l.status !== "listed");
+  const drafts = listings.filter((l) => l.status !== "listed" && l.status !== "sold");
   const listed = listings.filter((l) => l.status === "listed");
+  const sold = listings.filter((l) => l.status === "sold");
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-4xl mx-auto">
@@ -1430,6 +1433,7 @@ export default function ListingsPage() {
             <TabsList>
               <TabsTrigger value="drafts">Drafts ({drafts.length})</TabsTrigger>
               <TabsTrigger value="listed">Listed ({listed.length})</TabsTrigger>
+              <TabsTrigger value="sold">Sold ({sold.length})</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
               {drafts.length > 0 && (
@@ -1574,6 +1578,50 @@ export default function ListingsPage() {
                   publishProgress={undefined}
                 />
               ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="sold" className="mt-4 space-y-2">
+            {sold.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  No sold items yet. Use &quot;Mark as Sold&quot; on a listed item to
+                  record a sale and pull it from every market.
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="text-xs text-muted-foreground px-1">
+                  {sold.length} sold · total $
+                  {sold.reduce((s, l) => s + (Number(l.price) || 0), 0).toFixed(2)}
+                </div>
+                {sold.map((l) => (
+                  <Card key={l.id}>
+                    <CardContent className="py-3 flex items-center gap-3">
+                      {l.photos?.[0] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={l.photos[0]} alt="" className="h-12 w-12 rounded object-cover flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{l.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          ${l.price ?? "—"}
+                          {l.soldVia ? ` · sold on ${l.soldVia}` : ""}
+                          {l.soldAt ? ` · ${new Date(l.soldAt).toLocaleDateString()}` : ""}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-xs text-muted-foreground"
+                        onClick={() => deleteListing(l.id)}
+                      >
+                        Remove
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
             )}
           </TabsContent>
         </Tabs>
@@ -2342,23 +2390,31 @@ function ListingCard({
                   </Button>
                 )}
 
-                {listing.status === "listed" && (
+                {(listing.status === "listed" ||
+                  listing.craigslistStatus === "listed" ||
+                  !!listing.ebayListingId ||
+                  !!listing.mercariListingUrl ||
+                  !!listing.facebookListingUrl) && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
                     onClick={async () => {
-                      if (!confirm("Mark as sold and remove listing from all platforms?")) return;
+                      const where = prompt(
+                        "Mark as SOLD and remove it from every platform.\n\nWhich market did it sell on? (optional — e.g. eBay, Craigslist)",
+                        ""
+                      );
+                      if (where === null) return; // cancelled
                       const res = await fetch("/api/listings/delist", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ listingId: listing.id }),
+                        body: JSON.stringify({ listingId: listing.id, sold: true, soldVia: where.trim() || undefined }),
                       });
                       const data = await res.json();
                       const summary = (data.results || [])
                         .map((r: any) => `${r.platform}: ${r.ok ? "✓ removed" : `✗ ${r.skipped ? r.reason : r.error || r.data?.error || "failed"}`}`)
                         .join("\n");
-                      alert(`Delist result:\n\n${summary || "no platforms to delist"}`);
+                      alert(`Marked sold. Removed from:\n\n${summary || "no live platforms"}`);
                       window.location.reload();
                     }}
                   >

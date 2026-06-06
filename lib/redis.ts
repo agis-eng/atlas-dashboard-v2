@@ -171,7 +171,9 @@ export interface ListingDraft {
   size?: string;
   sizeType?: string;
   platforms: ("ebay" | "mercari" | "facebook" | "craigslist")[];
-  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error";
+  status: "draft" | "analyzing" | "ready" | "listing" | "listed" | "error" | "sold";
+  soldAt?: string;
+  soldVia?: string;
   ebayListingId?: string;
   ebayOfferId?: string;
   ebaySku?: string;

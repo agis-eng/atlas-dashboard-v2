@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const user = await getSessionUserFromRequest(request);
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { listingId } = await request.json();
+    const { listingId, sold, soldVia } = await request.json();
     if (!listingId) {
       return Response.json({ error: "listingId required" }, { status: 400 });
     }
@@ -116,10 +116,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update local status to reflect sold/delisted
+    // Update local status. "sold" records the sale (kept in the Sold tab);
+    // a plain delist sends the item back to drafts.
+    const now = new Date().toISOString();
     const updatedListings = listings.map((l) =>
       l.id === listingId
-        ? { ...l, status: "draft" as const, updatedAt: new Date().toISOString() }
+        ? sold
+          ? { ...l, status: "sold" as const, soldAt: now, soldVia: soldVia || undefined, updatedAt: now }
+          : { ...l, status: "draft" as const, updatedAt: now }
         : l
     );
     await redis.set(REDIS_KEYS.listings, JSON.stringify(updatedListings));
