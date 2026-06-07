@@ -11,7 +11,9 @@ export function visionImageUrl(
   url: string,
   baseUrl: string,
   width = 1080,
-  quality = 68
+  // 75 is Next's default-allowed quality; other values need images.qualities
+  // configured and otherwise 400 with INVALID_IMAGE_OPTIMIZE_REQUEST.
+  quality = 75
 ): string {
   if (!url || !baseUrl) return url;
   if (!/\.public\.blob\.vercel-storage\.com\//.test(url)) return url;
