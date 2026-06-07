@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "crypto";
 import { groupByExifGap, PhotoGroup, PhotoRecord } from "@/lib/marketplace-batch";
+import { visionImageUrl, VISION_MAX_IMAGES } from "@/lib/vision-image";
 
 const anthropic = new Anthropic();
 
@@ -15,13 +16,14 @@ interface VisionVerdict {
   splitInto?: number[][];
 }
 
-async function visionVerdictForGroup(group: PhotoGroup): Promise<VisionVerdict | null> {
-  // Send URLs directly — Anthropic fetches them server-side, bypassing
-  // the 5 MB base64 payload limit that iPhone JPEGs trip over.
-  const urls = group.blobUrls.slice(0, 6);
+async function visionVerdictForGroup(group: PhotoGroup, baseUrl: string): Promise<VisionVerdict | null> {
+  // Send downscaled URLs (via the image optimizer) — Anthropic fetches them
+  // server-side, bypassing the 5 MB base64 limit, and the smaller size cuts
+  // image input tokens. A handful of photos is enough to judge same/different.
+  const urls = group.blobUrls.slice(0, VISION_MAX_IMAGES);
   const images: Anthropic.Messages.ImageBlockParam[] = urls.map(url => ({
     type: "image",
-    source: { type: "url", url },
+    source: { type: "url", url: visionImageUrl(url, baseUrl) },
   }));
   if (images.length === 0) return null;
 
@@ -78,6 +80,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const photos: PhotoRecord[] = body.photos || [];
     const gapSeconds = typeof body.gapSeconds === "number" ? body.gapSeconds : DEFAULT_GAP_SECONDS;
+    const baseUrl = new URL(request.url).origin;
 
     if (photos.length === 0) {
       return Response.json({ groups: [] });
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
     // that they are capped at maxGroupSize rather than one giant blob).
     const refined: PhotoGroup[] = [];
     for (const group of groups) {
-      const verdict = await visionVerdictForGroup(group);
+      const verdict = await visionVerdictForGroup(group, baseUrl);
       if (!verdict) {
         refined.push({ ...group, lowConfidence: true, confidenceReason: "Vision check failed" });
         continue;

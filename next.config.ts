@@ -5,6 +5,14 @@ const nextConfig: NextConfig = {
     root: ".",
   },
   serverExternalPackages: ["playwright-core", "@browserbasehq/sdk"],
+  // Allow the image optimizer to downscale Vercel Blob photos. Vision (AI)
+  // calls fetch these through /_next/image at a reduced size to cut image
+  // input tokens — the main driver of Anthropic API cost.
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
+    ],
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

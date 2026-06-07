@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { visionImageUrl, VISION_MAX_IMAGES } from "@/lib/vision-image";
 
 const anthropic = new Anthropic();
 
@@ -17,14 +18,15 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "No photos provided" }, { status: 400 });
     }
 
-    // Send Anthropic the photo URLs directly. The model fetches them
-    // server-side, which bypasses the 5 MB base64 payload cap that
-    // large iPhone JPEGs hit when we encoded them ourselves.
+    // Send Anthropic downscaled photo URLs (via the image optimizer). The model
+    // fetches them server-side — bypassing the 5 MB base64 cap — and the smaller
+    // size roughly halves image input tokens. A few angles are enough to title.
+    const baseUrl = new URL(request.url).origin;
     const imageBlocks: Anthropic.Messages.ImageBlockParam[] = photos
-      .slice(0, 6)
+      .slice(0, VISION_MAX_IMAGES)
       .map((photoUrl: string) => ({
         type: "image",
-        source: { type: "url", url: photoUrl },
+        source: { type: "url", url: visionImageUrl(photoUrl, baseUrl) },
       }));
 
     if (imageBlocks.length === 0) {
