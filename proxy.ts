@@ -41,7 +41,7 @@ export async function proxy(request: NextRequest) {
 
   if (!session) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
+    loginUrl.searchParams.set("from", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
