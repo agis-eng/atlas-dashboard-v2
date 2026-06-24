@@ -11,6 +11,8 @@ const SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
   "https://api.ebay.com/oauth/api_scope/sell.account",
   "https://api.ebay.com/oauth/api_scope/sell.marketing",
+  // Needed for the auto-pricing cron's getTrafficReport (per-listing views).
+  "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
 ].join(" ");
 
 function basicAuth(): string {
