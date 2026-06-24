@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/listing-price-review",
       "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/cron/mercari-price-review",
+      "schedule": "30 14 * * 1"
+    },
+    {
+      "path": "/api/cron/ebay-price-review",
+      "schedule": "0 15 * * 1"
     }
   ]
 }

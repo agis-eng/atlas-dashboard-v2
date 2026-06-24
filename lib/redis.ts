@@ -69,6 +69,12 @@ export const REDIS_KEYS = {
 
   // Facebook click-history tracking (covers listings not in Redis listings:all)
   fbTracking: (slug: string) => `fb:tracking:${slug}`,
+
+  // Mercari likes-history tracking (engagement signal for auto-pricing)
+  mercariTracking: (slug: string) => `mercari:tracking:${slug}`,
+
+  // eBay views-history tracking (engagement signal for auto-pricing)
+  ebayTracking: (slug: string) => `ebay:tracking:${slug}`,
 } as const;
 
 // Types

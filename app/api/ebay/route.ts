@@ -301,6 +301,48 @@ export async function POST(request: NextRequest) {
         return Response.json(data, { status: res.status });
       }
 
+      case "get-traffic": {
+        // Pull the eBay Analytics traffic report: per-listing views over a
+        // window, used by the auto-pricing cron as the engagement signal.
+        // Returns { views: { [listingId]: number }, raw } for easy lookup.
+        const days = Number(payload.days) > 0 ? Number(payload.days) : 30;
+        const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
+        const end = new Date();
+        const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+        const params = new URLSearchParams({
+          dimension: "LISTING",
+          metric: "LISTING_VIEWS_TOTAL",
+          filter: `marketplace_ids:{EBAY_US},date_range:[${fmt(start)}..${fmt(end)}]`,
+        });
+        const res = await fetch(
+          `${baseUrl}/sell/analytics/v1/traffic_report?${params.toString()}`,
+          { method: "GET", headers: ebayHeaders(token) }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return Response.json(data, { status: res.status });
+
+        // Parse the columnar response into listingId -> views.
+        const views: Record<string, number> = {};
+        try {
+          const cols: string[] = (data.header?.dimensionKeys || [])
+            .map((d: any) => d.key)
+            .concat((data.header?.metricKeys || []).map((m: any) => m.key));
+          const listingIdx = cols.indexOf("LISTING");
+          const viewsIdx = cols.indexOf("LISTING_VIEWS_TOTAL");
+          for (const rec of data.records || []) {
+            const vals = (rec.dimensionValues || [])
+              .map((v: any) => v.value)
+              .concat((rec.metricValues || []).map((m: any) => m.value));
+            const id = vals[listingIdx];
+            const v = Number(vals[viewsIdx]) || 0;
+            if (id != null) views[String(id)] = v;
+          }
+        } catch {
+          // Leave views empty on parse trouble; cron treats missing as 0.
+        }
+        return Response.json({ success: true, views, raw: data }, { status: 200 });
+      }
+
       default:
         return Response.json({ error: "Unknown action" }, { status: 400 });
     }
