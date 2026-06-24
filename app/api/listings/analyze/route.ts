@@ -49,7 +49,7 @@ Analyze these product photos and generate listing details. Return ONLY valid JSO
 
 {
   "suggestedTitle": ${existingTitle ? `"${existingTitle}"` : '"concise, keyword-rich title under 80 chars for search visibility"'},
-  "suggestedDescription": "3-5 sentence description highlighting key features, condition, dimensions/specs if visible. Include relevant keywords buyers search for.",
+  "suggestedDescription": "3-5 sentence description highlighting key features and dimensions/specs if visible. Include relevant keywords buyers search for. Do NOT mention condition, newness, or phrases like 'appears to be new' — condition is handled separately.",
   "suggestedPrice": 25,
   "suggestedCategory": "most specific category like 'Electronics > Video Games > Controllers'",
   "suggestedCondition": "one of: New, Like New, Good, Fair, Poor",
